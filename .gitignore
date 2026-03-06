@@ -1,0 +1,19 @@
+# Visual Studio lixo e temporários
+.vs/
+out/
+build/
+bin/
+obj/
+*.sln
+*.user
+*.suo
+
+# CMake temporários
+CMakeSettings.json
+CMakeFiles/
+CMakeCache.txt
+
+# Compilação
+*.exe
+*.pdb
+*.ilk
