@@ -20,7 +20,7 @@ file(GLOB_RECURSE SOURCES
 )
 
 # 4. Criar o executável
-add_executable(${PROJECT_NAME} ${SOURCES} "src/main.cpp")
+add_executable(${PROJECT_NAME} ${SOURCES})
 
 # 5. Configurar Diretórios de Inclusão (Headers)
 target_include_directories(${PROJECT_NAME} PRIVATE 
