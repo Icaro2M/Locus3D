@@ -1,7 +1,7 @@
 #pragma once
 
-#include "VertexArray.h"
-#include "Shader.h"
+#include "geometry/Mesh.h"
+#include "graphics/Shader.h"
 
 class Renderer
 {
@@ -9,6 +9,5 @@ public:
 
     void clear() const;
 
-    void draw(const VertexArray& vao, const Shader& shader) const;
-
+    void draw(const Mesh& mesh, const Shader& shader) const;
 };
