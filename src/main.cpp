@@ -2,6 +2,7 @@
 #include "graphics/Shader.h"
 #include "graphics/VertexArray.h"
 #include "graphics/VertexBuffer.h"
+#include "graphics/Renderer.h"
 
 int main()
 {
@@ -34,15 +35,12 @@ int main()
         "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
     );
 
+    Renderer renderer;
+
     while (!window.shouldClose())
     {
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        shader.use();
-        vao.bind();
-
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        renderer.clear();
+        renderer.draw(vao, shader);
 
         window.pollEvents();
         window.swapBuffers();
