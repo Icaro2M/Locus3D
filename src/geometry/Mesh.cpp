@@ -1,37 +1,41 @@
-#include "Mesh.h"
+#include "geometry/Mesh.h"
 #include <glad/glad.h>
 
-Mesh::Mesh(const float* vertices, unsigned int size)
+Mesh::Mesh(const float* vertices, unsigned int vertexBufferSize,
+    const unsigned int* indices, unsigned int indexCount)
 {
-    vao.bind();
+    m_VBO = new VertexBuffer(vertices, vertexBufferSize);
+    m_IBO = new IndexBuffer(indices, indexCount);
 
-    vbo = new VertexBuffer(vertices, size);
+    m_VAO.bind();
+    m_VBO->bind();
+    m_IBO->bind();
 
-    glVertexAttribPointer(
-        0,
-        3,
-        GL_FLOAT,
-        GL_FALSE,
-        3 * sizeof(float),
-        (void*)0
-    );
 
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    vertexCount = size / (3 * sizeof(float));
+    m_VAO.unbind();
 }
 
 Mesh::~Mesh()
 {
-    delete vbo;
+    delete m_VBO;
+    delete m_IBO;
 }
 
-const VertexArray& Mesh::getVAO() const
+void Mesh::bind() const
 {
-    return vao;
+    m_VAO.bind();
+    m_IBO->bind();
 }
 
-unsigned int Mesh::getVertexCount() const
+void Mesh::unbind() const
 {
-    return vertexCount;
+    m_VAO.unbind();
+}
+
+const IndexBuffer& Mesh::getIndexBuffer() const
+{
+    return *m_IBO;
 }

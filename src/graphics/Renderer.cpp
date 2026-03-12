@@ -1,16 +1,17 @@
-#include "Renderer.h"
+#include "graphics/Renderer.h"
+#include "geometry/Mesh.h"
+#include "graphics/Shader.h"
 #include <glad/glad.h>
 
 void Renderer::clear() const
 {
-    glClearColor(0.1f,0.1f,0.1f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
 
 void Renderer::draw(const Mesh& mesh, const Shader& shader) const
 {
     shader.use();
-    mesh.getVAO().bind();
+    mesh.bind();
 
-    glDrawArrays(GL_TRIANGLES,0,mesh.getVertexCount());
+    glDrawElements(GL_TRIANGLES, mesh.getIndexBuffer().getCount(), GL_UNSIGNED_INT, nullptr);
 }

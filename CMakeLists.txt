@@ -13,11 +13,11 @@ set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
 
 # 3. Coletar arquivos de código (Sources)
 # Aqui incluímos o seu fp e os códigos-fonte das bibliotecas
-file(GLOB_RECURSE SOURCES 
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "${GLAD_DIR}/src/glad.c"
     "${IMGUI_DIR}/*.cpp"
-)
+)   
 
 # 4. Criar o executável
 add_executable(${PROJECT_NAME} ${SOURCES})

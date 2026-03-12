@@ -1,24 +1,24 @@
 #pragma once
 
-#include "graphics/VertexArray.h"
-#include "graphics/VertexBuffer.h"
+#include "graphics/buffers/VertexArray.h"
+#include "graphics/buffers/VertexBuffer.h"
+#include "graphics/buffers/IndexBuffer.h"
 
 class Mesh
 {
 private:
-
-    VertexArray vao;
-    VertexBuffer* vbo;
-
-    unsigned int vertexCount;
+    VertexArray m_VAO;
+    VertexBuffer* m_VBO;
+    IndexBuffer* m_IBO;
 
 public:
-
-    Mesh(const float* vertices, unsigned int size);
+    Mesh(const float* vertices, unsigned int vertexBufferSize,
+        const unsigned int* indices, unsigned int indexCount);
 
     ~Mesh();
 
-    const VertexArray& getVAO() const;
+    void bind() const;
+    void unbind() const;
 
-    unsigned int getVertexCount() const;
+    const IndexBuffer& getIndexBuffer() const;
 };
