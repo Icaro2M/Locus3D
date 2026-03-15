@@ -9,26 +9,14 @@ Camera::Camera()
     m_Fov(45.0f),
     m_AspectRatio(800.0f / 600.0f),
     m_NearPlane(0.1f),
-    m_FarPlane(100.0f)
+    m_FarPlane(100.0f),
+    m_Yaw(90.0f),
+    m_Pitch(0.0f),
+    m_Distance(3.0f)
 {
+    updateOrbitPosition();
 }
 
-Camera::Camera(const glm::vec3& position,
-    const glm::vec3& target,
-    const glm::vec3& up,
-    float fov,
-    float aspectRatio,
-    float nearPlane,
-    float farPlane)
-    : m_Position(position),
-    m_Target(target),
-    m_Up(up),
-    m_Fov(fov),
-    m_AspectRatio(aspectRatio),
-    m_NearPlane(nearPlane),
-    m_FarPlane(farPlane)
-{
-}
 
 void Camera::setPosition(const glm::vec3& position)
 {
@@ -65,6 +53,31 @@ void Camera::setFarPlane(float farPlane)
     m_FarPlane = farPlane;
 }
 
+void Camera::setYaw(float yaw)
+{
+    m_Yaw = yaw;
+}
+
+void Camera::setPitch(float pitch)
+{
+    m_Pitch = pitch;
+}
+
+void Camera::setDistance(float distance)
+{
+    m_Distance = distance;
+}
+
+void Camera::updateOrbitPosition()
+{
+    float yawRad = glm::radians(m_Yaw);
+    float pitchRad = glm::radians(m_Pitch);
+
+    m_Position.x = m_Target.x + m_Distance * glm::cos(pitchRad) * glm::cos(yawRad);
+    m_Position.y = m_Target.y + m_Distance * glm::sin(pitchRad);
+    m_Position.z = m_Target.z + m_Distance * glm::cos(pitchRad) * glm::sin(yawRad);
+}
+
 const glm::vec3& Camera::getPosition() const
 {
     return m_Position;
@@ -98,6 +111,21 @@ float Camera::getNearPlane() const
 float Camera::getFarPlane() const
 {
     return m_FarPlane;
+}
+
+float Camera::getYaw() const
+{
+    return m_Yaw;
+}
+
+float Camera::getPitch() const
+{
+    return m_Pitch;
+}
+
+float Camera::getDistance() const
+{
+    return m_Distance;
 }
 
 glm::mat4 Camera::getViewMatrix() const

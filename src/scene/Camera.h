@@ -14,16 +14,12 @@ private:
     float m_NearPlane;
     float m_FarPlane;
 
+    float m_Yaw;
+    float m_Pitch;
+    float m_Distance;
+
 public:
     Camera();
-
-    Camera(const glm::vec3& position,
-        const glm::vec3& target,
-        const glm::vec3& up,
-        float fov,
-        float aspectRatio,
-        float nearPlane,
-        float farPlane);
 
     void setPosition(const glm::vec3& position);
     void setTarget(const glm::vec3& target);
@@ -34,6 +30,12 @@ public:
     void setNearPlane(float nearPlane);
     void setFarPlane(float farPlane);
 
+    void setYaw(float yaw);;
+    void setPitch(float pitch);
+    void setDistance(float distance);
+
+    void updateOrbitPosition();
+
     const glm::vec3& getPosition() const;
     const glm::vec3& getTarget() const;
     const glm::vec3& getUp() const;
@@ -42,6 +44,10 @@ public:
     float getAspectRatio() const;
     float getNearPlane() const;
     float getFarPlane() const;
+
+    float getYaw() const;
+    float getPitch() const;
+    float getDistance() const;
 
     glm::mat4 getViewMatrix() const;
     glm::mat4 getProjectionMatrix() const;

@@ -10,8 +10,20 @@ void Renderer::clear() const
 
 void Renderer::draw(const Mesh& mesh, const Shader& shader) const
 {
-    shader.use();
     mesh.bind();
 
     glDrawElements(GL_TRIANGLES, mesh.getIndexBuffer().getCount(), GL_UNSIGNED_INT, nullptr);
+}
+
+void Renderer::renderScene(const Scene& scene, const Camera& camera, Shader& shader) const
+{
+    shader.use();
+    shader.setMat4("u_View", camera.getViewMatrix());
+    shader.setMat4("u_Projection", camera.getProjectionMatrix());
+
+    for (const SceneObject* object : scene.getObjects())
+    {
+        shader.setMat4("u_Model", object->getTransform().getModelMatrix());
+        draw(object->getMesh(), shader);
+    }
 }
