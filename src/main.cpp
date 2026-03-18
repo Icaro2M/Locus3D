@@ -11,6 +11,8 @@
 #include "geometry/primitives/PrimitiveFactory.h"
 #include "tools/AxisRenderer.h"
 #include "tools/GridRenderer.h"
+#include "tools/selection/ObjectSelector.h"
+#include "tools/selection/SelectionOutlineRenderer.h"
 
 Camera* g_Camera = nullptr;
 CameraController* g_CameraController = nullptr;
@@ -31,6 +33,8 @@ int main()
 
     AxisRenderer axisRenderer;
     GridRenderer gridRenderer;
+    ObjectSelector selector;
+    SelectionOutlineRenderer selectionOutlineRenderer;
 
     Mesh cube = PrimitiveFactory::createCube();
     Mesh box = PrimitiveFactory::createBox(1.5f, 1.0f, 0.5f);
@@ -66,6 +70,9 @@ int main()
 
     float angle = 0.0f;
 
+    SceneObject* selectedObject = nullptr;
+    bool leftMouseWasPressed = false;
+
     while (!window.shouldClose())
     {
         renderer.clear();
@@ -80,9 +87,24 @@ int main()
         boxObject.getTransform().setRotation(glm::vec3(0.0f, angle, angle));
         tetraObject.getTransform().setRotation(glm::vec3(angle, 0.0f, angle));
 
+        bool leftMousePressed =
+            glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
+        if (leftMousePressed && !leftMouseWasPressed)
+        {
+            selectedObject = selector.selectObject(window.getWindow(), camera, scene);
+        }
+
+        leftMouseWasPressed = leftMousePressed;
+
         renderer.renderScene(scene, camera, shader);
-        axisRenderer.render(camera);
         gridRenderer.render(camera);
+        axisRenderer.render(camera);
+
+        if (selectedObject != nullptr)
+        {
+            selectionOutlineRenderer.render(*selectedObject, camera);
+        }
 
         window.pollEvents();
         window.swapBuffers();

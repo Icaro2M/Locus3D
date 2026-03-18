@@ -26,31 +26,31 @@ GridRenderer::GridRenderer()
         vertices.push_back(-gridExtent);
         vertices.push_back(0.0f);
         vertices.push_back(lineOffset);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
 
         vertices.push_back(gridExtent);
         vertices.push_back(0.0f);
         vertices.push_back(lineOffset);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
 
 
         vertices.push_back(lineOffset);
         vertices.push_back(0.0f);
         vertices.push_back(-gridExtent);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
 
         vertices.push_back(lineOffset);
         vertices.push_back(0.0f);
         vertices.push_back(gridExtent);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
-        vertices.push_back(0.3f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
+        vertices.push_back(0.6f);
     }
 
     m_VertexCount = static_cast<unsigned int>(vertices.size() / 6);

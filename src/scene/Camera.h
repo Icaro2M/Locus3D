@@ -36,6 +36,8 @@ public:
 
     void updateOrbitPosition();
 
+    void translateTarget(const glm::vec3& offset);
+
     const glm::vec3& getPosition() const;
     const glm::vec3& getTarget() const;
     const glm::vec3& getUp() const;

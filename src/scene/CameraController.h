@@ -8,6 +8,7 @@ class CameraController
 private:
     float m_RotationSpeed;
     float m_ZoomSpeed;
+    float m_PanSpeed;
 
     float m_MinPitch;
     float m_MaxPitch;
@@ -22,4 +23,5 @@ public:
 
     void processMouse(GLFWwindow* window, Camera& camera);
     void processScroll(Camera& camera, float yOffset);
+
 };

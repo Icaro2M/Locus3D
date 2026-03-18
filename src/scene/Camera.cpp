@@ -78,6 +78,11 @@ void Camera::updateOrbitPosition()
     m_Position.z = m_Target.z + m_Distance * glm::cos(pitchRad) * glm::sin(yawRad);
 }
 
+void Camera::translateTarget(const glm::vec3& offset)
+{
+    m_Target += offset;
+}
+
 const glm::vec3& Camera::getPosition() const
 {
     return m_Position;
