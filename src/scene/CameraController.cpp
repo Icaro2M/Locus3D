@@ -43,7 +43,7 @@ void CameraController::processMouse(GLFWwindow* window, Camera& camera)
         if (orbitPressed)
         {
             camera.setYaw(camera.getYaw() + static_cast<float>(deltaX) * m_RotationSpeed);
-            camera.setPitch(camera.getPitch() - static_cast<float>(deltaY) * m_RotationSpeed);
+            camera.setPitch(camera.getPitch() + static_cast<float>(deltaY) * m_RotationSpeed);
 
             if (camera.getPitch() > m_MaxPitch)
                 camera.setPitch(m_MaxPitch);
