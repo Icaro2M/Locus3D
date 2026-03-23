@@ -1,31 +1,17 @@
 #include "ObjectSelector.h"
 
 #include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
-#include <glm/glm/gtc/type_ptr.hpp>
 #include <limits>
+
+#include "Raycaster.h"
 
 SceneObject* ObjectSelector::selectObject(GLFWwindow* window, const Camera& camera, const Scene& scene)
 {
-    double mouseX, mouseY;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
+    Raycaster raycaster;
+    Ray ray = raycaster.buildRayFromMouse(window, camera);
 
-    int windowWidth, windowHeight;
-    glfwGetWindowSize(window, &windowWidth, &windowHeight);
-
-    float x = (2.0f * static_cast<float>(mouseX)) / static_cast<float>(windowWidth) - 1.0f;
-    float y = 1.0f - (2.0f * static_cast<float>(mouseY)) / static_cast<float>(windowHeight);
-
-    glm::vec4 rayClip(x, y, -1.0f, 1.0f);
-
-    glm::mat4 projection = camera.getProjectionMatrix();
-    glm::vec4 rayEye = glm::inverse(projection) * rayClip;
-    rayEye = glm::vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
-
-    glm::mat4 view = camera.getViewMatrix();
-    glm::vec3 rayWorld = glm::normalize(glm::vec3(glm::inverse(view) * rayEye));
-
-    glm::vec3 rayOrigin = camera.getPosition();
+    glm::vec3 rayDirection = ray.direction;
+    glm::vec3 rayOrigin = ray.origin;
 
     SceneObject* selectedObject = nullptr;
     float closestHit = std::numeric_limits<float>::max();
@@ -37,8 +23,8 @@ SceneObject* ObjectSelector::selectObject(GLFWwindow* window, const Camera& came
 
         glm::vec3 oc = rayOrigin - sphereCenter;
 
-        float a = glm::dot(rayWorld, rayWorld);
-        float b = 2.0f * glm::dot(oc, rayWorld);
+        float a = glm::dot(rayDirection, rayDirection);
+        float b = 2.0f * glm::dot(oc, rayDirection);
         float c = glm::dot(oc, oc) - sphereRadius * sphereRadius;
 
         float discriminant = b * b - 4.0f * a * c;

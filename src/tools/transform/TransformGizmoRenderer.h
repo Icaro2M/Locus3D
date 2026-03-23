@@ -5,6 +5,7 @@
 #include "../../graphics/buffers/VertexBuffer.h"
 #include "../../scene/SceneObject.h"
 #include "../../scene/Camera.h"
+#include "TransformController.h"
 
 class TransformGizmoRenderer
 {
@@ -18,5 +19,10 @@ public:
 	TransformGizmoRenderer();
 	~TransformGizmoRenderer();
 
-	void render(const SceneObject& selectedObject, const Camera& camera);
+	void render(
+		const SceneObject& selectedObject,
+		const Camera& camera,
+		TransformAxis activeAxis,
+		TransformSpace transformSpace
+	);
 };

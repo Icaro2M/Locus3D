@@ -6,8 +6,8 @@
 
 SelectionOutlineRenderer::SelectionOutlineRenderer()
     : m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\fragment.glsl"
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\selectionOutlineVertex.glsl",
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\selectionOutlineFragment.glsl"
     )
 {
 }

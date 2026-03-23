@@ -1,5 +1,8 @@
+#include <iostream>
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#include <glm/glm/glm.hpp>
 
 #include "core/WindowManager.h"
 #include "graphics/Renderer.h"
@@ -14,8 +17,12 @@
 
 #include "tools/AxisRenderer.h"
 #include "tools/GridRenderer.h"
+
 #include "tools/selection/ObjectSelector.h"
+#include "tools/selection/FaceSelector.h"
 #include "tools/selection/SelectionOutlineRenderer.h"
+#include "tools/selection/FaceHighlightRenderer.h"
+
 #include "tools/transform/TransformController.h"
 #include "tools/transform/TransformGizmoRenderer.h"
 
@@ -38,8 +45,12 @@ int main()
 
 	AxisRenderer axisRenderer;
 	GridRenderer gridRenderer;
-	ObjectSelector selector;
+
+	ObjectSelector objectSelector;
+	FaceSelector faceSelector;
 	SelectionOutlineRenderer selectionOutlineRenderer;
+	FaceHighlightRenderer faceHighlightRenderer;
+
 	TransformController transformController;
 	TransformGizmoRenderer transformGizmoRenderer;
 
@@ -75,14 +86,23 @@ int main()
 	glfwSetScrollCallback(window.getWindow(), scrollCallback);
 
 	SceneObject* selectedObject = nullptr;
+	int selectedFaceIndex = -1;
+	bool faceModeActive = false;
+
 	bool leftMouseWasPressed = false;
 
 	bool wWasPressed = false;
 	bool eWasPressed = false;
 	bool rWasPressed = false;
+
 	bool xWasPressed = false;
 	bool yWasPressed = false;
 	bool zWasPressed = false;
+
+	bool gWasPressed = false;
+	bool lWasPressed = false;
+	bool fWasPressed = false;
+
 	bool escWasPressed = false;
 	bool positiveWasPressed = false;
 	bool negativeWasPressed = false;
@@ -93,11 +113,54 @@ int main()
 
 		cameraController.processMouse(window.getWindow(), camera);
 
+		bool fPressed = glfwGetKey(window.getWindow(), GLFW_KEY_F) == GLFW_PRESS;
+		if (fPressed && !fWasPressed)
+		{
+			faceModeActive = !faceModeActive;
+			selectedFaceIndex = -1;
+
+			if (faceModeActive)
+			{
+				std::cout << "[FACE MODE] Ativado\n";
+			}
+			else
+			{
+				std::cout << "[FACE MODE] Desativado\n";
+			}
+		}
+		fWasPressed = fPressed;
+
 		bool leftMousePressed = glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 		if (leftMousePressed && !leftMouseWasPressed)
 		{
-			selectedObject = selector.selectObject(window.getWindow(), camera, scene);
-			transformController.setSelectedObject(selectedObject);
+			if (faceModeActive && selectedObject != nullptr)
+			{
+				selectedFaceIndex = faceSelector.selectFace(*selectedObject, window.getWindow(), camera);
+
+				if (selectedFaceIndex != -1)
+				{
+					std::cout << "[FACE] Face selecionada: " << selectedFaceIndex << "\n";
+				}
+				else
+				{
+					std::cout << "[FACE] Nenhuma face selecionada\n";
+				}
+			}
+			else
+			{
+				selectedObject = objectSelector.selectObject(window.getWindow(), camera, scene);
+				transformController.setSelectedObject(selectedObject);
+				selectedFaceIndex = -1;
+
+				if (selectedObject != nullptr)
+				{
+					std::cout << "[SELECT] Objeto selecionado\n";
+				}
+				else
+				{
+					std::cout << "[SELECT] Nenhum objeto selecionado\n";
+				}
+			}
 		}
 		leftMouseWasPressed = leftMousePressed;
 
@@ -105,6 +168,7 @@ int main()
 		if (wPressed && !wWasPressed)
 		{
 			transformController.setMode(TransformMode::Translate);
+			std::cout << "[MODE] Translate\n";
 		}
 		wWasPressed = wPressed;
 
@@ -112,6 +176,7 @@ int main()
 		if (ePressed && !eWasPressed)
 		{
 			transformController.setMode(TransformMode::Rotate);
+			std::cout << "[MODE] Rotate\n";
 		}
 		eWasPressed = ePressed;
 
@@ -119,6 +184,7 @@ int main()
 		if (rPressed && !rWasPressed)
 		{
 			transformController.setMode(TransformMode::Scale);
+			std::cout << "[MODE] Scale\n";
 		}
 		rWasPressed = rPressed;
 
@@ -126,6 +192,7 @@ int main()
 		if (xPressed && !xWasPressed)
 		{
 			transformController.setAxis(TransformAxis::X);
+			std::cout << "[AXIS] X\n";
 		}
 		xWasPressed = xPressed;
 
@@ -133,6 +200,7 @@ int main()
 		if (yPressed && !yWasPressed)
 		{
 			transformController.setAxis(TransformAxis::Y);
+			std::cout << "[AXIS] Y\n";
 		}
 		yWasPressed = yPressed;
 
@@ -140,14 +208,36 @@ int main()
 		if (zPressed && !zWasPressed)
 		{
 			transformController.setAxis(TransformAxis::Z);
+			std::cout << "[AXIS] Z\n";
 		}
 		zWasPressed = zPressed;
+
+		bool gPressed = glfwGetKey(window.getWindow(), GLFW_KEY_G) == GLFW_PRESS;
+		if (gPressed && !gWasPressed)
+		{
+			transformController.setSpace(TransformSpace::Global);
+			std::cout << "[SPACE] Global\n";
+		}
+		gWasPressed = gPressed;
+
+		bool lPressed = glfwGetKey(window.getWindow(), GLFW_KEY_L) == GLFW_PRESS;
+		if (lPressed && !lWasPressed)
+		{
+			transformController.setSpace(TransformSpace::Local);
+			std::cout << "[SPACE] Local\n";
+		}
+		lWasPressed = lPressed;
 
 		bool escPressed = glfwGetKey(window.getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
 		if (escPressed && !escWasPressed)
 		{
+			faceModeActive = false;
+			selectedFaceIndex = -1;
 			transformController.setMode(TransformMode::None);
 			transformController.setAxis(TransformAxis::None);
+			transformController.setSpace(TransformSpace::Global);
+
+			std::cout << "[CLEAR] Modo, eixo, espaco e selecao de face resetados\n";
 		}
 		escWasPressed = escPressed;
 
@@ -158,6 +248,7 @@ int main()
 		if (positivePressed && !positiveWasPressed)
 		{
 			transformController.applyPositiveStep();
+			std::cout << "[STEP] Positivo\n";
 		}
 		positiveWasPressed = positivePressed;
 
@@ -168,6 +259,7 @@ int main()
 		if (negativePressed && !negativeWasPressed)
 		{
 			transformController.applyNegativeStep();
+			std::cout << "[STEP] Negativo\n";
 		}
 		negativeWasPressed = negativePressed;
 
@@ -179,7 +271,18 @@ int main()
 		if (selectedObject != nullptr)
 		{
 			selectionOutlineRenderer.render(*selectedObject, camera);
-			transformGizmoRenderer.render(*selectedObject, camera);
+
+			transformGizmoRenderer.render(
+				*selectedObject,
+				camera,
+				transformController.getAxis(),
+				transformController.getSpace()
+			);
+
+			if (selectedFaceIndex != -1)
+			{
+				faceHighlightRenderer.render(*selectedObject, selectedFaceIndex, camera);
+			}
 		}
 
 		window.pollEvents();
