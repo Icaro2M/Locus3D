@@ -20,6 +20,7 @@
 
 #include "tools/selection/ObjectSelector.h"
 #include "tools/selection/FaceSelector.h"
+#include "tools/selection/FaceSelection.h"
 #include "tools/selection/SelectionOutlineRenderer.h"
 #include "tools/selection/FaceHighlightRenderer.h"
 
@@ -48,6 +49,7 @@ int main()
 
 	ObjectSelector objectSelector;
 	FaceSelector faceSelector;
+	FaceSelection selectedFace;
 	SelectionOutlineRenderer selectionOutlineRenderer;
 	FaceHighlightRenderer faceHighlightRenderer;
 
@@ -86,7 +88,6 @@ int main()
 	glfwSetScrollCallback(window.getWindow(), scrollCallback);
 
 	SceneObject* selectedObject = nullptr;
-	int selectedFaceIndex = -1;
 	bool faceModeActive = false;
 
 	bool leftMouseWasPressed = false;
@@ -117,7 +118,7 @@ int main()
 		if (fPressed && !fWasPressed)
 		{
 			faceModeActive = !faceModeActive;
-			selectedFaceIndex = -1;
+			selectedFace.clear();
 
 			if (faceModeActive)
 			{
@@ -135,14 +136,16 @@ int main()
 		{
 			if (faceModeActive && selectedObject != nullptr)
 			{
-				selectedFaceIndex = faceSelector.selectFace(*selectedObject, window.getWindow(), camera);
+				int faceIndex = faceSelector.selectFace(*selectedObject, window.getWindow(), camera);
 
-				if (selectedFaceIndex != -1)
+				if (faceIndex != -1)
 				{
-					std::cout << "[FACE] Face selecionada: " << selectedFaceIndex << "\n";
+					selectedFace.set(selectedObject, faceIndex);
+					std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
 				}
 				else
 				{
+					selectedFace.clear();
 					std::cout << "[FACE] Nenhuma face selecionada\n";
 				}
 			}
@@ -150,7 +153,7 @@ int main()
 			{
 				selectedObject = objectSelector.selectObject(window.getWindow(), camera, scene);
 				transformController.setSelectedObject(selectedObject);
-				selectedFaceIndex = -1;
+				selectedFace.clear();
 
 				if (selectedObject != nullptr)
 				{
@@ -232,7 +235,7 @@ int main()
 		if (escPressed && !escWasPressed)
 		{
 			faceModeActive = false;
-			selectedFaceIndex = -1;
+			selectedFace.clear();
 			transformController.setMode(TransformMode::None);
 			transformController.setAxis(TransformAxis::None);
 			transformController.setSpace(TransformSpace::Global);
@@ -279,9 +282,13 @@ int main()
 				transformController.getSpace()
 			);
 
-			if (selectedFaceIndex != -1)
+			if (selectedFace.isValid())
 			{
-				faceHighlightRenderer.render(*selectedObject, selectedFaceIndex, camera);
+				faceHighlightRenderer.render(
+					*selectedFace.getObject(),
+					selectedFace.getFaceIndex(),
+					camera
+				);
 			}
 		}
 

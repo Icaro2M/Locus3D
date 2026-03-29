@@ -5,6 +5,7 @@
 #include "graphics/buffers/VertexArray.h"
 #include "graphics/buffers/VertexBuffer.h"
 #include "graphics/buffers/IndexBuffer.h"
+#include <glm/glm/glm.hpp>
 
 class Mesh
 {
@@ -33,4 +34,6 @@ public:
 
 	const std::vector<float>& getVertices() const;
 	const std::vector<unsigned int>& getIndices() const;
+	glm::vec3 getVertexPosition(unsigned int vertexIndex) const;
+
 };

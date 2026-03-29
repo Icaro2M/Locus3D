@@ -61,3 +61,14 @@ const std::vector<unsigned int>& Mesh::getIndices() const
 {
 	return m_Indices;
 }
+
+glm::vec3 Mesh::getVertexPosition(unsigned int vertexIndex) const
+{
+	unsigned int baseIndex = vertexIndex * 6;
+
+	float vertexX = m_Vertices[baseIndex];
+	float vertexY = m_Vertices[baseIndex + 1];
+	float vertexZ = m_Vertices[baseIndex + 2];
+
+	return glm::vec3(vertexX, vertexY, vertexZ);
+}
