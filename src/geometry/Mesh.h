@@ -35,5 +35,9 @@ public:
 	const std::vector<float>& getVertices() const;
 	const std::vector<unsigned int>& getIndices() const;
 	glm::vec3 getVertexPosition(unsigned int vertexIndex) const;
+	bool getTriangleVertexIndices(unsigned int triangleIndex,
+		unsigned int& outI0,
+		unsigned int& outI1,
+		unsigned int& outI2) const;
 
 };

@@ -72,3 +72,25 @@ glm::vec3 Mesh::getVertexPosition(unsigned int vertexIndex) const
 
 	return glm::vec3(vertexX, vertexY, vertexZ);
 }
+
+bool Mesh::getTriangleVertexIndices(unsigned int triangleIndex,
+	unsigned int& outI0,
+	unsigned int& outI1,
+	unsigned int& outI2) const
+{
+	unsigned int base = triangleIndex * 3;
+
+	if (base + 2 >= m_Indices.size())
+	{
+		outI0 = 0;
+		outI1 = 0;
+		outI2 = 0;
+		return false;
+	}
+		
+
+	outI0 = m_Indices[base];
+	outI1 = m_Indices[base + 1];
+	outI2 = m_Indices[base + 2];
+	return true;
+}

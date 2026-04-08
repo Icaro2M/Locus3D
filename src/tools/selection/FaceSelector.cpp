@@ -67,11 +67,18 @@ int FaceSelector::selectFace(const SceneObject& selectedObject, GLFWwindow* wind
 	float closestT = std::numeric_limits<float>::max();
 	int selectedFaceIndex = -1;
 
-	for (size_t i = 0; i + 2 < indices.size(); i += 3)
+	unsigned int triangleCount = static_cast<unsigned int>(indices.size() / 3);
+
+	for (unsigned int triangleIndex = 0; triangleIndex < triangleCount; triangleIndex++)
 	{
-		const unsigned int i0 = indices[i];
-		const unsigned int i1 = indices[i + 1];
-		const unsigned int i2 = indices[i + 2];
+		unsigned int i0 = 0;
+		unsigned int i1 = 0;
+		unsigned int i2 = 0;
+
+		if (!mesh.getTriangleVertexIndices(triangleIndex, i0, i1, i2))
+		{
+			continue;
+		}
 
 		glm::vec3 localV0 = mesh.getVertexPosition(i0);
 		glm::vec3 localV1 = mesh.getVertexPosition(i1);
@@ -87,7 +94,7 @@ int FaceSelector::selectFace(const SceneObject& selectedObject, GLFWwindow* wind
 			if (t < closestT)
 			{
 				closestT = t;
-				selectedFaceIndex = static_cast<int>(i / 3);
+				selectedFaceIndex = static_cast<int>(triangleIndex);
 			}
 		}
 	}
