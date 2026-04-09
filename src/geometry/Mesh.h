@@ -30,6 +30,8 @@ public:
 	void bind() const;
 	void unbind() const;
 
+	
+
 	const IndexBuffer& getIndexBuffer() const;
 
 	const std::vector<float>& getVertices() const;
@@ -39,5 +41,11 @@ public:
 		unsigned int& outI0,
 		unsigned int& outI1,
 		unsigned int& outI2) const;
+
+	void updateGeometry(
+		const std::vector<float>& vertices,
+		const std::vector<unsigned int>& indices
+	);
+
 
 };

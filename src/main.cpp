@@ -21,6 +21,9 @@
 #include "tools/selection/ObjectSelector.h"
 #include "tools/selection/FaceSelector.h"
 #include "tools/selection/FaceSelection.h"
+#include "tools/selection/FaceGeometry.h"
+#include "tools/selection/FaceGeometryBuilder.h"
+#include "tools/selection/FaceExtruder.h"
 #include "tools/selection/SelectionOutlineRenderer.h"
 #include "tools/selection/FaceHighlightRenderer.h"
 
@@ -49,6 +52,8 @@ int main()
 
 	ObjectSelector objectSelector;
 	FaceSelector faceSelector;
+	FaceGeometryBuilder faceGeometryBuilder;
+	FaceExtruder faceExtruder;
 	FaceSelection selectedFace;
 	SelectionOutlineRenderer selectionOutlineRenderer;
 	FaceHighlightRenderer faceHighlightRenderer;
@@ -103,6 +108,7 @@ int main()
 	bool gWasPressed = false;
 	bool lWasPressed = false;
 	bool fWasPressed = false;
+	bool tWasPressed = false;
 
 	bool escWasPressed = false;
 	bool positiveWasPressed = false;
@@ -141,7 +147,25 @@ int main()
 				if (faceIndex != -1)
 				{
 					selectedFace.set(selectedObject, faceIndex);
+
+					FaceGeometry faceGeometry = faceGeometryBuilder.build(selectedFace);
+
 					std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
+
+					if (faceGeometry.isValid())
+					{
+						glm::vec3 localNormal = faceGeometry.getLocalNormal();
+
+						std::cout
+							<< "[FACE GEOMETRY] Normal local: ("
+							<< localNormal.x << ", "
+							<< localNormal.y << ", "
+							<< localNormal.z << ")\n";
+					}
+					else
+					{
+						std::cout << "[FACE GEOMETRY] Geometria invalida\n";
+					}
 				}
 				else
 				{
@@ -230,6 +254,29 @@ int main()
 			std::cout << "[SPACE] Local\n";
 		}
 		lWasPressed = lPressed;
+
+		bool tPressed = glfwGetKey(window.getWindow(), GLFW_KEY_T) == GLFW_PRESS;
+		if (tPressed && !tWasPressed)
+		{
+			if (selectedFace.isValid())
+			{
+				bool extrudeSuccess = faceExtruder.extrude(selectedFace, 0.3f);
+
+				if (extrudeSuccess)
+				{
+					std::cout << "[EXTRUDE] Extrusao aplicada\n";
+				}
+				else
+				{
+					std::cout << "[EXTRUDE] Falha na extrusao\n";
+				}
+			}
+			else
+			{
+				std::cout << "[EXTRUDE] Nenhuma face selecionada\n";
+			}
+		}
+		tWasPressed = tPressed;
 
 		bool escPressed = glfwGetKey(window.getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
 		if (escPressed && !escWasPressed)

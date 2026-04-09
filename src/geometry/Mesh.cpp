@@ -94,3 +94,33 @@ bool Mesh::getTriangleVertexIndices(unsigned int triangleIndex,
 	outI2 = m_Indices[base + 2];
 	return true;
 }
+
+void Mesh::updateGeometry(
+	const std::vector<float>& vertices,
+	const std::vector<unsigned int>& indices
+)
+{
+	m_Vertices = vertices;
+	m_Indices = indices;
+
+	delete m_VBO;
+	delete m_IBO;
+
+	unsigned int vertexBufferSize = static_cast<unsigned int>(m_Vertices.size() * sizeof(float));
+	unsigned int indexCount = static_cast<unsigned int>(m_Indices.size());
+
+	m_VBO = new VertexBuffer(m_Vertices.data(), vertexBufferSize);
+	m_IBO = new IndexBuffer(m_Indices.data(), indexCount);
+
+	m_VAO.bind();
+	m_VBO->bind();
+	m_IBO->bind();
+
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+
+	m_VAO.unbind();
+}
