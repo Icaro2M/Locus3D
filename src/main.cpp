@@ -23,325 +23,475 @@
 #include "tools/selection/FaceSelection.h"
 #include "tools/selection/FaceGeometry.h"
 #include "tools/selection/FaceGeometryBuilder.h"
-#include "tools/selection/FaceExtruder.h"
 #include "tools/selection/SelectionOutlineRenderer.h"
 #include "tools/selection/FaceHighlightRenderer.h"
+#include "tools/selection/PushPullTool.h"
+#include "tools/selection/PushPullPreviewRenderer.h"
+#include "tools/selection/Raycaster.h"
 
 #include "tools/transform/TransformController.h"
 #include "tools/transform/TransformGizmoRenderer.h"
+#include "tools/transform/TransformGizmoSelector.h"
 
 Camera* g_Camera = nullptr;
 CameraController* g_CameraController = nullptr;
 
 void scrollCallback(GLFWwindow* window, double xOffset, double yOffset)
 {
-	if (g_Camera && g_CameraController)
-	{
-		g_CameraController->processScroll(*g_Camera, static_cast<float>(yOffset));
-	}
+    if (g_Camera && g_CameraController)
+    {
+        g_CameraController->processScroll(*g_Camera, static_cast<float>(yOffset));
+    }
 }
 
 int main()
 {
-	WindowManager window(800, 600, "Locus3D");
+    WindowManager window(800, 600, "Locus3D");
 
-	glEnable(GL_DEPTH_TEST);
+    glEnable(GL_DEPTH_TEST);
 
-	AxisRenderer axisRenderer;
-	GridRenderer gridRenderer;
+    AxisRenderer axisRenderer;
+    GridRenderer gridRenderer;
 
-	ObjectSelector objectSelector;
-	FaceSelector faceSelector;
-	FaceGeometryBuilder faceGeometryBuilder;
-	FaceExtruder faceExtruder;
-	FaceSelection selectedFace;
-	SelectionOutlineRenderer selectionOutlineRenderer;
-	FaceHighlightRenderer faceHighlightRenderer;
+    ObjectSelector objectSelector;
+    FaceSelector faceSelector;
+    FaceGeometryBuilder faceGeometryBuilder;
+    FaceSelection selectedFace;
+    SelectionOutlineRenderer selectionOutlineRenderer;
+    FaceHighlightRenderer faceHighlightRenderer;
 
-	TransformController transformController;
-	TransformGizmoRenderer transformGizmoRenderer;
+    PushPullTool pushPullTool;
+    PushPullPreviewRenderer pushPullPreviewRenderer;
 
-	Mesh cube = PrimitiveFactory::createCube();
-	Mesh box = PrimitiveFactory::createBox(1.5f, 1.0f, 0.5f);
-	Mesh tetra = PrimitiveFactory::createTetrahedron();
+    TransformController transformController;
+    TransformGizmoRenderer transformGizmoRenderer;
+    TransformGizmoSelector transformGizmoSelector;
 
-	SceneObject cubeObject(cube);
-	SceneObject boxObject(box);
-	SceneObject tetraObject(tetra);
+    Raycaster raycaster;
 
-	cubeObject.getTransform().setPosition(glm::vec3(-1.5f, 0.0f, 0.0f));
-	boxObject.getTransform().setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-	tetraObject.getTransform().setPosition(glm::vec3(1.5f, 0.0f, 0.0f));
+    Mesh cube = PrimitiveFactory::createCube();
+    Mesh box = PrimitiveFactory::createBox(1.5f, 1.0f, 0.5f);
+    Mesh tetra = PrimitiveFactory::createTetrahedron();
 
-	Scene scene;
-	scene.addObject(cubeObject);
-	scene.addObject(boxObject);
-	scene.addObject(tetraObject);
+    SceneObject cubeObject(cube);
+    SceneObject boxObject(box);
+    SceneObject tetraObject(tetra);
 
-	Shader shader(
-		"C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
-		"C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
-	);
+    cubeObject.getTransform().setPosition(glm::vec3(-1.5f, 0.0f, 0.0f));
+    boxObject.getTransform().setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+    tetraObject.getTransform().setPosition(glm::vec3(1.5f, 0.0f, 0.0f));
 
-	Renderer renderer;
-	Camera camera;
-	CameraController cameraController;
+    Scene scene;
+    scene.addObject(cubeObject);
+    scene.addObject(boxObject);
+    scene.addObject(tetraObject);
 
-	g_Camera = &camera;
-	g_CameraController = &cameraController;
+    Shader shader(
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
+    );
 
-	glfwSetScrollCallback(window.getWindow(), scrollCallback);
+    Renderer renderer;
+    Camera camera;
+    CameraController cameraController;
 
-	SceneObject* selectedObject = nullptr;
-	bool faceModeActive = false;
+    g_Camera = &camera;
+    g_CameraController = &cameraController;
 
-	bool leftMouseWasPressed = false;
+    glfwSetScrollCallback(window.getWindow(), scrollCallback);
 
-	bool wWasPressed = false;
-	bool eWasPressed = false;
-	bool rWasPressed = false;
+    SceneObject* selectedObject = nullptr;
+    bool faceModeActive = false;
 
-	bool xWasPressed = false;
-	bool yWasPressed = false;
-	bool zWasPressed = false;
+    bool leftMouseWasPressed = false;
 
-	bool gWasPressed = false;
-	bool lWasPressed = false;
-	bool fWasPressed = false;
-	bool tWasPressed = false;
+    bool wWasPressed = false;
+    bool eWasPressed = false;
+    bool rWasPressed = false;
 
-	bool escWasPressed = false;
-	bool positiveWasPressed = false;
-	bool negativeWasPressed = false;
+    bool xWasPressed = false;
+    bool yWasPressed = false;
+    bool zWasPressed = false;
 
-	while (!window.shouldClose())
-	{
-		renderer.clear();
+    bool gWasPressed = false;
+    bool lWasPressed = false;
+    bool fWasPressed = false;
+    bool tWasPressed = false;
 
-		cameraController.processMouse(window.getWindow(), camera);
+    bool escWasPressed = false;
+    bool positiveWasPressed = false;
+    bool negativeWasPressed = false;
 
-		bool fPressed = glfwGetKey(window.getWindow(), GLFW_KEY_F) == GLFW_PRESS;
-		if (fPressed && !fWasPressed)
-		{
-			faceModeActive = !faceModeActive;
-			selectedFace.clear();
+    bool keyWasPressed[512] = { false };
 
-			if (faceModeActive)
-			{
-				std::cout << "[FACE MODE] Ativado\n";
-			}
-			else
-			{
-				std::cout << "[FACE MODE] Desativado\n";
-			}
-		}
-		fWasPressed = fPressed;
+    while (!window.shouldClose())
+    {
+        renderer.clear();
 
-		bool leftMousePressed = glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-		if (leftMousePressed && !leftMouseWasPressed)
-		{
-			if (faceModeActive && selectedObject != nullptr)
-			{
-				int faceIndex = faceSelector.selectFace(*selectedObject, window.getWindow(), camera);
+        cameraController.processMouse(window.getWindow(), camera);
 
-				if (faceIndex != -1)
-				{
-					selectedFace.set(selectedObject, faceIndex);
+        if (pushPullTool.isActive())
+        {
+            pushPullTool.update(window.getWindow());
+        }
 
-					FaceGeometry faceGeometry = faceGeometryBuilder.build(selectedFace);
+        if (transformController.isDragging())
+        {
+            Ray dragRay = raycaster.buildRayFromMouse(window.getWindow(), camera);
+            transformController.updateDragFromRay(dragRay);
+        }
 
-					std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
+        if (pushPullTool.isActive())
+        {
+            for (int key = 0; key < 512; key++)
+            {
+                bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
 
-					if (faceGeometry.isValid())
-					{
-						glm::vec3 localNormal = faceGeometry.getLocalNormal();
+                if (pressed && !keyWasPressed[key])
+                {
+                    pushPullTool.onKeyPressed(key);
+                }
 
-						std::cout
-							<< "[FACE GEOMETRY] Normal local: ("
-							<< localNormal.x << ", "
-							<< localNormal.y << ", "
-							<< localNormal.z << ")\n";
-					}
-					else
-					{
-						std::cout << "[FACE GEOMETRY] Geometria invalida\n";
-					}
-				}
-				else
-				{
-					selectedFace.clear();
-					std::cout << "[FACE] Nenhuma face selecionada\n";
-				}
-			}
-			else
-			{
-				selectedObject = objectSelector.selectObject(window.getWindow(), camera, scene);
-				transformController.setSelectedObject(selectedObject);
-				selectedFace.clear();
+                keyWasPressed[key] = pressed;
+            }
+        }
+        else
+        {
+            for (int key = 0; key < 512; key++)
+            {
+                keyWasPressed[key] = false;
+            }
+        }
 
-				if (selectedObject != nullptr)
-				{
-					std::cout << "[SELECT] Objeto selecionado\n";
-				}
-				else
-				{
-					std::cout << "[SELECT] Nenhum objeto selecionado\n";
-				}
-			}
-		}
-		leftMouseWasPressed = leftMousePressed;
+        bool fPressed = glfwGetKey(window.getWindow(), GLFW_KEY_F) == GLFW_PRESS;
+        if (fPressed && !fWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                faceModeActive = !faceModeActive;
+                selectedFace.clear();
 
-		bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
-		if (wPressed && !wWasPressed)
-		{
-			transformController.setMode(TransformMode::Translate);
-			std::cout << "[MODE] Translate\n";
-		}
-		wWasPressed = wPressed;
+                if (faceModeActive)
+                {
+                    std::cout << "[FACE MODE] Ativado\n";
+                }
+                else
+                {
+                    std::cout << "[FACE MODE] Desativado\n";
+                }
+            }
+        }
+        fWasPressed = fPressed;
 
-		bool ePressed = glfwGetKey(window.getWindow(), GLFW_KEY_E) == GLFW_PRESS;
-		if (ePressed && !eWasPressed)
-		{
-			transformController.setMode(TransformMode::Rotate);
-			std::cout << "[MODE] Rotate\n";
-		}
-		eWasPressed = ePressed;
+        bool leftMousePressed = glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
-		bool rPressed = glfwGetKey(window.getWindow(), GLFW_KEY_R) == GLFW_PRESS;
-		if (rPressed && !rWasPressed)
-		{
-			transformController.setMode(TransformMode::Scale);
-			std::cout << "[MODE] Scale\n";
-		}
-		rWasPressed = rPressed;
+        if (leftMousePressed && !leftMouseWasPressed)
+        {
+            bool gizmoHandledClick = false;
 
-		bool xPressed = glfwGetKey(window.getWindow(), GLFW_KEY_X) == GLFW_PRESS;
-		if (xPressed && !xWasPressed)
-		{
-			transformController.setAxis(TransformAxis::X);
-			std::cout << "[AXIS] X\n";
-		}
-		xWasPressed = xPressed;
+            if (!pushPullTool.isActive() && selectedObject != nullptr)
+            {
+                TransformAxis clickedAxis = transformGizmoSelector.selectAxis(
+                    *selectedObject,
+                    window.getWindow(),
+                    camera,
+                    transformController.getSpace()
+                );
 
-		bool yPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Y) == GLFW_PRESS;
-		if (yPressed && !yWasPressed)
-		{
-			transformController.setAxis(TransformAxis::Y);
-			std::cout << "[AXIS] Y\n";
-		}
-		yWasPressed = yPressed;
+                if (clickedAxis != TransformAxis::None)
+                {
+                    transformController.setAxis(clickedAxis);
+                    transformController.setMode(TransformMode::Translate);
 
-		bool zPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Z) == GLFW_PRESS;
-		if (zPressed && !zWasPressed)
-		{
-			transformController.setAxis(TransformAxis::Z);
-			std::cout << "[AXIS] Z\n";
-		}
-		zWasPressed = zPressed;
+                    Ray clickRay = raycaster.buildRayFromMouse(window.getWindow(), camera);
+                    transformController.beginDragFromRay(clickRay);
 
-		bool gPressed = glfwGetKey(window.getWindow(), GLFW_KEY_G) == GLFW_PRESS;
-		if (gPressed && !gWasPressed)
-		{
-			transformController.setSpace(TransformSpace::Global);
-			std::cout << "[SPACE] Global\n";
-		}
-		gWasPressed = gPressed;
+                    gizmoHandledClick = true;
 
-		bool lPressed = glfwGetKey(window.getWindow(), GLFW_KEY_L) == GLFW_PRESS;
-		if (lPressed && !lWasPressed)
-		{
-			transformController.setSpace(TransformSpace::Local);
-			std::cout << "[SPACE] Local\n";
-		}
-		lWasPressed = lPressed;
+                    if (clickedAxis == TransformAxis::X)
+                    {
+                        std::cout << "[GIZMO] Eixo X selecionado\n";
+                    }
+                    else if (clickedAxis == TransformAxis::Y)
+                    {
+                        std::cout << "[GIZMO] Eixo Y selecionado\n";
+                    }
+                    else if (clickedAxis == TransformAxis::Z)
+                    {
+                        std::cout << "[GIZMO] Eixo Z selecionado\n";
+                    }
+                }
+            }
 
-		bool tPressed = glfwGetKey(window.getWindow(), GLFW_KEY_T) == GLFW_PRESS;
-		if (tPressed && !tWasPressed)
-		{
-			if (selectedFace.isValid())
-			{
-				bool extrudeSuccess = faceExtruder.extrude(selectedFace, 0.3f);
+            if (gizmoHandledClick)
+            {
+            }
+            else if (pushPullTool.isActive())
+            {
+                bool confirmSuccess = pushPullTool.confirm();
 
-				if (extrudeSuccess)
-				{
-					std::cout << "[EXTRUDE] Extrusao aplicada\n";
-				}
-				else
-				{
-					std::cout << "[EXTRUDE] Falha na extrusao\n";
-				}
-			}
-			else
-			{
-				std::cout << "[EXTRUDE] Nenhuma face selecionada\n";
-			}
-		}
-		tWasPressed = tPressed;
+                if (confirmSuccess)
+                {
+                    std::cout << "[PUSH/PULL] Operacao finalizada\n";
+                }
+                else
+                {
+                    std::cout << "[PUSH/PULL] Falha ao confirmar operacao\n";
+                }
+            }
+            else if (faceModeActive && selectedObject != nullptr)
+            {
+                int faceIndex = faceSelector.selectFace(*selectedObject, window.getWindow(), camera);
 
-		bool escPressed = glfwGetKey(window.getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
-		if (escPressed && !escWasPressed)
-		{
-			faceModeActive = false;
-			selectedFace.clear();
-			transformController.setMode(TransformMode::None);
-			transformController.setAxis(TransformAxis::None);
-			transformController.setSpace(TransformSpace::Global);
+                if (faceIndex != -1)
+                {
+                    selectedFace.set(selectedObject, faceIndex);
 
-			std::cout << "[CLEAR] Modo, eixo, espaco e selecao de face resetados\n";
-		}
-		escWasPressed = escPressed;
+                    FaceGeometry faceGeometry = faceGeometryBuilder.build(selectedFace);
 
-		bool positivePressed =
-			glfwGetKey(window.getWindow(), GLFW_KEY_UP) == GLFW_PRESS ||
-			glfwGetKey(window.getWindow(), GLFW_KEY_EQUAL) == GLFW_PRESS;
+                    std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
 
-		if (positivePressed && !positiveWasPressed)
-		{
-			transformController.applyPositiveStep();
-			std::cout << "[STEP] Positivo\n";
-		}
-		positiveWasPressed = positivePressed;
+                    if (faceGeometry.isValid())
+                    {
+                        glm::vec3 localNormal = faceGeometry.getLocalNormal();
 
-		bool negativePressed =
-			glfwGetKey(window.getWindow(), GLFW_KEY_DOWN) == GLFW_PRESS ||
-			glfwGetKey(window.getWindow(), GLFW_KEY_MINUS) == GLFW_PRESS;
+                        std::cout
+                            << "[FACE GEOMETRY] Normal local: ("
+                            << localNormal.x << ", "
+                            << localNormal.y << ", "
+                            << localNormal.z << ")\n";
+                    }
+                    else
+                    {
+                        std::cout << "[FACE GEOMETRY] Geometria invalida\n";
+                    }
+                }
+                else
+                {
+                    selectedFace.clear();
+                    std::cout << "[FACE] Nenhuma face selecionada\n";
+                }
+            }
+            else
+            {
+                selectedObject = objectSelector.selectObject(window.getWindow(), camera, scene);
+                transformController.setSelectedObject(selectedObject);
+                selectedFace.clear();
 
-		if (negativePressed && !negativeWasPressed)
-		{
-			transformController.applyNegativeStep();
-			std::cout << "[STEP] Negativo\n";
-		}
-		negativeWasPressed = negativePressed;
+                if (selectedObject != nullptr)
+                {
+                    std::cout << "[SELECT] Objeto selecionado\n";
+                }
+                else
+                {
+                    std::cout << "[SELECT] Nenhum objeto selecionado\n";
+                }
+            }
+        }
 
-		renderer.renderScene(scene, camera, shader);
+        if (!leftMousePressed && leftMouseWasPressed)
+        {
+            if (transformController.isDragging())
+            {
+                transformController.endDrag();
+            }
+        }
 
-		gridRenderer.render(camera);
-		axisRenderer.render(camera);
+        leftMouseWasPressed = leftMousePressed;
 
-		if (selectedObject != nullptr)
-		{
-			selectionOutlineRenderer.render(*selectedObject, camera);
+        bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
+        if (wPressed && !wWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setMode(TransformMode::Translate);
+                std::cout << "[MODE] Translate\n";
+            }
+        }
+        wWasPressed = wPressed;
 
-			transformGizmoRenderer.render(
-				*selectedObject,
-				camera,
-				transformController.getAxis(),
-				transformController.getSpace()
-			);
+        bool ePressed = glfwGetKey(window.getWindow(), GLFW_KEY_E) == GLFW_PRESS;
+        if (ePressed && !eWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setMode(TransformMode::Rotate);
+                std::cout << "[MODE] Rotate\n";
+            }
+        }
+        eWasPressed = ePressed;
 
-			if (selectedFace.isValid())
-			{
-				faceHighlightRenderer.render(
-					*selectedFace.getObject(),
-					selectedFace.getFaceIndex(),
-					camera
-				);
-			}
-		}
+        bool rPressed = glfwGetKey(window.getWindow(), GLFW_KEY_R) == GLFW_PRESS;
+        if (rPressed && !rWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setMode(TransformMode::Scale);
+                std::cout << "[MODE] Scale\n";
+            }
+        }
+        rWasPressed = rPressed;
 
-		window.pollEvents();
-		window.swapBuffers();
-	}
+        bool xPressed = glfwGetKey(window.getWindow(), GLFW_KEY_X) == GLFW_PRESS;
+        if (xPressed && !xWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setAxis(TransformAxis::X);
+                std::cout << "[AXIS] X\n";
+            }
+        }
+        xWasPressed = xPressed;
 
-	return 0;
+        bool yPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Y) == GLFW_PRESS;
+        if (yPressed && !yWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setAxis(TransformAxis::Y);
+                std::cout << "[AXIS] Y\n";
+            }
+        }
+        yWasPressed = yPressed;
+
+        bool zPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Z) == GLFW_PRESS;
+        if (zPressed && !zWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setAxis(TransformAxis::Z);
+                std::cout << "[AXIS] Z\n";
+            }
+        }
+        zWasPressed = zPressed;
+
+        bool gPressed = glfwGetKey(window.getWindow(), GLFW_KEY_G) == GLFW_PRESS;
+        if (gPressed && !gWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setSpace(TransformSpace::Global);
+                std::cout << "[SPACE] Global\n";
+            }
+        }
+        gWasPressed = gPressed;
+
+        bool lPressed = glfwGetKey(window.getWindow(), GLFW_KEY_L) == GLFW_PRESS;
+        if (lPressed && !lWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.setSpace(TransformSpace::Local);
+                std::cout << "[SPACE] Local\n";
+            }
+        }
+        lWasPressed = lPressed;
+
+        bool tPressed = glfwGetKey(window.getWindow(), GLFW_KEY_T) == GLFW_PRESS;
+        if (tPressed && !tWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                if (selectedFace.isValid())
+                {
+                    bool started = pushPullTool.start(selectedFace, window.getWindow());
+
+                    if (!started)
+                    {
+                        std::cout << "[PUSH/PULL] Falha ao iniciar ferramenta\n";
+                    }
+                }
+                else
+                {
+                    std::cout << "[PUSH/PULL] Nenhuma face selecionada\n";
+                }
+            }
+        }
+        tWasPressed = tPressed;
+
+        bool escPressed = glfwGetKey(window.getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
+        if (escPressed && !escWasPressed)
+        {
+            if (pushPullTool.isActive())
+            {
+                pushPullTool.cancel();
+            }
+            else if (transformController.isDragging())
+            {
+                transformController.endDrag();
+            }
+            else
+            {
+                faceModeActive = false;
+                selectedFace.clear();
+                transformController.setMode(TransformMode::None);
+                transformController.setAxis(TransformAxis::None);
+                transformController.setSpace(TransformSpace::Global);
+
+                std::cout << "[CLEAR] Modo, eixo, espaco e selecao de face resetados\n";
+            }
+        }
+        escWasPressed = escPressed;
+
+        bool positivePressed =
+            glfwGetKey(window.getWindow(), GLFW_KEY_UP) == GLFW_PRESS ||
+            glfwGetKey(window.getWindow(), GLFW_KEY_EQUAL) == GLFW_PRESS;
+
+        if (positivePressed && !positiveWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.applyPositiveStep();
+                std::cout << "[STEP] Positivo\n";
+            }
+        }
+        positiveWasPressed = positivePressed;
+
+        bool negativePressed =
+            glfwGetKey(window.getWindow(), GLFW_KEY_DOWN) == GLFW_PRESS ||
+            glfwGetKey(window.getWindow(), GLFW_KEY_MINUS) == GLFW_PRESS;
+
+        if (negativePressed && !negativeWasPressed)
+        {
+            if (!pushPullTool.isActive() && !transformController.isDragging())
+            {
+                transformController.applyNegativeStep();
+                std::cout << "[STEP] Negativo\n";
+            }
+        }
+        negativeWasPressed = negativePressed;
+
+        renderer.renderScene(scene, camera, shader);
+
+        gridRenderer.render(camera);
+        axisRenderer.render(camera);
+
+        pushPullPreviewRenderer.render(pushPullTool, camera);
+
+        if (selectedObject != nullptr)
+        {
+            selectionOutlineRenderer.render(*selectedObject, camera);
+
+            transformGizmoRenderer.render(
+                *selectedObject,
+                camera,
+                transformController.getAxis(),
+                transformController.getSpace()
+            );
+
+            if (selectedFace.isValid())
+            {
+                faceHighlightRenderer.render(
+                    *selectedFace.getObject(),
+                    selectedFace.getFaceIndex(),
+                    camera
+                );
+            }
+        }
+
+        window.pollEvents();
+        window.swapBuffers();
+    }
+
+    return 0;
 }
