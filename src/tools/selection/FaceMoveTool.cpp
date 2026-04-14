@@ -1,17 +1,51 @@
 #include "FaceMoveTool.h"
 
+#include <iostream>
+#include <algorithm>
+
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-
-#include <iostream>
-#include <string>
-#include <vector>
-
 #include <glm/glm/glm.hpp>
+#include <glm/glm/gtc/matrix_transform.hpp>
 
 #include "../../geometry/Mesh.h"
 #include "../../scene/SceneObject.h"
 #include "FaceGeometryBuilder.h"
+
+namespace
+{
+    constexpr float kPositionEpsilon = 0.0001f;
+    constexpr unsigned int kVertexStride = 6;
+
+    glm::vec3 readVertexPosition(const std::vector<float>& vertices, unsigned int vertexIndex)
+    {
+        const unsigned int base = vertexIndex * kVertexStride;
+        return glm::vec3(
+            vertices[base + 0],
+            vertices[base + 1],
+            vertices[base + 2]
+        );
+    }
+
+    void writeVertexPosition(std::vector<float>& vertices, unsigned int vertexIndex, const glm::vec3& position)
+    {
+        const unsigned int base = vertexIndex * kVertexStride;
+        vertices[base + 0] = position.x;
+        vertices[base + 1] = position.y;
+        vertices[base + 2] = position.z;
+    }
+
+    bool positionsMatch(const glm::vec3& a, const glm::vec3& b, float epsilon)
+    {
+        glm::vec3 diff = a - b;
+        return glm::dot(diff, diff) <= (epsilon * epsilon);
+    }
+
+    bool containsVertexIndex(const std::vector<unsigned int>& indices, unsigned int value)
+    {
+        return std::find(indices.begin(), indices.end(), value) != indices.end();
+    }
+}
 
 FaceMoveTool::FaceMoveTool()
     : m_Active(false),
@@ -32,6 +66,13 @@ bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window)
         return false;
     }
 
+    SceneObject* object = selection.getObject();
+    if (object == nullptr)
+    {
+        std::cout << "[FACE MOVE] Objeto da selecao e nulo\n";
+        return false;
+    }
+
     m_Selection = selection;
 
     FaceGeometryBuilder builder;
@@ -44,17 +85,26 @@ bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window)
         return false;
     }
 
+    Mesh& mesh = object->getMesh();
+    m_OriginalVertices = mesh.getVertices();
+    m_OriginalIndices = mesh.getIndices();
+
+    if (!buildCoincidentVertexSet())
+    {
+        std::cout << "[FACE MOVE] Falha ao mapear vertices coincidentes\n";
+        clearOperationData();
+        return false;
+    }
+
     double mouseX = 0.0;
     double mouseY = 0.0;
     glfwGetCursorPos(window, &mouseX, &mouseY);
 
     m_StartMouseY = mouseY;
     m_CurrentDistance = 0.0f;
-
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
-
     m_Active = true;
 
     std::cout << "[FACE MOVE] Ferramenta iniciada\n";
@@ -93,7 +143,6 @@ void FaceMoveTool::onKeyPressed(int key)
         m_InputBuffer += static_cast<char>('0' + (key - GLFW_KEY_0));
         m_UsingNumericInput = true;
         m_HasCommittedNumericValue = false;
-
         std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         return;
     }
@@ -110,9 +159,9 @@ void FaceMoveTool::onKeyPressed(int key)
             m_InputBuffer += '.';
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-
             std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -123,9 +172,9 @@ void FaceMoveTool::onKeyPressed(int key)
             m_InputBuffer = "-";
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-
             std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -142,6 +191,7 @@ void FaceMoveTool::onKeyPressed(int key)
 
             std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -156,9 +206,7 @@ void FaceMoveTool::onKeyPressed(int key)
             {
                 m_CurrentDistance = std::stof(m_InputBuffer);
                 m_HasCommittedNumericValue = true;
-
-                std::cout << "[FACE MOVE INPUT] Distancia definida: "
-                    << m_CurrentDistance << "\n";
+                std::cout << "[FACE MOVE INPUT] Distancia definida: " << m_CurrentDistance << "\n";
             }
             catch (...)
             {
@@ -170,6 +218,63 @@ void FaceMoveTool::onKeyPressed(int key)
         m_UsingNumericInput = false;
         return;
     }
+}
+
+bool FaceMoveTool::buildCoincidentVertexSet()
+{
+    m_CoincidentVertexIndices.clear();
+
+    if (!m_Selection.isValid())
+    {
+        return false;
+    }
+
+    SceneObject* object = m_Selection.getObject();
+    if (object == nullptr)
+    {
+        return false;
+    }
+
+    Mesh& mesh = object->getMesh();
+
+    unsigned int i0 = 0;
+    unsigned int i1 = 0;
+    unsigned int i2 = 0;
+
+    if (!mesh.getTriangleVertexIndices(m_Selection.getFaceIndex(), i0, i1, i2))
+    {
+        return false;
+    }
+
+    const std::vector<unsigned int> faceVertexIndices = { i0, i1, i2 };
+    const unsigned int totalVertexCount =
+        static_cast<unsigned int>(m_OriginalVertices.size() / kVertexStride);
+
+    for (unsigned int faceVertexIndex : faceVertexIndices)
+    {
+        const glm::vec3 targetPosition =
+            readVertexPosition(m_OriginalVertices, faceVertexIndex);
+
+        for (unsigned int candidateIndex = 0; candidateIndex < totalVertexCount; ++candidateIndex)
+        {
+            const glm::vec3 candidatePosition =
+                readVertexPosition(m_OriginalVertices, candidateIndex);
+
+            if (!positionsMatch(targetPosition, candidatePosition, kPositionEpsilon))
+            {
+                continue;
+            }
+
+            if (containsVertexIndex(m_CoincidentVertexIndices, candidateIndex))
+            {
+                continue;
+            }
+
+            m_CoincidentVertexIndices.push_back(candidateIndex);
+        }
+    }
+
+    return !m_CoincidentVertexIndices.empty();
 }
 
 bool FaceMoveTool::applyMoveToMesh(float distance)
@@ -185,51 +290,38 @@ bool FaceMoveTool::applyMoveToMesh(float distance)
         return false;
     }
 
-    Mesh& mesh = object->getMesh();
+    if (m_OriginalVertices.empty() || m_OriginalIndices.empty())
+    {
+        return false;
+    }
 
-    std::vector<float> vertices = mesh.getVertices();
-    std::vector<unsigned int> indices = mesh.getIndices();
-
-    const int faceIndex = m_Selection.getFaceIndex();
-
-    unsigned int i0 = 0;
-    unsigned int i1 = 0;
-    unsigned int i2 = 0;
-
-    if (!mesh.getTriangleVertexIndices(faceIndex, i0, i1, i2))
+    if (m_CoincidentVertexIndices.empty())
     {
         return false;
     }
 
     glm::vec3 localNormal = m_BaseGeometry.getLocalNormal();
-
     if (glm::length(localNormal) <= 0.00001f)
     {
         return false;
     }
 
     localNormal = glm::normalize(localNormal);
-    glm::vec3 offset = localNormal * distance;
+    const glm::vec3 offset = localNormal * distance;
 
-    auto applyOffsetToVertex = [&](unsigned int vertexIndex)
-        {
-            const unsigned int base = vertexIndex * 6;
+    std::vector<float> movedVertices = m_OriginalVertices;
 
-            if (base + 2 >= vertices.size())
-            {
-                return;
-            }
+    for (unsigned int vertexIndex : m_CoincidentVertexIndices)
+    {
+        const glm::vec3 originalPosition =
+            readVertexPosition(m_OriginalVertices, vertexIndex);
 
-            vertices[base + 0] += offset.x;
-            vertices[base + 1] += offset.y;
-            vertices[base + 2] += offset.z;
-        };
+        const glm::vec3 movedPosition = originalPosition + offset;
+        writeVertexPosition(movedVertices, vertexIndex, movedPosition);
+    }
 
-    applyOffsetToVertex(i0);
-    applyOffsetToVertex(i1);
-    applyOffsetToVertex(i2);
-
-    mesh.updateGeometry(vertices, indices);
+    Mesh& mesh = object->getMesh();
+    mesh.updateGeometry(movedVertices, m_OriginalIndices);
     return true;
 }
 
@@ -241,23 +333,18 @@ bool FaceMoveTool::confirm()
         return false;
     }
 
-    bool success = applyMoveToMesh(m_CurrentDistance);
+    const bool success = applyMoveToMesh(m_CurrentDistance);
 
     if (success)
     {
-        std::cout << "[FACE MOVE] Face movida | distancia = "
-            << m_CurrentDistance << "\n";
+        std::cout << "[FACE MOVE] Face movida | distancia = " << m_CurrentDistance << "\n";
     }
     else
     {
         std::cout << "[FACE MOVE] Falha ao mover face\n";
     }
 
-    m_Active = false;
-    m_InputBuffer.clear();
-    m_UsingNumericInput = false;
-    m_HasCommittedNumericValue = false;
-
+    clearOperationData();
     return success;
 }
 
@@ -268,15 +355,23 @@ void FaceMoveTool::cancel()
         return;
     }
 
+    clearOperationData();
+    std::cout << "[FACE MOVE] Cancelado\n";
+}
+
+void FaceMoveTool::clearOperationData()
+{
     m_Active = false;
     m_Selection.clear();
     m_BaseGeometry.clear();
+    m_StartMouseY = 0.0;
     m_CurrentDistance = 0.0f;
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
-
-    std::cout << "[FACE MOVE] Cancelado\n";
+    m_OriginalVertices.clear();
+    m_OriginalIndices.clear();
+    m_CoincidentVertexIndices.clear();
 }
 
 bool FaceMoveTool::isActive() const

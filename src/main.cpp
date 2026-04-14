@@ -2,22 +2,17 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-#include <glm/glm/glm.hpp>
 
 #include "core/WindowManager.h"
 #include "graphics/Renderer.h"
 #include "graphics/Shader.h"
-
 #include "scene/Scene.h"
 #include "scene/SceneObject.h"
 #include "scene/Camera.h"
 #include "scene/CameraController.h"
-
 #include "geometry/primitives/PrimitiveFactory.h"
-
 #include "tools/AxisRenderer.h"
 #include "tools/GridRenderer.h"
-
 #include "tools/selection/ObjectSelector.h"
 #include "tools/selection/FaceSelector.h"
 #include "tools/selection/FaceSelection.h"
@@ -30,7 +25,6 @@
 #include "tools/selection/FaceMoveTool.h"
 #include "tools/selection/FaceMovePreviewRenderer.h"
 #include "tools/selection/Raycaster.h"
-
 #include "tools/transform/TransformController.h"
 #include "tools/transform/TransformGizmoRenderer.h"
 #include "tools/transform/TransformGizmoSelector.h"
@@ -59,6 +53,7 @@ int main()
     FaceSelector faceSelector;
     FaceGeometryBuilder faceGeometryBuilder;
     FaceSelection selectedFace;
+
     SelectionOutlineRenderer selectionOutlineRenderer;
     FaceHighlightRenderer faceHighlightRenderer;
 
@@ -97,6 +92,7 @@ int main()
     );
 
     Renderer renderer;
+
     Camera camera;
     CameraController cameraController;
 
@@ -109,21 +105,17 @@ int main()
     bool faceModeActive = false;
 
     bool leftMouseWasPressed = false;
-
     bool wWasPressed = false;
     bool eWasPressed = false;
     bool rWasPressed = false;
-
     bool xWasPressed = false;
     bool yWasPressed = false;
     bool zWasPressed = false;
-
     bool gWasPressed = false;
     bool lWasPressed = false;
     bool fWasPressed = false;
     bool tWasPressed = false;
     bool mWasPressed = false;
-
     bool escWasPressed = false;
     bool positiveWasPressed = false;
     bool negativeWasPressed = false;
@@ -157,12 +149,10 @@ int main()
             for (int key = 0; key < 512; key++)
             {
                 bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
-
                 if (pressed && !keyWasPressed[key])
                 {
                     pushPullTool.onKeyPressed(key);
                 }
-
                 keyWasPressed[key] = pressed;
             }
         }
@@ -171,12 +161,10 @@ int main()
             for (int key = 0; key < 512; key++)
             {
                 bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
-
                 if (pressed && !keyWasPressed[key])
                 {
                     faceMoveTool.onKeyPressed(key);
                 }
-
                 keyWasPressed[key] = pressed;
             }
         }
@@ -210,7 +198,8 @@ int main()
         }
         fWasPressed = fPressed;
 
-        bool leftMousePressed = glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        bool leftMousePressed =
+            glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
         if (leftMousePressed && !leftMouseWasPressed)
         {
@@ -290,13 +279,11 @@ int main()
                     selectedFace.set(selectedObject, faceIndex);
 
                     FaceGeometry faceGeometry = faceGeometryBuilder.build(selectedFace);
-
                     std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
 
                     if (faceGeometry.isValid())
                     {
                         glm::vec3 localNormal = faceGeometry.getLocalNormal();
-
                         std::cout
                             << "[FACE GEOMETRY] Normal local: ("
                             << localNormal.x << ", "
@@ -338,7 +325,6 @@ int main()
                 transformController.endDrag();
             }
         }
-
         leftMouseWasPressed = leftMousePressed;
 
         bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
@@ -499,14 +485,17 @@ int main()
             if (pushPullTool.isActive())
             {
                 pushPullTool.cancel();
+                std::cout << "[PUSH/PULL] Cancelado\n";
             }
             else if (faceMoveTool.isActive())
             {
                 faceMoveTool.cancel();
+                std::cout << "[FACE MOVE] Cancelado\n";
             }
             else if (transformController.isDragging())
             {
                 transformController.endDrag();
+                std::cout << "[GIZMO] Drag cancelado\n";
             }
             else
             {
