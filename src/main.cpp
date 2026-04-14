@@ -27,6 +27,8 @@
 #include "tools/selection/FaceHighlightRenderer.h"
 #include "tools/selection/PushPullTool.h"
 #include "tools/selection/PushPullPreviewRenderer.h"
+#include "tools/selection/FaceMoveTool.h"
+#include "tools/selection/FaceMovePreviewRenderer.h"
 #include "tools/selection/Raycaster.h"
 
 #include "tools/transform/TransformController.h"
@@ -62,6 +64,9 @@ int main()
 
     PushPullTool pushPullTool;
     PushPullPreviewRenderer pushPullPreviewRenderer;
+
+    FaceMoveTool faceMoveTool;
+    FaceMovePreviewRenderer faceMovePreviewRenderer;
 
     TransformController transformController;
     TransformGizmoRenderer transformGizmoRenderer;
@@ -117,6 +122,7 @@ int main()
     bool lWasPressed = false;
     bool fWasPressed = false;
     bool tWasPressed = false;
+    bool mWasPressed = false;
 
     bool escWasPressed = false;
     bool positiveWasPressed = false;
@@ -133,6 +139,11 @@ int main()
         if (pushPullTool.isActive())
         {
             pushPullTool.update(window.getWindow());
+        }
+
+        if (faceMoveTool.isActive())
+        {
+            faceMoveTool.update(window.getWindow());
         }
 
         if (transformController.isDragging())
@@ -155,6 +166,20 @@ int main()
                 keyWasPressed[key] = pressed;
             }
         }
+        else if (faceMoveTool.isActive())
+        {
+            for (int key = 0; key < 512; key++)
+            {
+                bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
+
+                if (pressed && !keyWasPressed[key])
+                {
+                    faceMoveTool.onKeyPressed(key);
+                }
+
+                keyWasPressed[key] = pressed;
+            }
+        }
         else
         {
             for (int key = 0; key < 512; key++)
@@ -166,7 +191,9 @@ int main()
         bool fPressed = glfwGetKey(window.getWindow(), GLFW_KEY_F) == GLFW_PRESS;
         if (fPressed && !fWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 faceModeActive = !faceModeActive;
                 selectedFace.clear();
@@ -189,7 +216,9 @@ int main()
         {
             bool gizmoHandledClick = false;
 
-            if (!pushPullTool.isActive() && selectedObject != nullptr)
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                selectedObject != nullptr)
             {
                 TransformAxis clickedAxis = transformGizmoSelector.selectAxis(
                     *selectedObject,
@@ -237,6 +266,19 @@ int main()
                 else
                 {
                     std::cout << "[PUSH/PULL] Falha ao confirmar operacao\n";
+                }
+            }
+            else if (faceMoveTool.isActive())
+            {
+                bool confirmSuccess = faceMoveTool.confirm();
+
+                if (confirmSuccess)
+                {
+                    std::cout << "[FACE MOVE] Operacao finalizada\n";
+                }
+                else
+                {
+                    std::cout << "[FACE MOVE] Falha ao confirmar operacao\n";
                 }
             }
             else if (faceModeActive && selectedObject != nullptr)
@@ -302,7 +344,9 @@ int main()
         bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
         if (wPressed && !wWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Translate);
                 std::cout << "[MODE] Translate\n";
@@ -313,7 +357,9 @@ int main()
         bool ePressed = glfwGetKey(window.getWindow(), GLFW_KEY_E) == GLFW_PRESS;
         if (ePressed && !eWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Rotate);
                 std::cout << "[MODE] Rotate\n";
@@ -324,7 +370,9 @@ int main()
         bool rPressed = glfwGetKey(window.getWindow(), GLFW_KEY_R) == GLFW_PRESS;
         if (rPressed && !rWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Scale);
                 std::cout << "[MODE] Scale\n";
@@ -335,7 +383,9 @@ int main()
         bool xPressed = glfwGetKey(window.getWindow(), GLFW_KEY_X) == GLFW_PRESS;
         if (xPressed && !xWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setAxis(TransformAxis::X);
                 std::cout << "[AXIS] X\n";
@@ -346,7 +396,9 @@ int main()
         bool yPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Y) == GLFW_PRESS;
         if (yPressed && !yWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setAxis(TransformAxis::Y);
                 std::cout << "[AXIS] Y\n";
@@ -357,7 +409,9 @@ int main()
         bool zPressed = glfwGetKey(window.getWindow(), GLFW_KEY_Z) == GLFW_PRESS;
         if (zPressed && !zWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setAxis(TransformAxis::Z);
                 std::cout << "[AXIS] Z\n";
@@ -368,7 +422,9 @@ int main()
         bool gPressed = glfwGetKey(window.getWindow(), GLFW_KEY_G) == GLFW_PRESS;
         if (gPressed && !gWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setSpace(TransformSpace::Global);
                 std::cout << "[SPACE] Global\n";
@@ -379,7 +435,9 @@ int main()
         bool lPressed = glfwGetKey(window.getWindow(), GLFW_KEY_L) == GLFW_PRESS;
         if (lPressed && !lWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setSpace(TransformSpace::Local);
                 std::cout << "[SPACE] Local\n";
@@ -390,7 +448,9 @@ int main()
         bool tPressed = glfwGetKey(window.getWindow(), GLFW_KEY_T) == GLFW_PRESS;
         if (tPressed && !tWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 if (selectedFace.isValid())
                 {
@@ -409,12 +469,40 @@ int main()
         }
         tWasPressed = tPressed;
 
+        bool mPressed = glfwGetKey(window.getWindow(), GLFW_KEY_M) == GLFW_PRESS;
+        if (mPressed && !mWasPressed)
+        {
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
+            {
+                if (selectedFace.isValid())
+                {
+                    bool started = faceMoveTool.start(selectedFace, window.getWindow());
+
+                    if (!started)
+                    {
+                        std::cout << "[FACE MOVE] Falha ao iniciar ferramenta\n";
+                    }
+                }
+                else
+                {
+                    std::cout << "[FACE MOVE] Nenhuma face selecionada\n";
+                }
+            }
+        }
+        mWasPressed = mPressed;
+
         bool escPressed = glfwGetKey(window.getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
         if (escPressed && !escWasPressed)
         {
             if (pushPullTool.isActive())
             {
                 pushPullTool.cancel();
+            }
+            else if (faceMoveTool.isActive())
+            {
+                faceMoveTool.cancel();
             }
             else if (transformController.isDragging())
             {
@@ -439,7 +527,9 @@ int main()
 
         if (positivePressed && !positiveWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.applyPositiveStep();
                 std::cout << "[STEP] Positivo\n";
@@ -453,7 +543,9 @@ int main()
 
         if (negativePressed && !negativeWasPressed)
         {
-            if (!pushPullTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.applyNegativeStep();
                 std::cout << "[STEP] Negativo\n";
@@ -467,6 +559,7 @@ int main()
         axisRenderer.render(camera);
 
         pushPullPreviewRenderer.render(pushPullTool, camera);
+        faceMovePreviewRenderer.render(faceMoveTool, camera);
 
         if (selectedObject != nullptr)
         {
