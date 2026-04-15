@@ -6,13 +6,17 @@
 #include "core/WindowManager.h"
 #include "graphics/Renderer.h"
 #include "graphics/Shader.h"
+
 #include "scene/Scene.h"
 #include "scene/SceneObject.h"
 #include "scene/Camera.h"
 #include "scene/CameraController.h"
+
 #include "geometry/primitives/PrimitiveFactory.h"
+
 #include "tools/AxisRenderer.h"
 #include "tools/GridRenderer.h"
+
 #include "tools/selection/ObjectSelector.h"
 #include "tools/selection/FaceSelector.h"
 #include "tools/selection/FaceSelection.h"
@@ -25,12 +29,15 @@
 #include "tools/selection/FaceMoveTool.h"
 #include "tools/selection/FaceMovePreviewRenderer.h"
 #include "tools/selection/Raycaster.h"
+
 #include "tools/transform/TransformController.h"
 #include "tools/transform/TransformTypes.h"
 #include "tools/transform/TranslateGizmoRenderer.h"
 #include "tools/transform/TranslateGizmoSelector.h"
 #include "tools/transform/ScaleGizmoRenderer.h"
 #include "tools/transform/ScaleGizmoSelector.h"
+#include "tools/transform/RotateGizmoRenderer.h"
+#include "tools/transform/RotateGizmoSelector.h"
 
 Camera* g_Camera = nullptr;
 CameraController* g_CameraController = nullptr;
@@ -71,6 +78,8 @@ int main()
     TranslateGizmoSelector translateGizmoSelector;
     ScaleGizmoRenderer scaleGizmoRenderer;
     ScaleGizmoSelector scaleGizmoSelector;
+    RotateGizmoRenderer rotateGizmoRenderer;
+    RotateGizmoSelector rotateGizmoSelector;
 
     Raycaster raycaster;
 
@@ -152,10 +161,12 @@ int main()
             for (int key = 0; key < 512; key++)
             {
                 bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
+
                 if (pressed && !keyWasPressed[key])
                 {
                     pushPullTool.onKeyPressed(key);
                 }
+
                 keyWasPressed[key] = pressed;
             }
         }
@@ -164,10 +175,12 @@ int main()
             for (int key = 0; key < 512; key++)
             {
                 bool pressed = glfwGetKey(window.getWindow(), key) == GLFW_PRESS;
+
                 if (pressed && !keyWasPressed[key])
                 {
                     faceMoveTool.onKeyPressed(key);
                 }
+
                 keyWasPressed[key] = pressed;
             }
         }
@@ -227,6 +240,15 @@ int main()
                 else if (transformController.getMode() == TransformMode::Scale)
                 {
                     clickedAxis = scaleGizmoSelector.selectAxis(
+                        *selectedObject,
+                        window.getWindow(),
+                        camera,
+                        transformController.getSpace()
+                    );
+                }
+                else if (transformController.getMode() == TransformMode::Rotate)
+                {
+                    clickedAxis = rotateGizmoSelector.selectAxis(
                         *selectedObject,
                         window.getWindow(),
                         camera,
@@ -306,6 +328,7 @@ int main()
                     if (faceGeometry.isValid())
                     {
                         glm::vec3 localNormal = faceGeometry.getLocalNormal();
+
                         std::cout
                             << "[FACE GEOMETRY] Normal local: ("
                             << localNormal.x << ", "
@@ -347,6 +370,7 @@ int main()
                 transformController.endDrag();
             }
         }
+
         leftMouseWasPressed = leftMousePressed;
 
         bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
@@ -505,8 +529,7 @@ int main()
         {
             selectionOutlineRenderer.render(*selectedObject, camera);
 
-            if (!pushPullTool.isActive() &&
-                !faceMoveTool.isActive())
+            if (!pushPullTool.isActive() && !faceMoveTool.isActive())
             {
                 if (transformController.getMode() == TransformMode::Translate)
                 {
@@ -520,6 +543,15 @@ int main()
                 else if (transformController.getMode() == TransformMode::Scale)
                 {
                     scaleGizmoRenderer.render(
+                        *selectedObject,
+                        camera,
+                        transformController.getAxis(),
+                        transformController.getSpace()
+                    );
+                }
+                else if (transformController.getMode() == TransformMode::Rotate)
+                {
+                    rotateGizmoRenderer.render(
                         *selectedObject,
                         camera,
                         transformController.getAxis(),

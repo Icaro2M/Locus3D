@@ -5,6 +5,7 @@
 #include "../../scene/SceneObject.h"
 #include "../../math/Ray.h"
 #include "AxisDragInteraction.h"
+#include "RotateDragInteraction.h"
 #include "TransformTypes.h"
 
 class TransformController
@@ -17,8 +18,10 @@ private:
 
     glm::vec3 m_DragStartPosition;
     glm::vec3 m_DragStartScale;
+    glm::vec3 m_DragStartRotation;
 
     AxisDragInteraction m_AxisDrag;
+    RotateDragInteraction m_RotateDrag;
 
 private:
     glm::vec3 getAxisDirectionWorld() const;
