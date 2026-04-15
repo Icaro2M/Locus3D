@@ -1,19 +1,13 @@
 #include "TransformController.h"
 
-#include <iostream>
-#include <cmath>
+#include <glm/glm/glm.hpp>
 
 TransformController::TransformController()
     : m_SelectedObject(nullptr),
     m_Mode(TransformMode::None),
     m_Axis(TransformAxis::None),
     m_Space(TransformSpace::Global),
-    m_IsDragging(false),
-    m_DragStartPosition(0.0f, 0.0f, 0.0f),
-    m_DragStartWorldPoint(0.0f, 0.0f, 0.0f),
-    m_DragAxisWorld(0.0f, 0.0f, 0.0f),
-    m_DragPlanePoint(0.0f, 0.0f, 0.0f),
-    m_DragPlaneNormal(0.0f, 1.0f, 0.0f)
+    m_DragStartPosition(0.0f, 0.0f, 0.0f)
 {
 }
 
@@ -142,7 +136,6 @@ glm::vec3 TransformController::getAxisDirectionWorld() const
 
     glm::mat4 model = m_SelectedObject->getTransform().getModelMatrix();
     glm::mat3 rotation(model);
-
     glm::vec3 axisWorld = rotation * axisLocal;
 
     if (glm::length(axisWorld) < 0.00001f)
@@ -151,31 +144,6 @@ glm::vec3 TransformController::getAxisDirectionWorld() const
     }
 
     return glm::normalize(axisWorld);
-}
-
-bool TransformController::intersectRayPlane(
-    const Ray& ray,
-    const glm::vec3& planePoint,
-    const glm::vec3& planeNormal,
-    glm::vec3& outPoint
-) const
-{
-    float denom = glm::dot(ray.direction, planeNormal);
-
-    if (std::abs(denom) < 0.00001f)
-    {
-        return false;
-    }
-
-    float t = glm::dot(planePoint - ray.origin, planeNormal) / denom;
-
-    if (t < 0.0f)
-    {
-        return false;
-    }
-
-    outPoint = ray.origin + ray.direction * t;
-    return true;
 }
 
 void TransformController::beginDragFromRay(const Ray& ray)
@@ -196,86 +164,58 @@ void TransformController::beginDragFromRay(const Ray& ray)
     }
 
     glm::vec3 axisWorld = getAxisDirectionWorld();
+    if (glm::length(axisWorld) < 0.00001f)
+    {
+        return;
+    }
+
+    glm::vec3 objectPosition = m_SelectedObject->getTransform().getPosition();
+
+    if (!m_AxisDrag.begin(objectPosition, axisWorld, ray))
+    {
+        return;
+    }
+
+    m_DragStartPosition = objectPosition;
+}
+
+void TransformController::updateDragFromRay(const Ray& ray)
+{
+    if (m_SelectedObject == nullptr)
+    {
+        return;
+    }
+
+    if (!m_AxisDrag.isActive())
+    {
+        return;
+    }
+
+    m_AxisDrag.update(ray);
+
+    float amount = m_AxisDrag.getCurrentDelta();
+    glm::vec3 axisWorld = getAxisDirectionWorld();
 
     if (glm::length(axisWorld) < 0.00001f)
     {
         return;
     }
 
-    glm::vec3 rayDir = glm::normalize(ray.direction);
-
-    glm::vec3 helper = glm::cross(rayDir, axisWorld);
-
-    if (glm::length(helper) < 0.00001f)
-    {
-        helper = glm::cross(glm::vec3(0.0f, 1.0f, 0.0f), axisWorld);
-
-        if (glm::length(helper) < 0.00001f)
-        {
-            helper = glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), axisWorld);
-        }
-    }
-
-    glm::vec3 planeNormal = glm::cross(axisWorld, helper);
-
-    if (glm::length(planeNormal) < 0.00001f)
-    {
-        return;
-    }
-
-    planeNormal = glm::normalize(planeNormal);
-
-    glm::vec3 objectPosition = m_SelectedObject->getTransform().getPosition();
-    glm::vec3 hitPoint(0.0f, 0.0f, 0.0f);
-
-    if (!intersectRayPlane(ray, objectPosition, planeNormal, hitPoint))
-    {
-        return;
-    }
-
-    m_IsDragging = true;
-    m_DragStartPosition = objectPosition;
-    m_DragStartWorldPoint = hitPoint;
-    m_DragAxisWorld = axisWorld;
-    m_DragPlanePoint = objectPosition;
-    m_DragPlaneNormal = planeNormal;
-
-    std::cout << "[GIZMO] Drag iniciado\n";
-}
-
-void TransformController::updateDragFromRay(const Ray& ray)
-{
-    if (!m_IsDragging || m_SelectedObject == nullptr)
-    {
-        return;
-    }
-
-    glm::vec3 currentPoint(0.0f, 0.0f, 0.0f);
-
-    if (!intersectRayPlane(ray, m_DragPlanePoint, m_DragPlaneNormal, currentPoint))
-    {
-        return;
-    }
-
-    glm::vec3 worldDelta = currentPoint - m_DragStartWorldPoint;
-    float amount = glm::dot(worldDelta, m_DragAxisWorld);
-
-    glm::vec3 newPosition = m_DragStartPosition + m_DragAxisWorld * amount;
+    glm::vec3 newPosition = m_DragStartPosition + axisWorld * amount;
     m_SelectedObject->getTransform().setPosition(newPosition);
 }
 
 void TransformController::endDrag()
 {
-    if (!m_IsDragging)
+    if (!m_AxisDrag.isActive())
     {
         return;
     }
 
-    m_IsDragging = false;
-    std::cout << "[GIZMO] Drag finalizado\n";
+    m_AxisDrag.reset();
 }
 
 bool TransformController::isDragging() const
 {
-    return m_IsDragging;
+    return m_AxisDrag.isActive();
 }

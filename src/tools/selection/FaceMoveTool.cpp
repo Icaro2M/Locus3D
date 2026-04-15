@@ -1,15 +1,14 @@
 #include "FaceMoveTool.h"
 
-#include <iostream>
 #include <algorithm>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
 
 #include "../../geometry/Mesh.h"
 #include "../../scene/SceneObject.h"
+#include "../../scene/Camera.h"
 #include "FaceGeometryBuilder.h"
 
 namespace
@@ -20,6 +19,7 @@ namespace
     glm::vec3 readVertexPosition(const std::vector<float>& vertices, unsigned int vertexIndex)
     {
         const unsigned int base = vertexIndex * kVertexStride;
+
         return glm::vec3(
             vertices[base + 0],
             vertices[base + 1],
@@ -30,6 +30,7 @@ namespace
     void writeVertexPosition(std::vector<float>& vertices, unsigned int vertexIndex, const glm::vec3& position)
     {
         const unsigned int base = vertexIndex * kVertexStride;
+
         vertices[base + 0] = position.x;
         vertices[base + 1] = position.y;
         vertices[base + 2] = position.z;
@@ -49,27 +50,23 @@ namespace
 
 FaceMoveTool::FaceMoveTool()
     : m_Active(false),
-    m_StartMouseY(0.0),
     m_CurrentDistance(0.0f),
-    m_Sensitivity(0.01f),
     m_InputBuffer(""),
     m_UsingNumericInput(false),
     m_HasCommittedNumericValue(false)
 {
 }
 
-bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window)
+bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window, const Camera& camera)
 {
     if (!selection.isValid())
     {
-        std::cout << "[FACE MOVE] Nenhuma face valida selecionada\n";
         return false;
     }
 
     SceneObject* object = selection.getObject();
     if (object == nullptr)
     {
-        std::cout << "[FACE MOVE] Objeto da selecao e nulo\n";
         return false;
     }
 
@@ -80,7 +77,6 @@ bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window)
 
     if (!m_BaseGeometry.isValid())
     {
-        std::cout << "[FACE MOVE] Falha ao construir geometria da face\n";
         m_Selection.clear();
         return false;
     }
@@ -91,27 +87,56 @@ bool FaceMoveTool::start(const FaceSelection& selection, GLFWwindow* window)
 
     if (!buildCoincidentVertexSet())
     {
-        std::cout << "[FACE MOVE] Falha ao mapear vertices coincidentes\n";
         clearOperationData();
         return false;
     }
 
-    double mouseX = 0.0;
-    double mouseY = 0.0;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
+    const glm::vec3 localCenter =
+        (m_BaseGeometry.getLocalV0() +
+            m_BaseGeometry.getLocalV1() +
+            m_BaseGeometry.getLocalV2()) / 3.0f;
 
-    m_StartMouseY = mouseY;
+    glm::vec3 localNormal = m_BaseGeometry.getLocalNormal();
+
+    if (glm::length(localNormal) <= 0.00001f)
+    {
+        clearOperationData();
+        return false;
+    }
+
+    localNormal = glm::normalize(localNormal);
+
+    const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+
+    const glm::vec3 worldCenter = glm::vec3(modelMatrix * glm::vec4(localCenter, 1.0f));
+    glm::vec3 worldNormal = glm::mat3(modelMatrix) * localNormal;
+
+    if (glm::length(worldNormal) <= 0.00001f)
+    {
+        clearOperationData();
+        return false;
+    }
+
+    worldNormal = glm::normalize(worldNormal);
+
+    const Ray initialRay = m_Raycaster.buildRayFromMouse(window, camera);
+
+    if (!m_AxisDrag.begin(worldCenter, worldNormal, initialRay))
+    {
+        clearOperationData();
+        return false;
+    }
+
     m_CurrentDistance = 0.0f;
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
     m_Active = true;
 
-    std::cout << "[FACE MOVE] Ferramenta iniciada\n";
     return true;
 }
 
-void FaceMoveTool::update(GLFWwindow* window)
+void FaceMoveTool::update(GLFWwindow* window, const Camera& camera)
 {
     if (!m_Active)
     {
@@ -123,12 +148,9 @@ void FaceMoveTool::update(GLFWwindow* window)
         return;
     }
 
-    double mouseX = 0.0;
-    double mouseY = 0.0;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
-
-    double deltaY = m_StartMouseY - mouseY;
-    m_CurrentDistance = static_cast<float>(deltaY) * m_Sensitivity;
+    const Ray currentRay = m_Raycaster.buildRayFromMouse(window, camera);
+    m_AxisDrag.update(currentRay);
+    m_CurrentDistance = m_AxisDrag.getCurrentDelta();
 }
 
 void FaceMoveTool::onKeyPressed(int key)
@@ -143,7 +165,6 @@ void FaceMoveTool::onKeyPressed(int key)
         m_InputBuffer += static_cast<char>('0' + (key - GLFW_KEY_0));
         m_UsingNumericInput = true;
         m_HasCommittedNumericValue = false;
-        std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         return;
     }
 
@@ -159,7 +180,6 @@ void FaceMoveTool::onKeyPressed(int key)
             m_InputBuffer += '.';
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-            std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
 
         return;
@@ -172,7 +192,6 @@ void FaceMoveTool::onKeyPressed(int key)
             m_InputBuffer = "-";
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-            std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
 
         return;
@@ -188,8 +207,6 @@ void FaceMoveTool::onKeyPressed(int key)
             {
                 m_UsingNumericInput = false;
             }
-
-            std::cout << "[FACE MOVE INPUT] " << m_InputBuffer << "\n";
         }
 
         return;
@@ -206,11 +223,9 @@ void FaceMoveTool::onKeyPressed(int key)
             {
                 m_CurrentDistance = std::stof(m_InputBuffer);
                 m_HasCommittedNumericValue = true;
-                std::cout << "[FACE MOVE INPUT] Distancia definida: " << m_CurrentDistance << "\n";
             }
             catch (...)
             {
-                std::cout << "[FACE MOVE INPUT] Valor invalido\n";
             }
         }
 
@@ -301,6 +316,7 @@ bool FaceMoveTool::applyMoveToMesh(float distance)
     }
 
     glm::vec3 localNormal = m_BaseGeometry.getLocalNormal();
+
     if (glm::length(localNormal) <= 0.00001f)
     {
         return false;
@@ -322,6 +338,7 @@ bool FaceMoveTool::applyMoveToMesh(float distance)
 
     Mesh& mesh = object->getMesh();
     mesh.updateGeometry(movedVertices, m_OriginalIndices);
+
     return true;
 }
 
@@ -329,22 +346,12 @@ bool FaceMoveTool::confirm()
 {
     if (!m_Active || !m_Selection.isValid())
     {
-        std::cout << "[FACE MOVE] Nenhuma operacao ativa para confirmar\n";
         return false;
     }
 
     const bool success = applyMoveToMesh(m_CurrentDistance);
-
-    if (success)
-    {
-        std::cout << "[FACE MOVE] Face movida | distancia = " << m_CurrentDistance << "\n";
-    }
-    else
-    {
-        std::cout << "[FACE MOVE] Falha ao mover face\n";
-    }
-
     clearOperationData();
+
     return success;
 }
 
@@ -356,7 +363,6 @@ void FaceMoveTool::cancel()
     }
 
     clearOperationData();
-    std::cout << "[FACE MOVE] Cancelado\n";
 }
 
 void FaceMoveTool::clearOperationData()
@@ -364,7 +370,6 @@ void FaceMoveTool::clearOperationData()
     m_Active = false;
     m_Selection.clear();
     m_BaseGeometry.clear();
-    m_StartMouseY = 0.0;
     m_CurrentDistance = 0.0f;
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
@@ -372,6 +377,7 @@ void FaceMoveTool::clearOperationData()
     m_OriginalVertices.clear();
     m_OriginalIndices.clear();
     m_CoincidentVertexIndices.clear();
+    m_AxisDrag.reset();
 }
 
 bool FaceMoveTool::isActive() const

@@ -4,6 +4,7 @@
 
 #include "../../scene/SceneObject.h"
 #include "../../math/Ray.h"
+#include "AxisDragInteraction.h"
 
 enum class TransformMode
 {
@@ -35,23 +36,11 @@ private:
     TransformAxis m_Axis;
     TransformSpace m_Space;
 
-    bool m_IsDragging;
-
     glm::vec3 m_DragStartPosition;
-    glm::vec3 m_DragStartWorldPoint;
-    glm::vec3 m_DragAxisWorld;
-    glm::vec3 m_DragPlanePoint;
-    glm::vec3 m_DragPlaneNormal;
+    AxisDragInteraction m_AxisDrag;
 
 private:
     glm::vec3 getAxisDirectionWorld() const;
-
-    bool intersectRayPlane(
-        const Ray& ray,
-        const glm::vec3& planePoint,
-        const glm::vec3& planeNormal,
-        glm::vec3& outPoint
-    ) const;
 
 public:
     TransformController();

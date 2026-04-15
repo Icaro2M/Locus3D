@@ -2,12 +2,15 @@
 
 #include <string>
 #include <vector>
+
 #include <glm/glm/glm.hpp>
 
 struct GLFWwindow;
 
 #include "FaceSelection.h"
 #include "FaceGeometry.h"
+#include "Raycaster.h"
+#include "../transform/AxisDragInteraction.h"
 
 class FaceMoveTool
 {
@@ -15,9 +18,7 @@ private:
     bool m_Active;
     FaceSelection m_Selection;
     FaceGeometry m_BaseGeometry;
-    double m_StartMouseY;
     float m_CurrentDistance;
-    float m_Sensitivity;
     std::string m_InputBuffer;
     bool m_UsingNumericInput;
     bool m_HasCommittedNumericValue;
@@ -25,6 +26,9 @@ private:
     std::vector<float> m_OriginalVertices;
     std::vector<unsigned int> m_OriginalIndices;
     std::vector<unsigned int> m_CoincidentVertexIndices;
+
+    Raycaster m_Raycaster;
+    AxisDragInteraction m_AxisDrag;
 
 private:
     bool buildCoincidentVertexSet();
@@ -34,8 +38,8 @@ private:
 public:
     FaceMoveTool();
 
-    bool start(const FaceSelection& selection, GLFWwindow* window);
-    void update(GLFWwindow* window);
+    bool start(const FaceSelection& selection, GLFWwindow* window, const Camera& camera);
+    void update(GLFWwindow* window, const Camera& camera);
     void onKeyPressed(int key);
     bool confirm();
     void cancel();

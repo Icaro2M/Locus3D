@@ -2,29 +2,31 @@
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
-
-#include <iostream>
-#include <string>
+#include <glm/glm/glm.hpp>
 
 #include "FaceGeometryBuilder.h"
 #include "FaceExtruder.h"
+#include "../../scene/SceneObject.h"
 
 PushPullTool::PushPullTool()
     : m_Active(false),
-    m_StartMouseY(0.0),
     m_CurrentDistance(0.0f),
-    m_Sensitivity(0.01f),
     m_InputBuffer(""),
     m_UsingNumericInput(false),
     m_HasCommittedNumericValue(false)
 {
 }
 
-bool PushPullTool::start(const FaceSelection& selection, GLFWwindow* window)
+bool PushPullTool::start(const FaceSelection& selection, GLFWwindow* window, const Camera& camera)
 {
     if (!selection.isValid())
     {
-        std::cout << "[PUSH/PULL] Nenhuma face valida selecionada\n";
+        return false;
+    }
+
+    SceneObject* object = selection.getObject();
+    if (object == nullptr)
+    {
         return false;
     }
 
@@ -35,29 +37,59 @@ bool PushPullTool::start(const FaceSelection& selection, GLFWwindow* window)
 
     if (!m_BaseGeometry.isValid())
     {
-        std::cout << "[PUSH/PULL] Falha ao construir geometria da face\n";
         m_Selection.clear();
         return false;
     }
 
-    double mouseX = 0.0;
-    double mouseY = 0.0;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
+    const glm::vec3 localCenter =
+        (m_BaseGeometry.getLocalV0() +
+            m_BaseGeometry.getLocalV1() +
+            m_BaseGeometry.getLocalV2()) / 3.0f;
 
-    m_StartMouseY = mouseY;
+    glm::vec3 localNormal = m_BaseGeometry.getLocalNormal();
+
+    if (glm::length(localNormal) <= 0.00001f)
+    {
+        m_Selection.clear();
+        m_BaseGeometry.clear();
+        return false;
+    }
+
+    localNormal = glm::normalize(localNormal);
+
+    const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+
+    const glm::vec3 worldCenter = glm::vec3(modelMatrix * glm::vec4(localCenter, 1.0f));
+    glm::vec3 worldNormal = glm::mat3(modelMatrix) * localNormal;
+
+    if (glm::length(worldNormal) <= 0.00001f)
+    {
+        m_Selection.clear();
+        m_BaseGeometry.clear();
+        return false;
+    }
+
+    worldNormal = glm::normalize(worldNormal);
+
+    const Ray initialRay = m_Raycaster.buildRayFromMouse(window, camera);
+
+    if (!m_AxisDrag.begin(worldCenter, worldNormal, initialRay))
+    {
+        m_Selection.clear();
+        m_BaseGeometry.clear();
+        return false;
+    }
+
     m_CurrentDistance = 0.0f;
-
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
-
     m_Active = true;
 
-    std::cout << "[PUSH/PULL] Ferramenta iniciada\n";
     return true;
 }
 
-void PushPullTool::update(GLFWwindow* window)
+void PushPullTool::update(GLFWwindow* window, const Camera& camera)
 {
     if (!m_Active)
     {
@@ -69,12 +101,9 @@ void PushPullTool::update(GLFWwindow* window)
         return;
     }
 
-    double mouseX = 0.0;
-    double mouseY = 0.0;
-    glfwGetCursorPos(window, &mouseX, &mouseY);
-
-    double deltaY = m_StartMouseY - mouseY;
-    m_CurrentDistance = static_cast<float>(deltaY) * m_Sensitivity;
+    const Ray currentRay = m_Raycaster.buildRayFromMouse(window, camera);
+    m_AxisDrag.update(currentRay);
+    m_CurrentDistance = m_AxisDrag.getCurrentDelta();
 }
 
 void PushPullTool::onKeyPressed(int key)
@@ -89,8 +118,6 @@ void PushPullTool::onKeyPressed(int key)
         m_InputBuffer += static_cast<char>('0' + (key - GLFW_KEY_0));
         m_UsingNumericInput = true;
         m_HasCommittedNumericValue = false;
-
-        std::cout << "[PUSH/PULL INPUT] " << m_InputBuffer << "\n";
         return;
     }
 
@@ -106,9 +133,8 @@ void PushPullTool::onKeyPressed(int key)
             m_InputBuffer += '.';
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-
-            std::cout << "[PUSH/PULL INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -119,9 +145,8 @@ void PushPullTool::onKeyPressed(int key)
             m_InputBuffer = "-";
             m_UsingNumericInput = true;
             m_HasCommittedNumericValue = false;
-
-            std::cout << "[PUSH/PULL INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -135,9 +160,8 @@ void PushPullTool::onKeyPressed(int key)
             {
                 m_UsingNumericInput = false;
             }
-
-            std::cout << "[PUSH/PULL INPUT] " << m_InputBuffer << "\n";
         }
+
         return;
     }
 
@@ -152,13 +176,9 @@ void PushPullTool::onKeyPressed(int key)
             {
                 m_CurrentDistance = std::stof(m_InputBuffer);
                 m_HasCommittedNumericValue = true;
-
-                std::cout << "[PUSH/PULL INPUT] Distancia definida: "
-                    << m_CurrentDistance << "\n";
             }
             catch (...)
             {
-                std::cout << "[PUSH/PULL INPUT] Valor invalido\n";
             }
         }
 
@@ -172,27 +192,20 @@ bool PushPullTool::confirm()
 {
     if (!m_Active || !m_Selection.isValid())
     {
-        std::cout << "[PUSH/PULL] Nenhuma operacao ativa para confirmar\n";
         return false;
     }
 
     FaceExtruder extruder;
-    bool success = extruder.extrude(m_Selection, m_CurrentDistance);
-
-    if (success)
-    {
-        std::cout << "[PUSH/PULL] Extrusao confirmada | distancia = "
-            << m_CurrentDistance << "\n";
-    }
-    else
-    {
-        std::cout << "[PUSH/PULL] Falha ao confirmar extrusao\n";
-    }
+    const bool success = extruder.extrude(m_Selection, m_CurrentDistance);
 
     m_Active = false;
+    m_Selection.clear();
+    m_BaseGeometry.clear();
+    m_CurrentDistance = 0.0f;
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
+    m_AxisDrag.reset();
 
     return success;
 }
@@ -211,8 +224,7 @@ void PushPullTool::cancel()
     m_InputBuffer.clear();
     m_UsingNumericInput = false;
     m_HasCommittedNumericValue = false;
-
-    std::cout << "[PUSH/PULL] Cancelado\n";
+    m_AxisDrag.reset();
 }
 
 bool PushPullTool::isActive() const

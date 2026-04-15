@@ -130,12 +130,12 @@ int main()
 
         if (pushPullTool.isActive())
         {
-            pushPullTool.update(window.getWindow());
+            pushPullTool.update(window.getWindow(),camera);
         }
 
         if (faceMoveTool.isActive())
         {
-            faceMoveTool.update(window.getWindow());
+            faceMoveTool.update(window.getWindow(), camera);
         }
 
         if (transformController.isDragging())
@@ -440,7 +440,7 @@ int main()
             {
                 if (selectedFace.isValid())
                 {
-                    bool started = pushPullTool.start(selectedFace, window.getWindow());
+                    bool started = pushPullTool.start(selectedFace, window.getWindow(),camera);
 
                     if (!started)
                     {
@@ -464,7 +464,7 @@ int main()
             {
                 if (selectedFace.isValid())
                 {
-                    bool started = faceMoveTool.start(selectedFace, window.getWindow());
+                    bool started = faceMoveTool.start(selectedFace, window.getWindow(), camera);
 
                     if (!started)
                     {
