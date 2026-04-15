@@ -4,38 +4,29 @@
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
 
-namespace
+#include "../../geometry/primitives/PrimitiveFactory.h"
+
+std::vector<float> ScaleGizmoRenderer::buildColoredVertices(const glm::vec3& color) const
 {
-    void buildCubeVertices(float halfSize, float* outVertices)
+    std::vector<float> result;
+    result.reserve((m_HandleBaseVertices.size() / 6) * 6);
+
+    for (size_t i = 0; i < m_HandleBaseVertices.size(); i += 6)
     {
-        const float h = halfSize;
+        result.push_back(m_HandleBaseVertices[i + 0]);
+        result.push_back(m_HandleBaseVertices[i + 1]);
+        result.push_back(m_HandleBaseVertices[i + 2]);
 
-        const float vertices[] =
-        {
-            -h, -h, -h,
-             h, -h, -h,
-             h,  h, -h,
-            -h,  h, -h,
-
-            -h, -h,  h,
-             h, -h,  h,
-             h,  h,  h,
-            -h,  h,  h
-        };
-
-        for (int i = 0; i < 24; i++)
-        {
-            outVertices[i] = vertices[i];
-        }
+        result.push_back(color.r);
+        result.push_back(color.g);
+        result.push_back(color.b);
     }
+
+    return result;
 }
 
 ScaleGizmoRenderer::ScaleGizmoRenderer()
-    : m_LineShader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\fragment.glsl"
-    ),
-    m_HandleShader(
+    : m_Shader(
         "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\vertex.glsl",
         "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\fragment.glsl"
     ),
@@ -43,23 +34,19 @@ ScaleGizmoRenderer::ScaleGizmoRenderer()
     m_HandleVBO(nullptr),
     m_HandleEBO(nullptr),
     m_GizmoSize(1.5f),
-    m_HandleSize(0.12f)
+    m_HandleSize(0.12f),
+    m_HandleIndexCount(0)
 {
+
     float lineVertices[] =
     {
-        0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-        m_GizmoSize, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-
-        0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, m_GizmoSize, 0.0f, 0.0f, 1.0f, 0.0f,
-
-        0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f,
-        0.0f, 0.0f, m_GizmoSize, 0.0f, 0.0f, 1.0f
+        0,0,0, 1,0,0,   m_GizmoSize,0,0, 1,0,0,
+        0,0,0, 0,1,0,   0,m_GizmoSize,0, 0,1,0,
+        0,0,0, 0,0,1,   0,0,m_GizmoSize, 0,0,1
     };
 
     m_LineVAO.bind();
     m_LineVBO = new VertexBuffer(lineVertices, sizeof(lineVertices));
-    m_LineVBO->bind();
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -68,32 +55,36 @@ ScaleGizmoRenderer::ScaleGizmoRenderer()
     glEnableVertexAttribArray(1);
 
     m_LineVAO.unbind();
-    m_LineVBO->unbind();
 
-    float cubeVertices[24];
-    buildCubeVertices(m_HandleSize, cubeVertices);
+    auto cube = PrimitiveFactory::createCube();
 
-    unsigned int cubeIndices[] =
-    {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4,
-        0, 4, 7, 7, 3, 0,
-        1, 5, 6, 6, 2, 1,
-        3, 2, 6, 6, 7, 3,
-        0, 1, 5, 5, 4, 0
-    };
+    m_HandleBaseVertices = cube.getVertices();
+    const auto& indices = cube.getIndices();
+
+    std::vector<float> initial =
+        buildColoredVertices(glm::vec3(1, 0, 0));
+
+    m_HandleIndexCount = (unsigned int)indices.size();
 
     m_HandleVAO.bind();
 
-    m_HandleVBO = new VertexBuffer(cubeVertices, sizeof(cubeVertices));
-    m_HandleEBO = new IndexBuffer(cubeIndices, sizeof(cubeIndices) / sizeof(unsigned int));
+    m_HandleVBO = new VertexBuffer(
+        initial.data(),
+        (unsigned int)(initial.size() * sizeof(float))
+    );
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    m_HandleEBO = new IndexBuffer(
+        indices.data(),
+        (unsigned int)indices.size()
+    );
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
     m_HandleVAO.unbind();
-    m_HandleVBO->unbind();
-    m_HandleEBO->unbind();
 }
 
 ScaleGizmoRenderer::~ScaleGizmoRenderer()
@@ -104,106 +95,74 @@ ScaleGizmoRenderer::~ScaleGizmoRenderer()
 }
 
 void ScaleGizmoRenderer::render(
-    const SceneObject& selectedObject,
+    const SceneObject& obj,
     const Camera& camera,
     TransformAxis activeAxis,
-    TransformSpace transformSpace)
+    TransformSpace space)
 {
-    glm::vec3 xColor(1.0f, 0.0f, 0.0f);
-    glm::vec3 yColor(0.0f, 1.0f, 0.0f);
-    glm::vec3 zColor(0.0f, 0.0f, 1.0f);
+    glm::vec3 x(1, 0, 0), y(0, 1, 0), z(0, 0, 1);
+    glm::vec3 dx(0.35f, 0, 0), dy(0, 0.35f, 0), dz(0, 0, 0.35f);
 
-    glm::vec3 dimXColor(0.35f, 0.0f, 0.0f);
-    glm::vec3 dimYColor(0.0f, 0.35f, 0.0f);
-    glm::vec3 dimZColor(0.0f, 0.0f, 0.35f);
+    glm::vec3 cx = x, cy = y, cz = z;
 
-    glm::vec3 finalXColor = xColor;
-    glm::vec3 finalYColor = yColor;
-    glm::vec3 finalZColor = zColor;
+    if (activeAxis == TransformAxis::X) { cy = dy; cz = dz; }
+    if (activeAxis == TransformAxis::Y) { cx = dx; cz = dz; }
+    if (activeAxis == TransformAxis::Z) { cx = dx; cy = dy; }
 
-    switch (activeAxis)
+    float line[] =
     {
-    case TransformAxis::X:
-        finalYColor = dimYColor;
-        finalZColor = dimZColor;
-        break;
-    case TransformAxis::Y:
-        finalXColor = dimXColor;
-        finalZColor = dimZColor;
-        break;
-    case TransformAxis::Z:
-        finalXColor = dimXColor;
-        finalYColor = dimYColor;
-        break;
-    case TransformAxis::None:
-        break;
-    }
-
-    float lineVertices[] =
-    {
-        0.0f, 0.0f, 0.0f, finalXColor.r, finalXColor.g, finalXColor.b,
-        m_GizmoSize, 0.0f, 0.0f, finalXColor.r, finalXColor.g, finalXColor.b,
-
-        0.0f, 0.0f, 0.0f, finalYColor.r, finalYColor.g, finalYColor.b,
-        0.0f, m_GizmoSize, 0.0f, finalYColor.r, finalYColor.g, finalYColor.b,
-
-        0.0f, 0.0f, 0.0f, finalZColor.r, finalZColor.g, finalZColor.b,
-        0.0f, 0.0f, m_GizmoSize, finalZColor.r, finalZColor.g, finalZColor.b
+        0,0,0, cx.r,cx.g,cx.b, m_GizmoSize,0,0, cx.r,cx.g,cx.b,
+        0,0,0, cy.r,cy.g,cy.b, 0,m_GizmoSize,0, cy.r,cy.g,cy.b,
+        0,0,0, cz.r,cz.g,cz.b, 0,0,m_GizmoSize, cz.r,cz.g,cz.b
     };
 
-    glm::mat4 gizmoModel(1.0f);
-    const glm::vec3& position = selectedObject.getTransform().getPosition();
-    const glm::vec3& rotation = selectedObject.getTransform().getRotation();
+    glm::mat4 model(1.0f);
+    model = glm::translate(model, obj.getTransform().getPosition());
 
-    gizmoModel = glm::translate(gizmoModel, position);
-
-    if (transformSpace == TransformSpace::Local)
+    if (space == TransformSpace::Local)
     {
-        gizmoModel = glm::rotate(gizmoModel, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-        gizmoModel = glm::rotate(gizmoModel, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-        gizmoModel = glm::rotate(gizmoModel, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto r = obj.getTransform().getRotation();
+        model = glm::rotate(model, glm::radians(r.x), glm::vec3(1, 0, 0));
+        model = glm::rotate(model, glm::radians(r.y), glm::vec3(0, 1, 0));
+        model = glm::rotate(model, glm::radians(r.z), glm::vec3(0, 0, 1));
     }
 
+    m_Shader.use();
+    m_Shader.setMat4("u_View", camera.getViewMatrix());
+    m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
+
     m_LineVBO->bind();
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(lineVertices), lineVertices);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(line), line);
 
-    m_LineShader.use();
-    m_LineShader.setMat4("u_View", camera.getViewMatrix());
-    m_LineShader.setMat4("u_Projection", camera.getProjectionMatrix());
-    m_LineShader.setMat4("u_Model", gizmoModel);
-
+    m_Shader.setMat4("u_Model", model);
     m_LineVAO.bind();
     glDrawArrays(GL_LINES, 0, 6);
 
-    glm::vec3 localHandlePositions[3] =
+    glm::vec3 pos[3] =
     {
-        glm::vec3(m_GizmoSize, 0.0f, 0.0f),
-        glm::vec3(0.0f, m_GizmoSize, 0.0f),
-        glm::vec3(0.0f, 0.0f, m_GizmoSize)
+        {m_GizmoSize,0,0},
+        {0,m_GizmoSize,0},
+        {0,0,m_GizmoSize}
     };
 
-    glm::vec3 handleColors[3] =
-    {
-        finalXColor,
-        finalYColor,
-        finalZColor
-    };
-
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glm::vec3 col[3] = { cx,cy,cz };
 
     for (int i = 0; i < 3; i++)
     {
-        glm::mat4 handleModel = gizmoModel;
-        handleModel = glm::translate(handleModel, localHandlePositions[i]);
+        auto verts = buildColoredVertices(col[i]);
 
-        m_HandleShader.use();
-        m_HandleShader.setMat4("u_View", camera.getViewMatrix());
-        m_HandleShader.setMat4("u_Projection", camera.getProjectionMatrix());
-        m_HandleShader.setMat4("u_Model", handleModel);
-        m_HandleShader.setVec3("u_Color", handleColors[i]);
+        m_HandleVBO->bind();
+        glBufferSubData(GL_ARRAY_BUFFER, 0,
+            (unsigned int)(verts.size() * sizeof(float)), verts.data());
+
+        glm::mat4 m = model;
+        m = glm::translate(m, pos[i]);
+        m = glm::scale(m, glm::vec3(m_HandleSize * 2));
+
+        m_Shader.setMat4("u_Model", m);
 
         m_HandleVAO.bind();
         m_HandleEBO->bind();
-        glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, m_HandleIndexCount, GL_UNSIGNED_INT, nullptr);
     }
 }

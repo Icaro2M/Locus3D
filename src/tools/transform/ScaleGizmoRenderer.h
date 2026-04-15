@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "../../graphics/Shader.h"
 #include "../../graphics/buffers/VertexArray.h"
 #include "../../graphics/buffers/VertexBuffer.h"
@@ -11,8 +13,7 @@
 class ScaleGizmoRenderer
 {
 private:
-    Shader m_LineShader;
-    Shader m_HandleShader;
+    Shader m_Shader;
 
     VertexArray m_LineVAO;
     VertexBuffer* m_LineVBO;
@@ -23,6 +24,13 @@ private:
 
     float m_GizmoSize;
     float m_HandleSize;
+
+    unsigned int m_HandleIndexCount;
+
+    std::vector<float> m_HandleBaseVertices;
+
+private:
+    std::vector<float> buildColoredVertices(const glm::vec3& color) const;
 
 public:
     ScaleGizmoRenderer();

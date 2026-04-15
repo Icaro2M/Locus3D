@@ -5,28 +5,7 @@
 #include "../../scene/SceneObject.h"
 #include "../../math/Ray.h"
 #include "AxisDragInteraction.h"
-
-enum class TransformMode
-{
-    None,
-    Translate,
-    Rotate,
-    Scale
-};
-
-enum class TransformAxis
-{
-    None,
-    X,
-    Y,
-    Z
-};
-
-enum class TransformSpace
-{
-    Global,
-    Local
-};
+#include "TransformTypes.h"
 
 class TransformController
 {
@@ -37,10 +16,13 @@ private:
     TransformSpace m_Space;
 
     glm::vec3 m_DragStartPosition;
+    glm::vec3 m_DragStartScale;
+
     AxisDragInteraction m_AxisDrag;
 
 private:
     glm::vec3 getAxisDirectionWorld() const;
+    glm::vec3 buildAxisVector(TransformAxis axis) const;
 
 public:
     TransformController();
@@ -48,20 +30,25 @@ public:
     void setSelectedObject(SceneObject* object);
     SceneObject* getSelectedObject() const;
 
+    void clearSelection();
+
     void setMode(TransformMode mode);
     TransformMode getMode() const;
 
     void setAxis(TransformAxis axis);
     TransformAxis getAxis() const;
 
+    void clearAxis();
+
     void setSpace(TransformSpace space);
     TransformSpace getSpace() const;
 
-    void applyPositiveStep();
-    void applyNegativeStep();
+    bool hasSelection() const;
+    bool hasActiveMode() const;
 
-    void beginDragFromRay(const Ray& ray);
+    bool beginDragFromRay(const Ray& ray);
     void updateDragFromRay(const Ray& ray);
     void endDrag();
+
     bool isDragging() const;
 };

@@ -1,19 +1,32 @@
 #include "TransformController.h"
 
-#include <glm/glm/glm.hpp>
+#include <algorithm>
+#include <glm/glm/gtc/quaternion.hpp>
 
 TransformController::TransformController()
     : m_SelectedObject(nullptr),
     m_Mode(TransformMode::None),
     m_Axis(TransformAxis::None),
     m_Space(TransformSpace::Global),
-    m_DragStartPosition(0.0f, 0.0f, 0.0f)
+    m_DragStartPosition(0.0f, 0.0f, 0.0f),
+    m_DragStartScale(1.0f, 1.0f, 1.0f)
 {
 }
 
 void TransformController::setSelectedObject(SceneObject* object)
 {
+    if (m_SelectedObject == object)
+    {
+        return;
+    }
+
+    if (isDragging())
+    {
+        endDrag();
+    }
+
     m_SelectedObject = object;
+    m_Axis = TransformAxis::None;
 }
 
 SceneObject* TransformController::getSelectedObject() const
@@ -21,8 +34,29 @@ SceneObject* TransformController::getSelectedObject() const
     return m_SelectedObject;
 }
 
+void TransformController::clearSelection()
+{
+    if (isDragging())
+    {
+        endDrag();
+    }
+
+    m_SelectedObject = nullptr;
+    m_Axis = TransformAxis::None;
+}
+
 void TransformController::setMode(TransformMode mode)
 {
+    if (isDragging())
+    {
+        return;
+    }
+
+    if (m_Mode != mode)
+    {
+        m_Axis = TransformAxis::None;
+    }
+
     m_Mode = mode;
 }
 
@@ -33,6 +67,11 @@ TransformMode TransformController::getMode() const
 
 void TransformController::setAxis(TransformAxis axis)
 {
+    if (isDragging())
+    {
+        return;
+    }
+
     m_Axis = axis;
 }
 
@@ -41,8 +80,23 @@ TransformAxis TransformController::getAxis() const
     return m_Axis;
 }
 
+void TransformController::clearAxis()
+{
+    if (isDragging())
+    {
+        return;
+    }
+
+    m_Axis = TransformAxis::None;
+}
+
 void TransformController::setSpace(TransformSpace space)
 {
+    if (isDragging())
+    {
+        return;
+    }
+
     m_Space = space;
 }
 
@@ -51,82 +105,38 @@ TransformSpace TransformController::getSpace() const
     return m_Space;
 }
 
-void TransformController::applyPositiveStep()
+bool TransformController::hasSelection() const
 {
-    if (m_SelectedObject == nullptr || m_Mode != TransformMode::Translate)
-    {
-        return;
-    }
-
-    glm::vec3 position = m_SelectedObject->getTransform().getPosition();
-
-    switch (m_Axis)
-    {
-    case TransformAxis::X:
-        position.x += 0.1f;
-        break;
-    case TransformAxis::Y:
-        position.y += 0.1f;
-        break;
-    case TransformAxis::Z:
-        position.z += 0.1f;
-        break;
-    default:
-        return;
-    }
-
-    m_SelectedObject->getTransform().setPosition(position);
+    return m_SelectedObject != nullptr;
 }
 
-void TransformController::applyNegativeStep()
+bool TransformController::hasActiveMode() const
 {
-    if (m_SelectedObject == nullptr || m_Mode != TransformMode::Translate)
-    {
-        return;
-    }
+    return m_Mode != TransformMode::None;
+}
 
-    glm::vec3 position = m_SelectedObject->getTransform().getPosition();
-
-    switch (m_Axis)
+glm::vec3 TransformController::buildAxisVector(TransformAxis axis) const
+{
+    switch (axis)
     {
     case TransformAxis::X:
-        position.x -= 0.1f;
-        break;
+        return glm::vec3(1.0f, 0.0f, 0.0f);
     case TransformAxis::Y:
-        position.y -= 0.1f;
-        break;
+        return glm::vec3(0.0f, 1.0f, 0.0f);
     case TransformAxis::Z:
-        position.z -= 0.1f;
-        break;
+        return glm::vec3(0.0f, 0.0f, 1.0f);
     default:
-        return;
+        return glm::vec3(0.0f, 0.0f, 0.0f);
     }
-
-    m_SelectedObject->getTransform().setPosition(position);
 }
 
 glm::vec3 TransformController::getAxisDirectionWorld() const
 {
-    if (m_Axis == TransformAxis::None)
+    glm::vec3 axisLocal = buildAxisVector(m_Axis);
+
+    if (glm::length(axisLocal) < 0.00001f)
     {
         return glm::vec3(0.0f, 0.0f, 0.0f);
-    }
-
-    glm::vec3 axisLocal(0.0f, 0.0f, 0.0f);
-
-    switch (m_Axis)
-    {
-    case TransformAxis::X:
-        axisLocal = glm::vec3(1.0f, 0.0f, 0.0f);
-        break;
-    case TransformAxis::Y:
-        axisLocal = glm::vec3(0.0f, 1.0f, 0.0f);
-        break;
-    case TransformAxis::Z:
-        axisLocal = glm::vec3(0.0f, 0.0f, 1.0f);
-        break;
-    default:
-        break;
     }
 
     if (m_Space == TransformSpace::Global || m_SelectedObject == nullptr)
@@ -134,9 +144,8 @@ glm::vec3 TransformController::getAxisDirectionWorld() const
         return axisLocal;
     }
 
-    glm::mat4 model = m_SelectedObject->getTransform().getModelMatrix();
-    glm::mat3 rotation(model);
-    glm::vec3 axisWorld = rotation * axisLocal;
+    glm::quat orientation = m_SelectedObject->getTransform().getOrientation();
+    glm::vec3 axisWorld = orientation * axisLocal;
 
     if (glm::length(axisWorld) < 0.00001f)
     {
@@ -146,37 +155,34 @@ glm::vec3 TransformController::getAxisDirectionWorld() const
     return glm::normalize(axisWorld);
 }
 
-void TransformController::beginDragFromRay(const Ray& ray)
+bool TransformController::beginDragFromRay(const Ray& ray)
 {
     if (m_SelectedObject == nullptr)
     {
-        return;
+        return false;
     }
 
-    if (m_Mode != TransformMode::Translate)
+    if (m_Mode == TransformMode::None || m_Mode == TransformMode::Rotate)
     {
-        return;
+        return false;
     }
 
     if (m_Axis == TransformAxis::None)
     {
-        return;
+        return false;
     }
 
     glm::vec3 axisWorld = getAxisDirectionWorld();
+
     if (glm::length(axisWorld) < 0.00001f)
     {
-        return;
+        return false;
     }
 
-    glm::vec3 objectPosition = m_SelectedObject->getTransform().getPosition();
+    m_DragStartPosition = m_SelectedObject->getTransform().getPosition();
+    m_DragStartScale = m_SelectedObject->getTransform().getScale();
 
-    if (!m_AxisDrag.begin(objectPosition, axisWorld, ray))
-    {
-        return;
-    }
-
-    m_DragStartPosition = objectPosition;
+    return m_AxisDrag.begin(m_DragStartPosition, axisWorld, ray);
 }
 
 void TransformController::updateDragFromRay(const Ray& ray)
@@ -193,7 +199,7 @@ void TransformController::updateDragFromRay(const Ray& ray)
 
     m_AxisDrag.update(ray);
 
-    float amount = m_AxisDrag.getCurrentDelta();
+    float delta = m_AxisDrag.getCurrentDelta();
     glm::vec3 axisWorld = getAxisDirectionWorld();
 
     if (glm::length(axisWorld) < 0.00001f)
@@ -201,8 +207,37 @@ void TransformController::updateDragFromRay(const Ray& ray)
         return;
     }
 
-    glm::vec3 newPosition = m_DragStartPosition + axisWorld * amount;
-    m_SelectedObject->getTransform().setPosition(newPosition);
+    if (m_Mode == TransformMode::Translate)
+    {
+        glm::vec3 newPosition = m_DragStartPosition + axisWorld * delta;
+        m_SelectedObject->getTransform().setPosition(newPosition);
+        return;
+    }
+
+    if (m_Mode == TransformMode::Scale)
+    {
+        glm::vec3 axisMask = buildAxisVector(m_Axis);
+        float factor = std::max(0.05f, 1.0f + delta);
+
+        glm::vec3 newScale = m_DragStartScale;
+
+        if (axisMask.x > 0.5f)
+        {
+            newScale.x = std::max(0.05f, m_DragStartScale.x * factor);
+        }
+
+        if (axisMask.y > 0.5f)
+        {
+            newScale.y = std::max(0.05f, m_DragStartScale.y * factor);
+        }
+
+        if (axisMask.z > 0.5f)
+        {
+            newScale.z = std::max(0.05f, m_DragStartScale.z * factor);
+        }
+
+        m_SelectedObject->getTransform().setScale(newScale);
+    }
 }
 
 void TransformController::endDrag()

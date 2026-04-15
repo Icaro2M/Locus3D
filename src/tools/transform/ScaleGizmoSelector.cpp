@@ -6,6 +6,8 @@
 
 #include <glm/glm/glm.hpp>
 
+#include "TransformTypes.h"
+
 ScaleGizmoSelector::ScaleGizmoSelector()
     : m_AxisLength(1.5f),
     m_HandleHalfSize(0.12f)

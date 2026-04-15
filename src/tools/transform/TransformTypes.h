@@ -1,5 +1,13 @@
 #pragma once
 
+enum class TransformMode
+{
+    None,
+    Translate,
+    Rotate,
+    Scale
+};
+
 enum class TransformAxis
 {
     None,
@@ -12,11 +20,4 @@ enum class TransformSpace
 {
     Global,
     Local
-};
-
-enum class TransformMode
-{
-    Translate,
-    Scale,
-    Rotate
 };
