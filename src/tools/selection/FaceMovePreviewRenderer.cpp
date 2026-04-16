@@ -5,6 +5,8 @@
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
 
+#include "../../resources/AssetPaths.h"
+
 #include "../../scene/SceneObject.h"
 #include "../../math/Transform.h"
 #include "FaceGeometry.h"
@@ -13,8 +15,8 @@ FaceMovePreviewRenderer::FaceMovePreviewRenderer()
     : m_VAO(0),
     m_VBO(0),
     m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
+        AssetPaths::shader("basic/vertex.glsl"),
+        AssetPaths::shader("basic/fragment.glsl")
     )
 {
     glGenVertexArrays(1, &m_VAO);

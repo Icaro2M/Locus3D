@@ -3,11 +3,13 @@
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 
+#include "../../resources/AssetPaths.h"
+
 FaceHighlightRenderer::FaceHighlightRenderer()
 	:
 	m_Shader(
-		"C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\faceSelectionVertex.glsl",
-		"C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\faceSelectionFragment.glsl"
+		AssetPaths::shader("helpers/selection/faceSelectionVertex.glsl"),
+		AssetPaths::shader("helpers/selection/faceSelectionFragment.glsl")
 	),
 	m_VBO(nullptr)
 {

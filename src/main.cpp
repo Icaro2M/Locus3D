@@ -3,6 +3,8 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "resources/AssetPaths.h"
+
 #include "core/WindowManager.h"
 #include "graphics/Renderer.h"
 #include "graphics/Shader.h"
@@ -83,7 +85,7 @@ int main()
 
     Raycaster raycaster;
 
-    Mesh cylinder = PrimitiveFactory::createCone(24, 1.5f, 4.0f);
+    Mesh cylinder = PrimitiveFactory::createCylinder(24, 0.7f, 1.8f);
     Mesh sphere = PrimitiveFactory::createUvSphere(32, 16, 0.8f);
     Mesh ellipsoid = PrimitiveFactory::createEllipsoid(32, 16, 0.7f, 1.1f, 0.5f);
 
@@ -101,8 +103,8 @@ int main()
     scene.addObject(ellipsoidObject);
 
     Shader shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
+        AssetPaths::shader("basic/vertex.glsl"),
+        AssetPaths::shader("basic/fragment.glsl")
     );
 
     Renderer renderer;

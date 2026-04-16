@@ -1,5 +1,7 @@
 #include "ScaleGizmoRenderer.h"
 
+#include "../../resources/AssetPaths.h"
+
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
@@ -27,8 +29,8 @@ std::vector<float> ScaleGizmoRenderer::buildColoredVertices(const glm::vec3& col
 
 ScaleGizmoRenderer::ScaleGizmoRenderer()
     : m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\fragment.glsl"
+        AssetPaths::shader("helpers/transformGizmo/vertex.glsl"),
+        AssetPaths::shader("helpers/transformGizmo/fragment.glsl")
     ),
     m_LineVBO(nullptr),
     m_HandleVBO(nullptr),

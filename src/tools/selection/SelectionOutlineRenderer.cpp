@@ -1,13 +1,15 @@
 #include "SelectionOutlineRenderer.h"
 
+#include "../../resources/AssetPaths.h"
+
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
 
 SelectionOutlineRenderer::SelectionOutlineRenderer()
     : m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\selectionOutlineVertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\selectionOutlineFragment.glsl"
+        AssetPaths::shader("helpers/selection/selectionOutlineVertex.glsl"),
+        AssetPaths::shader("helpers/selection/selectionOutlineFragment.glsl")
     )
 {
 }
