@@ -83,22 +83,22 @@ int main()
 
     Raycaster raycaster;
 
-    Mesh cube = PrimitiveFactory::createCube();
-    Mesh box = PrimitiveFactory::createBox(1.5f, 1.0f, 0.5f);
-    Mesh tetra = PrimitiveFactory::createTetrahedron();
+    Mesh cylinder = PrimitiveFactory::createCone(24, 1.5f, 4.0f);
+    Mesh sphere = PrimitiveFactory::createUvSphere(32, 16, 0.8f);
+    Mesh ellipsoid = PrimitiveFactory::createEllipsoid(32, 16, 0.7f, 1.1f, 0.5f);
 
-    SceneObject cubeObject(cube);
-    SceneObject boxObject(box);
-    SceneObject tetraObject(tetra);
+    SceneObject cylinderObject(cylinder);
+    SceneObject sphereObject(sphere);
+    SceneObject ellipsoidObject(ellipsoid);
 
-    cubeObject.getTransform().setPosition(glm::vec3(-1.5f, 0.0f, 0.0f));
-    boxObject.getTransform().setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    tetraObject.getTransform().setPosition(glm::vec3(1.5f, 0.0f, 0.0f));
+    cylinderObject.getTransform().setPosition(glm::vec3(-2.0f, 0.0f, 0.0f));
+    sphereObject.getTransform().setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
+    ellipsoidObject.getTransform().setPosition(glm::vec3(2.0f, 0.0f, 0.0f));
 
     Scene scene;
-    scene.addObject(cubeObject);
-    scene.addObject(boxObject);
-    scene.addObject(tetraObject);
+    scene.addObject(cylinderObject);
+    scene.addObject(sphereObject);
+    scene.addObject(ellipsoidObject);
 
     Shader shader(
         "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
