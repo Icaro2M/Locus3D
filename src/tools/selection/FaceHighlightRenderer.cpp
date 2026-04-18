@@ -1,100 +1,90 @@
 #include "FaceHighlightRenderer.h"
 
-#include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 
-#include "../../resources/AssetPaths.h"
+#include <vector>
 
 FaceHighlightRenderer::FaceHighlightRenderer()
-	:
-	m_Shader(
-		AssetPaths::shader("helpers/selection/faceSelectionVertex.glsl"),
-		AssetPaths::shader("helpers/selection/faceSelectionFragment.glsl")
-	),
-	m_VBO(nullptr)
+    : m_Shader(
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\faceSelectionVertex.glsl",
+        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\selection\\faceSelectionFragment.glsl"
+    ),
+    m_VBO(nullptr)
 {
-	float vertices[] =
-	{
-		0.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 0.0f,
-		0.0f, 0.0f, 0.0f
-	};
+    // Buffer inicial pequeno; será atualizado dinamicamente no render.
+    float vertices[] =
+    {
+        0.0f, 0.0f, 0.0f
+    };
 
-	m_VAO.bind();
+    m_VAO.bind();
 
-	m_VBO = new VertexBuffer(vertices, sizeof(vertices));
-	m_VBO->bind();
+    m_VBO = new VertexBuffer(vertices, sizeof(vertices));
+    m_VBO->bind();
 
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-	glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
 
-	m_VAO.unbind();
-	m_VBO->unbind();
+    m_VAO.unbind();
+    m_VBO->unbind();
 }
 
 FaceHighlightRenderer::~FaceHighlightRenderer()
 {
-	delete m_VBO;
+    delete m_VBO;
 }
 
-void FaceHighlightRenderer::render(const SceneObject& object, int faceIndex, const Camera& camera)
+void FaceHighlightRenderer::render(const FaceLogicalGeometry& logicalFace, const Camera& camera)
 {
-	if (faceIndex < 0)
-		return;
+    if (!logicalFace.isValid())
+    {
+        return;
+    }
 
-	const std::vector<float>& vertices = object.getMesh().getVertices();
-	const std::vector<unsigned int>& indices = object.getMesh().getIndices();
+    SceneObject* object = logicalFace.getObject();
+    if (object == nullptr)
+    {
+        return;
+    }
 
-	size_t triangleStart = static_cast<size_t>(faceIndex) * 3;
+    const std::vector<glm::vec3>& localBoundary = logicalFace.getLocalBoundaryVertices();
+    if (localBoundary.size() < 3)
+    {
+        return;
+    }
 
-	if (triangleStart + 2 >= indices.size())
-		return;
+    glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
 
-	unsigned int i0 = indices[triangleStart];
-	unsigned int i1 = indices[triangleStart + 1];
-	unsigned int i2 = indices[triangleStart + 2];
+    std::vector<float> highlightVertices;
+    highlightVertices.reserve(localBoundary.size() * 3);
 
-	size_t base0 = static_cast<size_t>(i0) * 6;
-	size_t base1 = static_cast<size_t>(i1) * 6;
-	size_t base2 = static_cast<size_t>(i2) * 6;
+    for (const glm::vec3& localVertex : localBoundary)
+    {
+        glm::vec3 worldVertex = glm::vec3(modelMatrix * glm::vec4(localVertex, 1.0f));
 
-	if (base0 + 2 >= vertices.size() ||
-		base1 + 2 >= vertices.size() ||
-		base2 + 2 >= vertices.size())
-	{
-		return;
-	}
+        highlightVertices.push_back(worldVertex.x);
+        highlightVertices.push_back(worldVertex.y);
+        highlightVertices.push_back(worldVertex.z);
+    }
 
-	glm::vec3 localV0(vertices[base0], vertices[base0 + 1], vertices[base0 + 2]);
-	glm::vec3 localV1(vertices[base1], vertices[base1 + 1], vertices[base1 + 2]);
-	glm::vec3 localV2(vertices[base2], vertices[base2 + 1], vertices[base2 + 2]);
+    m_VBO->bind();
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        static_cast<GLsizeiptr>(highlightVertices.size() * sizeof(float)),
+        highlightVertices.data(),
+        GL_DYNAMIC_DRAW
+    );
 
-	glm::mat4 modelMatrix = object.getTransform().getModelMatrix();
+    m_Shader.use();
+    m_Shader.setMat4("u_View", camera.getViewMatrix());
+    m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
+    m_Shader.setMat4("u_Model", glm::mat4(1.0f));
 
-	glm::vec3 worldV0 = glm::vec3(modelMatrix * glm::vec4(localV0, 1.0f));
-	glm::vec3 worldV1 = glm::vec3(modelMatrix * glm::vec4(localV1, 1.0f));
-	glm::vec3 worldV2 = glm::vec3(modelMatrix * glm::vec4(localV2, 1.0f));
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.0f, -1.0f);
 
-	float highlightVertices[] =
-	{
-		worldV0.x, worldV0.y, worldV0.z,
-		worldV1.x, worldV1.y, worldV1.z,
-		worldV2.x, worldV2.y, worldV2.z
-	};
+    m_VAO.bind();
+    glDrawArrays(GL_TRIANGLE_FAN, 0, static_cast<GLsizei>(localBoundary.size()));
 
-	m_VBO->bind();
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(highlightVertices), highlightVertices);
-
-	m_Shader.use();
-	m_Shader.setMat4("u_View", camera.getViewMatrix());
-	m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
-	m_Shader.setMat4("u_Model", glm::mat4(1.0f));
-
-	glEnable(GL_POLYGON_OFFSET_FILL);
-	glPolygonOffset(-1.0f, -1.0f);
-
-	m_VAO.bind();
-	glDrawArrays(GL_TRIANGLES, 0, 3);
-
-	glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_POLYGON_OFFSET_FILL);
 }

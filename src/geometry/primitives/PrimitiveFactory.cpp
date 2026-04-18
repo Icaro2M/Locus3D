@@ -1,6 +1,9 @@
 #include "PrimitiveFactory.h"
+
 #include "RadialSolidBuilder.h"
 #include "UvSphereBuilder.h"
+
+#include "geometry/LogicalFace.h"
 
 Mesh PrimitiveFactory::createCube()
 {
@@ -15,48 +18,62 @@ Mesh PrimitiveFactory::createBox(float width, float height, float depth)
 
     float vertices[] =
     {
-        -hx, -hy, -hz,  0.0f,  0.0f, -1.0f,
-         hx, -hy, -hz,  0.0f,  0.0f, -1.0f,
-         hx,  hy, -hz,  0.0f,  0.0f, -1.0f,
-        -hx,  hy, -hz,  0.0f,  0.0f, -1.0f,
+        -hx, -hy, -hz, 0.0f, 0.0f, -1.0f,
+         hx, -hy, -hz, 0.0f, 0.0f, -1.0f,
+         hx,  hy, -hz, 0.0f, 0.0f, -1.0f,
+        -hx,  hy, -hz, 0.0f, 0.0f, -1.0f,
 
-        -hx, -hy,  hz,  0.0f,  0.0f,  1.0f,
-         hx, -hy,  hz,  0.0f,  0.0f,  1.0f,
-         hx,  hy,  hz,  0.0f,  0.0f,  1.0f,
-        -hx,  hy,  hz,  0.0f,  0.0f,  1.0f,
+        -hx, -hy,  hz, 0.0f, 0.0f, 1.0f,
+         hx, -hy,  hz, 0.0f, 0.0f, 1.0f,
+         hx,  hy,  hz, 0.0f, 0.0f, 1.0f,
+        -hx,  hy,  hz, 0.0f, 0.0f, 1.0f,
 
-        -hx, -hy, -hz, -1.0f,  0.0f,  0.0f,
-        -hx,  hy, -hz, -1.0f,  0.0f,  0.0f,
-        -hx,  hy,  hz, -1.0f,  0.0f,  0.0f,
-        -hx, -hy,  hz, -1.0f,  0.0f,  0.0f,
+        -hx, -hy, -hz, -1.0f, 0.0f, 0.0f,
+        -hx,  hy, -hz, -1.0f, 0.0f, 0.0f,
+        -hx,  hy,  hz, -1.0f, 0.0f, 0.0f,
+        -hx, -hy,  hz, -1.0f, 0.0f, 0.0f,
 
-         hx, -hy, -hz,  1.0f,  0.0f,  0.0f,
-         hx,  hy, -hz,  1.0f,  0.0f,  0.0f,
-         hx,  hy,  hz,  1.0f,  0.0f,  0.0f,
-         hx, -hy,  hz,  1.0f,  0.0f,  0.0f,
+         hx, -hy, -hz, 1.0f, 0.0f, 0.0f,
+         hx,  hy, -hz, 1.0f, 0.0f, 0.0f,
+         hx,  hy,  hz, 1.0f, 0.0f, 0.0f,
+         hx, -hy,  hz, 1.0f, 0.0f, 0.0f,
 
-        -hx, -hy, -hz,  0.0f, -1.0f,  0.0f,
-        -hx, -hy,  hz,  0.0f, -1.0f,  0.0f,
-         hx, -hy,  hz,  0.0f, -1.0f,  0.0f,
-         hx, -hy, -hz,  0.0f, -1.0f,  0.0f,
+        -hx, -hy, -hz, 0.0f, -1.0f, 0.0f,
+        -hx, -hy,  hz, 0.0f, -1.0f, 0.0f,
+         hx, -hy,  hz, 0.0f, -1.0f, 0.0f,
+         hx, -hy, -hz, 0.0f, -1.0f, 0.0f,
 
-        -hx,  hy, -hz,  0.0f,  1.0f,  0.0f,
-        -hx,  hy,  hz,  0.0f,  1.0f,  0.0f,
-         hx,  hy,  hz,  0.0f,  1.0f,  0.0f,
-         hx,  hy, -hz,  0.0f,  1.0f,  0.0f
+        -hx,  hy, -hz, 0.0f, 1.0f, 0.0f,
+        -hx,  hy,  hz, 0.0f, 1.0f, 0.0f,
+         hx,  hy,  hz, 0.0f, 1.0f, 0.0f,
+         hx,  hy, -hz, 0.0f, 1.0f, 0.0f
     };
 
     unsigned int indices[] =
     {
-         0,  1,  2,   0,  2,  3,
-         4,  5,  6,   4,  6,  7,
-         8,  9, 10,   8, 10, 11,
-        12, 13, 14,  12, 14, 15,
-        16, 17, 18,  16, 18, 19,
-        20, 21, 22,  20, 22, 23
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19,
+        20, 21, 22, 20, 22, 23
     };
 
-    return Mesh(vertices, sizeof(vertices), indices, 36);
+    Mesh mesh(vertices, sizeof(vertices), indices, 36);
+
+    std::vector<LogicalFace> logicalFaces =
+    {
+        LogicalFace({ 0, 1 },   { 0, 1, 2, 3 }),
+        LogicalFace({ 2, 3 },   { 4, 5, 6, 7 }),
+        LogicalFace({ 4, 5 },   { 8, 9, 10, 11 }),
+        LogicalFace({ 6, 7 },   { 12, 13, 14, 15 }),
+        LogicalFace({ 8, 9 },   { 16, 17, 18, 19 }),
+        LogicalFace({ 10, 11 }, { 20, 21, 22, 23 })
+    };
+
+    mesh.setLogicalFaces(logicalFaces);
+
+    return mesh;
 }
 
 Mesh PrimitiveFactory::createTetrahedron()
@@ -82,12 +99,16 @@ Mesh PrimitiveFactory::createRadialSolid(
         capTop
     );
 
-    return Mesh(
+    Mesh mesh(
         data.vertices.data(),
         static_cast<unsigned int>(data.vertices.size() * sizeof(float)),
         data.indices.data(),
         static_cast<unsigned int>(data.indices.size())
     );
+
+    mesh.setLogicalFaces(data.logicalFaces);
+
+    return mesh;
 }
 
 Mesh PrimitiveFactory::createCylinder(
@@ -142,10 +163,14 @@ Mesh PrimitiveFactory::createEllipsoid(
         radiusZ
     );
 
-    return Mesh(
+    Mesh mesh(
         data.vertices.data(),
         static_cast<unsigned int>(data.vertices.size() * sizeof(float)),
         data.indices.data(),
         static_cast<unsigned int>(data.indices.size())
     );
+
+    mesh.setLogicalFaces(data.logicalFaces);
+
+    return mesh;
 }

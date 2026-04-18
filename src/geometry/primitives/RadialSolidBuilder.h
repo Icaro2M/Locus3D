@@ -2,6 +2,8 @@
 
 #include <vector>
 
+#include "geometry/LogicalFace.h"
+
 class RadialSolidBuilder
 {
 public:
@@ -9,6 +11,7 @@ public:
     {
         std::vector<float> vertices;
         std::vector<unsigned int> indices;
+        std::vector<LogicalFace> logicalFaces;
     };
 
 public:
