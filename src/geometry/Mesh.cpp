@@ -1,6 +1,7 @@
 #include "geometry/Mesh.h"
 
 #include <glad/glad.h>
+#include <utility>
 
 Mesh::Mesh(
     const float* vertices,
@@ -8,6 +9,8 @@ Mesh::Mesh(
     const unsigned int* indices,
     unsigned int indexCount
 )
+    : m_VBO(nullptr),
+    m_IBO(nullptr)
 {
     unsigned int floatCount = vertexBufferSize / sizeof(float);
 
@@ -34,6 +37,39 @@ Mesh::~Mesh()
 {
     delete m_VBO;
     delete m_IBO;
+}
+
+Mesh::Mesh(Mesh&& other) noexcept
+    : m_VAO(std::move(other.m_VAO)),
+    m_VBO(other.m_VBO),
+    m_IBO(other.m_IBO),
+    m_Vertices(std::move(other.m_Vertices)),
+    m_Indices(std::move(other.m_Indices)),
+    m_FaceData(std::move(other.m_FaceData))
+{
+    other.m_VBO = nullptr;
+    other.m_IBO = nullptr;
+}
+
+Mesh& Mesh::operator=(Mesh&& other) noexcept
+{
+    if (this != &other)
+    {
+        delete m_VBO;
+        delete m_IBO;
+
+        m_VAO = std::move(other.m_VAO);
+        m_VBO = other.m_VBO;
+        m_IBO = other.m_IBO;
+        m_Vertices = std::move(other.m_Vertices);
+        m_Indices = std::move(other.m_Indices);
+        m_FaceData = std::move(other.m_FaceData);
+
+        other.m_VBO = nullptr;
+        other.m_IBO = nullptr;
+    }
+
+    return *this;
 }
 
 void Mesh::bind() const

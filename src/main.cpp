@@ -1,15 +1,12 @@
 #include <iostream>
 
 #include "core/WindowManager.h"
-
 #include "graphics/Renderer.h"
 #include "graphics/Shader.h"
-
 #include "scene/Scene.h"
 #include "scene/SceneObject.h"
 #include "scene/Camera.h"
 #include "scene/CameraController.h"
-
 #include "geometry/primitives/PrimitiveFactory.h"
 
 #include "tools/AxisRenderer.h"
@@ -20,8 +17,6 @@
 #include "tools/selection/FaceSelection.h"
 #include "tools/selection/FaceGeometry.h"
 #include "tools/selection/FaceGeometryBuilder.h"
-#include "tools/selection/FaceLogicalGeometry.h"
-#include "tools/selection/FaceLogicalGeometryBuilder.h"
 #include "tools/selection/SelectionOutlineRenderer.h"
 #include "tools/selection/FaceHighlightRenderer.h"
 #include "tools/selection/PushPullTool.h"
@@ -38,6 +33,8 @@
 #include "tools/transform/ScaleGizmoSelector.h"
 #include "tools/transform/RotateGizmoRenderer.h"
 #include "tools/transform/RotateGizmoSelector.h"
+
+#include "resources/AssetPaths.h"
 
 Camera* g_Camera = nullptr;
 CameraController* g_CameraController = nullptr;
@@ -61,12 +58,8 @@ int main()
 
     ObjectSelector objectSelector;
     FaceSelector faceSelector;
-
     FaceGeometryBuilder faceGeometryBuilder;
-    FaceLogicalGeometryBuilder faceLogicalGeometryBuilder;
-
     FaceSelection selectedFace;
-
     SelectionOutlineRenderer selectionOutlineRenderer;
     FaceHighlightRenderer faceHighlightRenderer;
 
@@ -77,13 +70,10 @@ int main()
     FaceMovePreviewRenderer faceMovePreviewRenderer;
 
     TransformController transformController;
-
     TranslateGizmoRenderer translateGizmoRenderer;
     TranslateGizmoSelector translateGizmoSelector;
-
     ScaleGizmoRenderer scaleGizmoRenderer;
     ScaleGizmoSelector scaleGizmoSelector;
-
     RotateGizmoRenderer rotateGizmoRenderer;
     RotateGizmoSelector rotateGizmoSelector;
 
@@ -107,8 +97,8 @@ int main()
     scene.addObject(ellipsoidObject);
 
     Shader shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
+        AssetPaths::shader("basic/vertex.glsl"),
+        AssetPaths::shader("basic/fragment.glsl")
     );
 
     Renderer renderer;
@@ -122,7 +112,6 @@ int main()
     glfwSetScrollCallback(window.getWindow(), scrollCallback);
 
     SceneObject* selectedObject = nullptr;
-
     bool faceModeActive = false;
 
     bool leftMouseWasPressed = false;
@@ -202,7 +191,9 @@ int main()
         bool fPressed = glfwGetKey(window.getWindow(), GLFW_KEY_F) == GLFW_PRESS;
         if (fPressed && !fWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 faceModeActive = !faceModeActive;
                 selectedFace.clear();
@@ -219,7 +210,9 @@ int main()
         }
         fWasPressed = fPressed;
 
-        bool leftMousePressed = glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        bool leftMousePressed =
+            glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
         if (leftMousePressed && !leftMouseWasPressed)
         {
             bool gizmoHandledClick = false;
@@ -379,7 +372,9 @@ int main()
         bool wPressed = glfwGetKey(window.getWindow(), GLFW_KEY_W) == GLFW_PRESS;
         if (wPressed && !wWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Translate);
                 std::cout << "[MODE] Translate\n";
@@ -390,7 +385,9 @@ int main()
         bool ePressed = glfwGetKey(window.getWindow(), GLFW_KEY_E) == GLFW_PRESS;
         if (ePressed && !eWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Rotate);
                 std::cout << "[MODE] Rotate\n";
@@ -401,7 +398,9 @@ int main()
         bool rPressed = glfwGetKey(window.getWindow(), GLFW_KEY_R) == GLFW_PRESS;
         if (rPressed && !rWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setMode(TransformMode::Scale);
                 std::cout << "[MODE] Scale\n";
@@ -412,7 +411,9 @@ int main()
         bool gPressed = glfwGetKey(window.getWindow(), GLFW_KEY_G) == GLFW_PRESS;
         if (gPressed && !gWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setSpace(TransformSpace::Global);
                 std::cout << "[SPACE] Global\n";
@@ -423,7 +424,9 @@ int main()
         bool lPressed = glfwGetKey(window.getWindow(), GLFW_KEY_L) == GLFW_PRESS;
         if (lPressed && !lWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 transformController.setSpace(TransformSpace::Local);
                 std::cout << "[SPACE] Local\n";
@@ -434,7 +437,9 @@ int main()
         bool tPressed = glfwGetKey(window.getWindow(), GLFW_KEY_T) == GLFW_PRESS;
         if (tPressed && !tWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 if (selectedFace.isValid())
                 {
@@ -456,7 +461,9 @@ int main()
         bool mPressed = glfwGetKey(window.getWindow(), GLFW_KEY_M) == GLFW_PRESS;
         if (mPressed && !mWasPressed)
         {
-            if (!pushPullTool.isActive() && !faceMoveTool.isActive() && !transformController.isDragging())
+            if (!pushPullTool.isActive() &&
+                !faceMoveTool.isActive() &&
+                !transformController.isDragging())
             {
                 if (selectedFace.isValid())
                 {
@@ -497,7 +504,6 @@ int main()
             {
                 faceModeActive = false;
                 selectedFace.clear();
-
                 transformController.setMode(TransformMode::None);
                 transformController.clearAxis();
                 transformController.setSpace(TransformSpace::Global);
@@ -508,7 +514,6 @@ int main()
         escWasPressed = escPressed;
 
         renderer.renderScene(scene, camera, shader);
-
         gridRenderer.render(camera);
         axisRenderer.render(camera);
 
@@ -552,13 +557,11 @@ int main()
 
             if (selectedFace.isValid())
             {
-                FaceLogicalGeometry logicalFace =
-                    faceLogicalGeometryBuilder.build(selectedFace);
-
-                if (logicalFace.isValid())
-                {
-                    faceHighlightRenderer.render(logicalFace, camera);
-                }
+                faceHighlightRenderer.render(
+                    *selectedFace.getObject(),
+                    selectedFace.getFaceIndex(),
+                    camera
+                );
             }
         }
 

@@ -5,6 +5,7 @@
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
+#include <iostream>
 
 #include "../../geometry/primitives/PrimitiveFactory.h"
 
@@ -58,10 +59,9 @@ ScaleGizmoRenderer::ScaleGizmoRenderer()
 
     m_LineVAO.unbind();
 
-    auto cube = PrimitiveFactory::createCube();
-
+    Mesh cube = PrimitiveFactory::createCube();
     m_HandleBaseVertices = cube.getVertices();
-    const auto& indices = cube.getIndices();
+    std::vector<unsigned int> indices = cube.getIndices();
 
     std::vector<float> initial =
         buildColoredVertices(glm::vec3(1, 0, 0));

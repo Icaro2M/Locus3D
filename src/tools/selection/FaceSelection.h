@@ -5,17 +5,17 @@
 class FaceSelection
 {
 private:
-	SceneObject* m_Object;
-	int m_FaceIndex;
+    SceneObject* m_Object;
+    int m_FaceIndex;
 
 public:
-	FaceSelection();
+    FaceSelection();
 
-	void set(SceneObject* object, int faceIndex);
-	void clear();
+    void set(SceneObject* object, int faceIndex);
+    void clear();
 
-	SceneObject* getObject() const;
-	int getFaceIndex() const;
+    SceneObject* getObject() const;
+    int getFaceIndex() const;
 
-	bool isValid() const;
+    bool isValid() const;
 };

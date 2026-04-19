@@ -6,5 +6,5 @@
 class FaceGeometryBuilder
 {
 public:
-	FaceGeometry build(const FaceSelection& selection) const;
+    FaceGeometry build(const FaceSelection& selection) const;
 };

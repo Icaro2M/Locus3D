@@ -5,7 +5,6 @@
 #include "graphics/buffers/VertexArray.h"
 #include "graphics/buffers/VertexBuffer.h"
 #include "graphics/buffers/IndexBuffer.h"
-
 #include "geometry/MeshFaceData.h"
 
 #include <glm/glm/glm.hpp>
@@ -31,6 +30,12 @@ public:
     );
 
     ~Mesh();
+
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
+
+    Mesh(Mesh&& other) noexcept;
+    Mesh& operator=(Mesh&& other) noexcept;
 
     void bind() const;
     void unbind() const;

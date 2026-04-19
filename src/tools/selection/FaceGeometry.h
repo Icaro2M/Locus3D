@@ -1,41 +1,47 @@
 #pragma once
 
 #include "../../scene/SceneObject.h"
+
 #include <glm/glm/glm.hpp>
+
+#include <vector>
 
 class FaceGeometry
 {
 private:
-	SceneObject* m_Object;
-	int m_FaceIndex;
+    SceneObject* m_Object;
+    int m_FaceIndex;
 
-	glm::vec3 m_LocalV0;
-	glm::vec3 m_LocalV1;
-	glm::vec3 m_LocalV2;
-	glm::vec3 m_LocalNormal;
+    std::vector<unsigned int> m_TriangleIndices;
+    std::vector<unsigned int> m_BoundaryVertexIndices;
+    std::vector<glm::vec3> m_LocalBoundaryVertices;
+
+    glm::vec3 m_LocalNormal;
+    glm::vec3 m_LocalCenter;
 
 public:
-	FaceGeometry();
+    FaceGeometry();
 
-	void setObject(SceneObject* object);
-	void setFaceIndex(int faceIndex);
+    void setObject(SceneObject* object);
+    void setFaceIndex(int faceIndex);
 
-	void setLocalVertices(
-		const glm::vec3& v0,
-		const glm::vec3& v1,
-		const glm::vec3& v2
-	);
+    void setTriangleIndices(const std::vector<unsigned int>& triangleIndices);
+    void setBoundaryVertexIndices(const std::vector<unsigned int>& boundaryVertexIndices);
+    void setLocalBoundaryVertices(const std::vector<glm::vec3>& localBoundaryVertices);
 
-	void setLocalNormal(const glm::vec3& normal);
+    void setLocalNormal(const glm::vec3& normal);
+    void setLocalCenter(const glm::vec3& center);
 
-	SceneObject* getObject() const;
-	int getFaceIndex() const;
+    SceneObject* getObject() const;
+    int getFaceIndex() const;
 
-	const glm::vec3& getLocalV0() const;
-	const glm::vec3& getLocalV1() const;
-	const glm::vec3& getLocalV2() const;
-	const glm::vec3& getLocalNormal() const;
+    const std::vector<unsigned int>& getTriangleIndices() const;
+    const std::vector<unsigned int>& getBoundaryVertexIndices() const;
+    const std::vector<glm::vec3>& getLocalBoundaryVertices() const;
 
-	bool isValid() const;
-	void clear();
+    const glm::vec3& getLocalNormal() const;
+    const glm::vec3& getLocalCenter() const;
+
+    bool isValid() const;
+    void clear();
 };

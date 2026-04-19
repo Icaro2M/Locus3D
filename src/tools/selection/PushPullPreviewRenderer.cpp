@@ -2,12 +2,12 @@
 
 #include <vector>
 
-#include "../../resources/AssetPaths.h"
+#include <glad/glad.h>
 
 #include <glm/glm/glm.hpp>
-#include <glm//glm/gtc/matrix_transform.hpp>
-#include <glm/glm/gtc/type_ptr.hpp>
+#include <glm/glm/gtc/matrix_inverse.hpp>
 
+#include "../../resources/AssetPaths.h"
 #include "../../scene/SceneObject.h"
 #include "../../math/Transform.h"
 #include "FaceGeometry.h"
@@ -60,7 +60,6 @@ void PushPullPreviewRenderer::buildFillVertices(
     }
 
     const FaceGeometry& geometry = tool.getBaseGeometry();
-
     if (!geometry.isValid())
     {
         return;
@@ -72,20 +71,19 @@ void PushPullPreviewRenderer::buildFillVertices(
         return;
     }
 
-    const glm::vec3 localV0 = geometry.getLocalV0();
-    const glm::vec3 localV1 = geometry.getLocalV1();
-    const glm::vec3 localV2 = geometry.getLocalV2();
+    const std::vector<glm::vec3>& localBoundaryVertices =
+        geometry.getLocalBoundaryVertices();
+
+    if (localBoundaryVertices.size() < 3)
+    {
+        return;
+    }
+
     const glm::vec3 localNormal = geometry.getLocalNormal();
-
     const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+    const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(modelMatrix));
 
-    const glm::vec3 worldV0 = glm::vec3(modelMatrix * glm::vec4(localV0, 1.0f));
-    const glm::vec3 worldV1 = glm::vec3(modelMatrix * glm::vec4(localV1, 1.0f));
-    const glm::vec3 worldV2 = glm::vec3(modelMatrix * glm::vec4(localV2, 1.0f));
-
-    const glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
     glm::vec3 worldNormal = normalMatrix * localNormal;
-
     if (glm::length(worldNormal) <= 0.0001f)
     {
         return;
@@ -96,41 +94,49 @@ void PushPullPreviewRenderer::buildFillVertices(
     const float distance = tool.getCurrentDistance();
     const glm::vec3 offset = worldNormal * distance;
 
-    const glm::vec3 topV0 = worldV0 + offset;
-    const glm::vec3 topV1 = worldV1 + offset;
-    const glm::vec3 topV2 = worldV2 + offset;
+    std::vector<glm::vec3> worldBaseVertices;
+    std::vector<glm::vec3> worldTopVertices;
 
-    // topo
-    outVertices.push_back(topV0);
-    outVertices.push_back(topV1);
-    outVertices.push_back(topV2);
+    worldBaseVertices.reserve(localBoundaryVertices.size());
+    worldTopVertices.reserve(localBoundaryVertices.size());
 
-    // lateral 1
-    outVertices.push_back(worldV0);
-    outVertices.push_back(worldV1);
-    outVertices.push_back(topV1);
+    for (const glm::vec3& localVertex : localBoundaryVertices)
+    {
+        glm::vec3 worldVertex =
+            glm::vec3(modelMatrix * glm::vec4(localVertex, 1.0f));
 
-    outVertices.push_back(worldV0);
-    outVertices.push_back(topV1);
-    outVertices.push_back(topV0);
+        worldBaseVertices.push_back(worldVertex);
+        worldTopVertices.push_back(worldVertex + offset);
+    }
 
-    // lateral 2
-    outVertices.push_back(worldV1);
-    outVertices.push_back(worldV2);
-    outVertices.push_back(topV2);
+    // tampa superior triangulada em leque
+    for (unsigned int i = 1; i + 1 < worldTopVertices.size(); ++i)
+    {
+        outVertices.push_back(worldTopVertices[0]);
+        outVertices.push_back(worldTopVertices[i]);
+        outVertices.push_back(worldTopVertices[i + 1]);
+    }
 
-    outVertices.push_back(worldV1);
-    outVertices.push_back(topV2);
-    outVertices.push_back(topV1);
+    // laterais
+    const unsigned int boundaryCount = static_cast<unsigned int>(worldBaseVertices.size());
 
-    // lateral 3
-    outVertices.push_back(worldV2);
-    outVertices.push_back(worldV0);
-    outVertices.push_back(topV0);
+    for (unsigned int i = 0; i < boundaryCount; ++i)
+    {
+        unsigned int next = (i + 1) % boundaryCount;
 
-    outVertices.push_back(worldV2);
-    outVertices.push_back(topV0);
-    outVertices.push_back(topV2);
+        const glm::vec3& baseV0 = worldBaseVertices[i];
+        const glm::vec3& baseV1 = worldBaseVertices[next];
+        const glm::vec3& topV0 = worldTopVertices[i];
+        const glm::vec3& topV1 = worldTopVertices[next];
+
+        outVertices.push_back(baseV0);
+        outVertices.push_back(baseV1);
+        outVertices.push_back(topV1);
+
+        outVertices.push_back(baseV0);
+        outVertices.push_back(topV1);
+        outVertices.push_back(topV0);
+    }
 }
 
 void PushPullPreviewRenderer::buildLineVertices(
@@ -146,7 +152,6 @@ void PushPullPreviewRenderer::buildLineVertices(
     }
 
     const FaceGeometry& geometry = tool.getBaseGeometry();
-
     if (!geometry.isValid())
     {
         return;
@@ -158,20 +163,19 @@ void PushPullPreviewRenderer::buildLineVertices(
         return;
     }
 
-    const glm::vec3 localV0 = geometry.getLocalV0();
-    const glm::vec3 localV1 = geometry.getLocalV1();
-    const glm::vec3 localV2 = geometry.getLocalV2();
+    const std::vector<glm::vec3>& localBoundaryVertices =
+        geometry.getLocalBoundaryVertices();
+
+    if (localBoundaryVertices.size() < 3)
+    {
+        return;
+    }
+
     const glm::vec3 localNormal = geometry.getLocalNormal();
-
     const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+    const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(modelMatrix));
 
-    const glm::vec3 worldV0 = glm::vec3(modelMatrix * glm::vec4(localV0, 1.0f));
-    const glm::vec3 worldV1 = glm::vec3(modelMatrix * glm::vec4(localV1, 1.0f));
-    const glm::vec3 worldV2 = glm::vec3(modelMatrix * glm::vec4(localV2, 1.0f));
-
-    const glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
     glm::vec3 worldNormal = normalMatrix * localNormal;
-
     if (glm::length(worldNormal) <= 0.0001f)
     {
         return;
@@ -182,29 +186,38 @@ void PushPullPreviewRenderer::buildLineVertices(
     const float distance = tool.getCurrentDistance();
     const glm::vec3 offset = worldNormal * distance;
 
-    const glm::vec3 topV0 = worldV0 + offset;
-    const glm::vec3 topV1 = worldV1 + offset;
-    const glm::vec3 topV2 = worldV2 + offset;
+    std::vector<glm::vec3> worldBaseVertices;
+    std::vector<glm::vec3> worldTopVertices;
+
+    worldBaseVertices.reserve(localBoundaryVertices.size());
+    worldTopVertices.reserve(localBoundaryVertices.size());
+
+    for (const glm::vec3& localVertex : localBoundaryVertices)
+    {
+        glm::vec3 worldVertex =
+            glm::vec3(modelMatrix * glm::vec4(localVertex, 1.0f));
+
+        worldBaseVertices.push_back(worldVertex);
+        worldTopVertices.push_back(worldVertex + offset);
+    }
+
+    const unsigned int boundaryCount = static_cast<unsigned int>(worldTopVertices.size());
 
     // contorno do topo
-    outVertices.push_back(topV0);
-    outVertices.push_back(topV1);
+    for (unsigned int i = 0; i < boundaryCount; ++i)
+    {
+        unsigned int next = (i + 1) % boundaryCount;
 
-    outVertices.push_back(topV1);
-    outVertices.push_back(topV2);
-
-    outVertices.push_back(topV2);
-    outVertices.push_back(topV0);
+        outVertices.push_back(worldTopVertices[i]);
+        outVertices.push_back(worldTopVertices[next]);
+    }
 
     // arestas verticais
-    outVertices.push_back(worldV0);
-    outVertices.push_back(topV0);
-
-    outVertices.push_back(worldV1);
-    outVertices.push_back(topV1);
-
-    outVertices.push_back(worldV2);
-    outVertices.push_back(topV2);
+    for (unsigned int i = 0; i < boundaryCount; ++i)
+    {
+        outVertices.push_back(worldBaseVertices[i]);
+        outVertices.push_back(worldTopVertices[i]);
+    }
 }
 
 void PushPullPreviewRenderer::render(const PushPullTool& tool, const Camera& camera)
@@ -230,7 +243,6 @@ void PushPullPreviewRenderer::render(const PushPullTool& tool, const Camera& cam
     glBindVertexArray(m_VAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
 
-    // fill
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(-1.0f, -1.0f);
 
@@ -245,7 +257,6 @@ void PushPullPreviewRenderer::render(const PushPullTool& tool, const Camera& cam
 
     glDisable(GL_POLYGON_OFFSET_FILL);
 
-    // outline
     std::vector<glm::vec3> lineVertices;
     buildLineVertices(tool, lineVertices);
 

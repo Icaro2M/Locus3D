@@ -2,11 +2,12 @@
 
 #include <vector>
 
+#include <glad/glad.h>
+
 #include <glm/glm/glm.hpp>
-#include <glm/glm/gtc/matrix_transform.hpp>
+#include <glm/glm/gtc/matrix_inverse.hpp>
 
 #include "../../resources/AssetPaths.h"
-
 #include "../../scene/SceneObject.h"
 #include "../../math/Transform.h"
 #include "FaceGeometry.h"
@@ -59,7 +60,6 @@ void FaceMovePreviewRenderer::buildFillVertices(
     }
 
     const FaceGeometry& geometry = tool.getBaseGeometry();
-
     if (!geometry.isValid())
     {
         return;
@@ -71,20 +71,19 @@ void FaceMovePreviewRenderer::buildFillVertices(
         return;
     }
 
-    const glm::vec3 localV0 = geometry.getLocalV0();
-    const glm::vec3 localV1 = geometry.getLocalV1();
-    const glm::vec3 localV2 = geometry.getLocalV2();
+    const std::vector<glm::vec3>& localBoundaryVertices =
+        geometry.getLocalBoundaryVertices();
+
+    if (localBoundaryVertices.size() < 3)
+    {
+        return;
+    }
+
     const glm::vec3 localNormal = geometry.getLocalNormal();
-
     const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+    const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(modelMatrix));
 
-    const glm::vec3 worldV0 = glm::vec3(modelMatrix * glm::vec4(localV0, 1.0f));
-    const glm::vec3 worldV1 = glm::vec3(modelMatrix * glm::vec4(localV1, 1.0f));
-    const glm::vec3 worldV2 = glm::vec3(modelMatrix * glm::vec4(localV2, 1.0f));
-
-    const glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
     glm::vec3 worldNormal = normalMatrix * localNormal;
-
     if (glm::length(worldNormal) <= 0.0001f)
     {
         return;
@@ -95,9 +94,23 @@ void FaceMovePreviewRenderer::buildFillVertices(
     const float distance = tool.getCurrentDistance();
     const glm::vec3 offset = worldNormal * distance;
 
-    outVertices.push_back(worldV0 + offset);
-    outVertices.push_back(worldV1 + offset);
-    outVertices.push_back(worldV2 + offset);
+    std::vector<glm::vec3> movedVertices;
+    movedVertices.reserve(localBoundaryVertices.size());
+
+    for (const glm::vec3& localVertex : localBoundaryVertices)
+    {
+        glm::vec3 worldVertex =
+            glm::vec3(modelMatrix * glm::vec4(localVertex, 1.0f));
+
+        movedVertices.push_back(worldVertex + offset);
+    }
+
+    for (unsigned int i = 1; i + 1 < movedVertices.size(); ++i)
+    {
+        outVertices.push_back(movedVertices[0]);
+        outVertices.push_back(movedVertices[i]);
+        outVertices.push_back(movedVertices[i + 1]);
+    }
 }
 
 void FaceMovePreviewRenderer::buildLineVertices(
@@ -113,7 +126,6 @@ void FaceMovePreviewRenderer::buildLineVertices(
     }
 
     const FaceGeometry& geometry = tool.getBaseGeometry();
-
     if (!geometry.isValid())
     {
         return;
@@ -125,20 +137,19 @@ void FaceMovePreviewRenderer::buildLineVertices(
         return;
     }
 
-    const glm::vec3 localV0 = geometry.getLocalV0();
-    const glm::vec3 localV1 = geometry.getLocalV1();
-    const glm::vec3 localV2 = geometry.getLocalV2();
+    const std::vector<glm::vec3>& localBoundaryVertices =
+        geometry.getLocalBoundaryVertices();
+
+    if (localBoundaryVertices.size() < 3)
+    {
+        return;
+    }
+
     const glm::vec3 localNormal = geometry.getLocalNormal();
-
     const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
+    const glm::mat3 normalMatrix = glm::inverseTranspose(glm::mat3(modelMatrix));
 
-    const glm::vec3 worldV0 = glm::vec3(modelMatrix * glm::vec4(localV0, 1.0f));
-    const glm::vec3 worldV1 = glm::vec3(modelMatrix * glm::vec4(localV1, 1.0f));
-    const glm::vec3 worldV2 = glm::vec3(modelMatrix * glm::vec4(localV2, 1.0f));
-
-    const glm::mat3 normalMatrix = glm::mat3(glm::transpose(glm::inverse(modelMatrix)));
     glm::vec3 worldNormal = normalMatrix * localNormal;
-
     if (glm::length(worldNormal) <= 0.0001f)
     {
         return;
@@ -149,18 +160,26 @@ void FaceMovePreviewRenderer::buildLineVertices(
     const float distance = tool.getCurrentDistance();
     const glm::vec3 offset = worldNormal * distance;
 
-    const glm::vec3 movedV0 = worldV0 + offset;
-    const glm::vec3 movedV1 = worldV1 + offset;
-    const glm::vec3 movedV2 = worldV2 + offset;
+    std::vector<glm::vec3> movedVertices;
+    movedVertices.reserve(localBoundaryVertices.size());
 
-    outVertices.push_back(movedV0);
-    outVertices.push_back(movedV1);
+    for (const glm::vec3& localVertex : localBoundaryVertices)
+    {
+        glm::vec3 worldVertex =
+            glm::vec3(modelMatrix * glm::vec4(localVertex, 1.0f));
 
-    outVertices.push_back(movedV1);
-    outVertices.push_back(movedV2);
+        movedVertices.push_back(worldVertex + offset);
+    }
 
-    outVertices.push_back(movedV2);
-    outVertices.push_back(movedV0);
+    const unsigned int boundaryCount = static_cast<unsigned int>(movedVertices.size());
+
+    for (unsigned int i = 0; i < boundaryCount; ++i)
+    {
+        unsigned int next = (i + 1) % boundaryCount;
+
+        outVertices.push_back(movedVertices[i]);
+        outVertices.push_back(movedVertices[next]);
+    }
 }
 
 void FaceMovePreviewRenderer::render(const FaceMoveTool& tool, const Camera& camera)
