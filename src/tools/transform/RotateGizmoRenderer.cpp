@@ -1,11 +1,13 @@
 #include "RotateGizmoRenderer.h"
 
+#include "../../resources/AssetPaths.h"
+
 #include <vector>
 
 RotateGizmoRenderer::RotateGizmoRenderer()
     : m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\fragment.glsl"
+        AssetPaths::shader("helpers/transformGizmo/vertex.glsl"),
+        AssetPaths::shader("helpers/transformGizmo/fragment.glsl")
     ),
     m_VBO(nullptr),
     m_Radius(1.5f),

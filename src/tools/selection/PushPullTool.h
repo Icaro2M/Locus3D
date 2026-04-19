@@ -5,9 +5,11 @@
 struct GLFWwindow;
 
 #include "../../scene/Camera.h"
+
 #include "FaceSelection.h"
 #include "FaceGeometry.h"
 #include "Raycaster.h"
+
 #include "../transform/AxisDragInteraction.h"
 
 class PushPullTool
@@ -17,6 +19,7 @@ private:
     FaceSelection m_Selection;
     FaceGeometry m_BaseGeometry;
     float m_CurrentDistance;
+
     std::string m_InputBuffer;
     bool m_UsingNumericInput;
     bool m_HasCommittedNumericValue;
@@ -30,6 +33,7 @@ public:
     bool start(const FaceSelection& selection, GLFWwindow* window, const Camera& camera);
     void update(GLFWwindow* window, const Camera& camera);
     void onKeyPressed(int key);
+
     bool confirm();
     void cancel();
 

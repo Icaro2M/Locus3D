@@ -1,5 +1,7 @@
 #include "GridRenderer.h"
 
+#include "../resources/AssetPaths.h"
+
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <vector>
@@ -7,8 +9,8 @@
 GridRenderer::GridRenderer()
     : m_VBO(nullptr),
     m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\grid\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\grid\\fragment.glsl"
+        AssetPaths::shader("helpers/grid/vertex.glsl"),
+        AssetPaths::shader("helpers/grid/fragment.glsl")
     ),
     m_VertexCount(0)
 {

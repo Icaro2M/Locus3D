@@ -1,6 +1,7 @@
 #include "UvSphereBuilder.h"
 
 #include <cmath>
+
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/constants.hpp>
 
@@ -85,6 +86,7 @@ UvSphereBuilder::Result UvSphereBuilder::build(
             float zUnit = std::sin(theta) * ringRadius;
 
             glm::vec3 unitPosition(xUnit, yUnit, zUnit);
+
             glm::vec3 position(
                 xUnit * radiusX,
                 yUnit * radiusY,
@@ -111,6 +113,7 @@ UvSphereBuilder::Result UvSphereBuilder::build(
     }
 
     int rowSize = segments + 1;
+    unsigned int currentTriangleIndex = 0;
 
     for (int ring = 0; ring < rings; ring++)
     {
@@ -123,6 +126,15 @@ UvSphereBuilder::Result UvSphereBuilder::build(
 
             addTriangle(result.indices, a, b, c);
             addTriangle(result.indices, a, c, d);
+
+            result.logicalFaces.push_back(
+                LogicalFace(
+                    { currentTriangleIndex, currentTriangleIndex + 1 },
+                    { a, b, c, d }
+                )
+            );
+
+            currentTriangleIndex += 2;
         }
     }
 

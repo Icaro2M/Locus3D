@@ -1,164 +1,264 @@
 #include "FaceExtruder.h"
 
-#include <vector>
+#include "../../geometry/LogicalFace.h"
+#include "../../geometry/Mesh.h"
+
 #include <glm/glm/glm.hpp>
+
+#include <vector>
 
 namespace
 {
-	void appendVertex(
-		std::vector<float>& vertices,
-		const glm::vec3& position,
-		const glm::vec3& normal
-	)
-	{
-		vertices.push_back(position.x);
-		vertices.push_back(position.y);
-		vertices.push_back(position.z);
+    void appendVertex(
+        std::vector<float>& vertices,
+        const glm::vec3& position,
+        const glm::vec3& normal
+    )
+    {
+        vertices.push_back(position.x);
+        vertices.push_back(position.y);
+        vertices.push_back(position.z);
+        vertices.push_back(normal.x);
+        vertices.push_back(normal.y);
+        vertices.push_back(normal.z);
+    }
 
-		vertices.push_back(normal.x);
-		vertices.push_back(normal.y);
-		vertices.push_back(normal.z);
-	}
+    unsigned int appendTriangle(
+        std::vector<unsigned int>& indices,
+        unsigned int i0,
+        unsigned int i1,
+        unsigned int i2
+    )
+    {
+        unsigned int triangleIndex = static_cast<unsigned int>(indices.size() / 3);
 
-	void appendTriangle(
-		std::vector<unsigned int>& indices,
-		unsigned int i0,
-		unsigned int i1,
-		unsigned int i2
-	)
-	{
-		indices.push_back(i0);
-		indices.push_back(i1);
-		indices.push_back(i2);
-	}
+        indices.push_back(i0);
+        indices.push_back(i1);
+        indices.push_back(i2);
 
-	glm::vec3 computeNormal(
-		const glm::vec3& v0,
-		const glm::vec3& v1,
-		const glm::vec3& v2
-	)
-	{
-		return glm::normalize(glm::cross(v1 - v0, v2 - v0));
-	}
+        return triangleIndex;
+    }
 
-	void appendSideQuad(
-		std::vector<float>& vertices,
-		std::vector<unsigned int>& indices,
-		const glm::vec3& baseV0,
-		const glm::vec3& baseV1,
-		const glm::vec3& topV1,
-		const glm::vec3& topV0
-	)
-	{
-		glm::vec3 sideNormal = computeNormal(baseV0, baseV1, topV1);
+    glm::vec3 computeNormal(
+        const glm::vec3& v0,
+        const glm::vec3& v1,
+        const glm::vec3& v2
+    )
+    {
+        glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);
 
-		unsigned int i0 = static_cast<unsigned int>(vertices.size() / 6);
-		appendVertex(vertices, baseV0, sideNormal);
+        if (glm::length(normal) <= 0.00001f)
+        {
+            return glm::vec3(0.0f, 0.0f, 1.0f);
+        }
 
-		unsigned int i1 = static_cast<unsigned int>(vertices.size() / 6);
-		appendVertex(vertices, baseV1, sideNormal);
+        return glm::normalize(normal);
+    }
 
-		unsigned int i2 = static_cast<unsigned int>(vertices.size() / 6);
-		appendVertex(vertices, topV1, sideNormal);
+    LogicalFace buildRemappedLogicalFace(
+        const LogicalFace& originalFace,
+        const std::vector<int>& oldTriangleToNewTriangle
+    )
+    {
+        std::vector<unsigned int> remappedTriangleIndices;
 
-		unsigned int i3 = static_cast<unsigned int>(vertices.size() / 6);
-		appendVertex(vertices, topV0, sideNormal);
+        for (unsigned int oldTriangleIndex : originalFace.getTriangleIndices())
+        {
+            if (oldTriangleIndex < oldTriangleToNewTriangle.size())
+            {
+                int remapped = oldTriangleToNewTriangle[oldTriangleIndex];
+                if (remapped >= 0)
+                {
+                    remappedTriangleIndices.push_back(static_cast<unsigned int>(remapped));
+                }
+            }
+        }
 
-		appendTriangle(indices, i0, i1, i2);
-		appendTriangle(indices, i0, i2, i3);
-	}
+        return LogicalFace(
+            remappedTriangleIndices,
+            originalFace.getBoundaryVertexIndices()
+        );
+    }
 }
 
 bool FaceExtruder::extrude(FaceSelection& selection, float distance)
 {
-	if (!selection.isValid())
-	{
-		return false;
-	}
+    if (!selection.isValid())
+    {
+        return false;
+    }
 
-	FaceGeometry geometry = m_FaceGeometryBuilder.build(selection);
-	if (!geometry.isValid())
-	{
-		return false;
-	}
+    FaceGeometry geometry = m_FaceGeometryBuilder.build(selection);
+    if (!geometry.isValid())
+    {
+        return false;
+    }
 
-	SceneObject* object = geometry.getObject();
-	if (object == nullptr)
-	{
-		return false;
-	}
+    SceneObject* object = geometry.getObject();
+    if (object == nullptr)
+    {
+        return false;
+    }
 
-	Mesh& mesh = object->getMesh();
+    Mesh& mesh = object->getMesh();
 
-	std::vector<float> newVertices = mesh.getVertices();
-	std::vector<unsigned int> newIndices = mesh.getIndices();
+    if (!mesh.hasLogicalFaces())
+    {
+        return false;
+    }
 
-	glm::vec3 v0 = geometry.getLocalV0();
-	glm::vec3 v1 = geometry.getLocalV1();
-	glm::vec3 v2 = geometry.getLocalV2();
-	glm::vec3 normal = geometry.getLocalNormal();
+    const std::vector<glm::vec3>& boundaryVertices = geometry.getLocalBoundaryVertices();
+    const std::vector<unsigned int>& boundaryVertexIndices = geometry.getBoundaryVertexIndices();
+    const std::vector<unsigned int>& selectedTriangleIndices = geometry.getTriangleIndices();
 
-	glm::vec3 extrudedV0 = v0 + normal * distance;
-	glm::vec3 extrudedV1 = v1 + normal * distance;
-	glm::vec3 extrudedV2 = v2 + normal * distance;
+    if (boundaryVertices.size() < 3 || boundaryVertexIndices.size() < 3)
+    {
+        return false;
+    }
 
-	unsigned int originalI0 = 0;
-	unsigned int originalI1 = 0;
-	unsigned int originalI2 = 0;
+    glm::vec3 faceNormal = geometry.getLocalNormal();
+    if (glm::length(faceNormal) <= 0.00001f)
+    {
+        return false;
+    }
 
-	bool validTriangle = mesh.getTriangleVertexIndices(
-		static_cast<unsigned int>(geometry.getFaceIndex()),
-		originalI0,
-		originalI1,
-		originalI2
-	);
+    faceNormal = glm::normalize(faceNormal);
 
-	if (!validTriangle)
-	{
-		return false;
-	}
+    std::vector<float> newVertices = mesh.getVertices();
+    std::vector<unsigned int> newIndices;
+    newIndices.reserve(mesh.getIndices().size() + boundaryVertices.size() * 18);
 
-	std::vector<unsigned int> filteredIndices;
-	unsigned int removedTriangleIndex = static_cast<unsigned int>(geometry.getFaceIndex());
+    const std::vector<unsigned int>& oldIndices = mesh.getIndices();
+    const unsigned int oldTriangleCount = static_cast<unsigned int>(oldIndices.size() / 3);
 
-	for (unsigned int i = 0; i + 2 < newIndices.size(); i += 3)
-	{
-		unsigned int currentTriangleIndex = i / 3;
+    std::vector<bool> removeTriangle(oldTriangleCount, false);
+    for (unsigned int triangleIndex : selectedTriangleIndices)
+    {
+        if (triangleIndex < removeTriangle.size())
+        {
+            removeTriangle[triangleIndex] = true;
+        }
+    }
 
-		if (currentTriangleIndex == removedTriangleIndex)
-		{
-			continue;
-		}
+    std::vector<int> oldTriangleToNewTriangle(oldTriangleCount, -1);
 
-		filteredIndices.push_back(newIndices[i]);
-		filteredIndices.push_back(newIndices[i + 1]);
-		filteredIndices.push_back(newIndices[i + 2]);
-	}
+    for (unsigned int oldTriangleIndex = 0; oldTriangleIndex < oldTriangleCount; ++oldTriangleIndex)
+    {
+        if (removeTriangle[oldTriangleIndex])
+        {
+            continue;
+        }
 
-	newIndices = filteredIndices;
+        unsigned int base = oldTriangleIndex * 3;
 
-	unsigned int newTopFaceIndex = static_cast<unsigned int>(newIndices.size() / 3);
+        unsigned int newTriangleIndex = static_cast<unsigned int>(newIndices.size() / 3);
 
-	glm::vec3 topNormal = normal;
+        newIndices.push_back(oldIndices[base]);
+        newIndices.push_back(oldIndices[base + 1]);
+        newIndices.push_back(oldIndices[base + 2]);
 
-	unsigned int topI0 = static_cast<unsigned int>(newVertices.size() / 6);
-	appendVertex(newVertices, extrudedV0, topNormal);
+        oldTriangleToNewTriangle[oldTriangleIndex] = static_cast<int>(newTriangleIndex);
+    }
 
-	unsigned int topI1 = static_cast<unsigned int>(newVertices.size() / 6);
-	appendVertex(newVertices, extrudedV1, topNormal);
+    std::vector<LogicalFace> rebuiltLogicalFaces;
+    const std::vector<LogicalFace>& oldLogicalFaces = mesh.getLogicalFaces();
 
-	unsigned int topI2 = static_cast<unsigned int>(newVertices.size() / 6);
-	appendVertex(newVertices, extrudedV2, topNormal);
+    for (unsigned int logicalFaceIndex = 0; logicalFaceIndex < oldLogicalFaces.size(); ++logicalFaceIndex)
+    {
+        if (static_cast<int>(logicalFaceIndex) == geometry.getFaceIndex())
+        {
+            continue;
+        }
 
-	appendTriangle(newIndices, topI0, topI1, topI2);
+        LogicalFace remappedFace =
+            buildRemappedLogicalFace(oldLogicalFaces[logicalFaceIndex], oldTriangleToNewTriangle);
 
-	appendSideQuad(newVertices, newIndices, v0, v1, extrudedV1, extrudedV0);
-	appendSideQuad(newVertices, newIndices, v1, v2, extrudedV2, extrudedV1);
-	appendSideQuad(newVertices, newIndices, v2, v0, extrudedV0, extrudedV2);
+        if (remappedFace.isValid())
+        {
+            rebuiltLogicalFaces.push_back(remappedFace);
+        }
+    }
 
-	mesh.updateGeometry(newVertices, newIndices);
+    std::vector<unsigned int> topBoundaryVertexIndices;
+    topBoundaryVertexIndices.reserve(boundaryVertices.size());
 
-	selection.set(object, static_cast<int>(newTopFaceIndex));
+    for (const glm::vec3& baseVertex : boundaryVertices)
+    {
+        glm::vec3 extrudedVertex = baseVertex + faceNormal * distance;
+        unsigned int newVertexIndex = static_cast<unsigned int>(newVertices.size() / 6);
 
-	return true;
+        appendVertex(newVertices, extrudedVertex, faceNormal);
+        topBoundaryVertexIndices.push_back(newVertexIndex);
+    }
+
+    std::vector<unsigned int> topTriangleIndices;
+    topTriangleIndices.reserve(boundaryVertices.size());
+
+    glm::vec3 topCenterPosition = geometry.getLocalCenter() + faceNormal * distance;
+    unsigned int topCenterIndex = static_cast<unsigned int>(newVertices.size() / 6);
+
+    appendVertex(newVertices, topCenterPosition, faceNormal);
+
+    for (unsigned int i = 0; i < topBoundaryVertexIndices.size(); ++i)
+    {
+        unsigned int next = (i + 1) % static_cast<unsigned int>(topBoundaryVertexIndices.size());
+
+        unsigned int triangleIndex = appendTriangle(
+            newIndices,
+            topCenterIndex,
+            topBoundaryVertexIndices[i],
+            topBoundaryVertexIndices[next]
+        );
+
+        topTriangleIndices.push_back(triangleIndex);
+    }
+
+    unsigned int newTopLogicalFaceIndex = static_cast<unsigned int>(rebuiltLogicalFaces.size());
+
+    rebuiltLogicalFaces.push_back(
+        LogicalFace(topTriangleIndices, topBoundaryVertexIndices)
+    );
+
+    const unsigned int boundaryCount = static_cast<unsigned int>(boundaryVertices.size());
+
+    for (unsigned int i = 0; i < boundaryCount; ++i)
+    {
+        unsigned int next = (i + 1) % boundaryCount;
+
+        const glm::vec3& baseV0 = boundaryVertices[i];
+        const glm::vec3& baseV1 = boundaryVertices[next];
+        const glm::vec3 topV0 = baseV0 + faceNormal * distance;
+        const glm::vec3 topV1 = baseV1 + faceNormal * distance;
+
+        glm::vec3 sideNormal = computeNormal(baseV0, baseV1, topV1);
+
+        unsigned int sideI0 = static_cast<unsigned int>(newVertices.size() / 6);
+        appendVertex(newVertices, baseV0, sideNormal);
+
+        unsigned int sideI1 = static_cast<unsigned int>(newVertices.size() / 6);
+        appendVertex(newVertices, baseV1, sideNormal);
+
+        unsigned int sideI2 = static_cast<unsigned int>(newVertices.size() / 6);
+        appendVertex(newVertices, topV1, sideNormal);
+
+        unsigned int sideI3 = static_cast<unsigned int>(newVertices.size() / 6);
+        appendVertex(newVertices, topV0, sideNormal);
+
+        unsigned int tri0 = appendTriangle(newIndices, sideI0, sideI1, sideI2);
+        unsigned int tri1 = appendTriangle(newIndices, sideI0, sideI2, sideI3);
+
+        rebuiltLogicalFaces.push_back(
+            LogicalFace(
+                { tri0, tri1 },
+                { sideI0, sideI1, sideI2, sideI3 }
+            )
+        );
+    }
+
+    mesh.updateGeometry(newVertices, newIndices);
+    mesh.setLogicalFaces(rebuiltLogicalFaces);
+
+    selection.set(object, static_cast<int>(newTopLogicalFaceIndex));
+
+    return true;
 }

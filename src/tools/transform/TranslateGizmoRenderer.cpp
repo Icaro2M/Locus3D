@@ -1,13 +1,15 @@
 #include "TranslateGizmoRenderer.h"
 
+#include "../../resources/AssetPaths.h"
+
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
 
 TranslateGizmoRenderer::TranslateGizmoRenderer()
     : m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\transformGizmo\\fragment.glsl"
+        AssetPaths::shader("helpers/transformGizmo/vertex.glsl"),
+        AssetPaths::shader("helpers/transformGizmo/fragment.glsl")
     ),
     m_VBO(nullptr),
     m_GizmoSize(1.5f)

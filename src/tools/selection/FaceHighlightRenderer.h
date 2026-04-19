@@ -9,15 +9,13 @@
 class FaceHighlightRenderer
 {
 private:
-	Shader m_Shader;
-	VertexArray m_VAO;
-	VertexBuffer* m_VBO;
+    Shader m_Shader;
+    VertexArray m_VAO;
+    VertexBuffer* m_VBO;
 
 public:
-	FaceHighlightRenderer();
+    FaceHighlightRenderer();
+    ~FaceHighlightRenderer();
 
-	~FaceHighlightRenderer();
-
-	void render(const SceneObject& object, int faceIndex, const Camera& camera);
-
+    void render(const SceneObject& object, int faceIndex, const Camera& camera);
 };

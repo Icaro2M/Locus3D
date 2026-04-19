@@ -1,11 +1,12 @@
 #include "PushPullTool.h"
 
-#include <glad/glad.h>
 #include <GLFW/glfw3.h>
+
 #include <glm/glm/glm.hpp>
 
 #include "FaceGeometryBuilder.h"
 #include "FaceExtruder.h"
+
 #include "../../scene/SceneObject.h"
 
 PushPullTool::PushPullTool()
@@ -41,11 +42,7 @@ bool PushPullTool::start(const FaceSelection& selection, GLFWwindow* window, con
         return false;
     }
 
-    const glm::vec3 localCenter =
-        (m_BaseGeometry.getLocalV0() +
-            m_BaseGeometry.getLocalV1() +
-            m_BaseGeometry.getLocalV2()) / 3.0f;
-
+    glm::vec3 localCenter = m_BaseGeometry.getLocalCenter();
     glm::vec3 localNormal = m_BaseGeometry.getLocalNormal();
 
     if (glm::length(localNormal) <= 0.00001f)
@@ -59,7 +56,9 @@ bool PushPullTool::start(const FaceSelection& selection, GLFWwindow* window, con
 
     const glm::mat4 modelMatrix = object->getTransform().getModelMatrix();
 
-    const glm::vec3 worldCenter = glm::vec3(modelMatrix * glm::vec4(localCenter, 1.0f));
+    const glm::vec3 worldCenter =
+        glm::vec3(modelMatrix * glm::vec4(localCenter, 1.0f));
+
     glm::vec3 worldNormal = glm::mat3(modelMatrix) * localNormal;
 
     if (glm::length(worldNormal) <= 0.00001f)
@@ -102,6 +101,7 @@ void PushPullTool::update(GLFWwindow* window, const Camera& camera)
     }
 
     const Ray currentRay = m_Raycaster.buildRayFromMouse(window, camera);
+
     m_AxisDrag.update(currentRay);
     m_CurrentDistance = m_AxisDrag.getCurrentDelta();
 }

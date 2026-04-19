@@ -38,5 +38,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     opengl32.lib
 )
 
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    "$<TARGET_FILE_DIR:${PROJECT_NAME}>/assets"
+)
+
 # 7. Definir Macros (Necessário para ImGui e GLFW no Windows)
 target_compile_definitions(${PROJECT_NAME} PRIVATE _CRT_SECURE_NO_WARNINGS)

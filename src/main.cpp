@@ -1,17 +1,12 @@
 #include <iostream>
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-
 #include "core/WindowManager.h"
 #include "graphics/Renderer.h"
 #include "graphics/Shader.h"
-
 #include "scene/Scene.h"
 #include "scene/SceneObject.h"
 #include "scene/Camera.h"
 #include "scene/CameraController.h"
-
 #include "geometry/primitives/PrimitiveFactory.h"
 
 #include "tools/AxisRenderer.h"
@@ -39,6 +34,8 @@
 #include "tools/transform/RotateGizmoRenderer.h"
 #include "tools/transform/RotateGizmoSelector.h"
 
+#include "resources/AssetPaths.h"
+
 Camera* g_Camera = nullptr;
 CameraController* g_CameraController = nullptr;
 
@@ -63,7 +60,6 @@ int main()
     FaceSelector faceSelector;
     FaceGeometryBuilder faceGeometryBuilder;
     FaceSelection selectedFace;
-
     SelectionOutlineRenderer selectionOutlineRenderer;
     FaceHighlightRenderer faceHighlightRenderer;
 
@@ -101,8 +97,8 @@ int main()
     scene.addObject(ellipsoidObject);
 
     Shader shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\basic\\fragment.glsl"
+        AssetPaths::shader("basic/vertex.glsl"),
+        AssetPaths::shader("basic/fragment.glsl")
     );
 
     Renderer renderer;
@@ -323,14 +319,14 @@ int main()
                     selectedFace.set(selectedObject, faceIndex);
 
                     FaceGeometry faceGeometry = faceGeometryBuilder.build(selectedFace);
+
                     std::cout << "[FACE] Face selecionada: " << faceIndex << "\n";
 
                     if (faceGeometry.isValid())
                     {
                         glm::vec3 localNormal = faceGeometry.getLocalNormal();
 
-                        std::cout
-                            << "[FACE GEOMETRY] Normal local: ("
+                        std::cout << "[FACE GEOMETRY] Normal local: ("
                             << localNormal.x << ", "
                             << localNormal.y << ", "
                             << localNormal.z << ")\n";
@@ -518,7 +514,6 @@ int main()
         escWasPressed = escPressed;
 
         renderer.renderScene(scene, camera, shader);
-
         gridRenderer.render(camera);
         axisRenderer.render(camera);
 

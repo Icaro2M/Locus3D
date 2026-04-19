@@ -1,13 +1,15 @@
 #include "AxisRenderer.h"
 
+#include "../resources/AssetPaths.h"
+
 #include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 
 AxisRenderer::AxisRenderer()
     : m_VBO(nullptr),
     m_Shader(
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\axis\\vertex.glsl",
-        "C:\\Users\\icaro\\Projetos\\TCC\\Locus3D\\assets\\shaders\\helpers\\axis\\fragment.glsl"
+        AssetPaths::shader("helpers/axis/vertex.glsl"),
+        AssetPaths::shader("helpers/axis/fragment.glsl")
     )
 {
     float axisLength = 500.0f;

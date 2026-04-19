@@ -6,8 +6,8 @@
 class FaceExtruder
 {
 private:
-	FaceGeometryBuilder m_FaceGeometryBuilder;
+    FaceGeometryBuilder m_FaceGeometryBuilder;
 
 public:
-	bool extrude(FaceSelection& selection, float distance);
+    bool extrude(FaceSelection& selection, float distance);
 };
