@@ -2,6 +2,8 @@
 
 #include <vector>
 
+#include <glm/glm/glm.hpp>
+
 #include "../../graphics/Shader.h"
 #include "../../graphics/buffers/VertexArray.h"
 #include "../../graphics/buffers/VertexBuffer.h"
@@ -15,22 +17,48 @@ class ScaleGizmoRenderer
 private:
     Shader m_Shader;
 
-    VertexArray m_LineVAO;
-    VertexBuffer* m_LineVBO;
+    VertexArray m_ShaftVAO;
+    VertexBuffer* m_ShaftVBO;
+    IndexBuffer* m_ShaftEBO;
 
     VertexArray m_HandleVAO;
     VertexBuffer* m_HandleVBO;
     IndexBuffer* m_HandleEBO;
 
-    float m_GizmoSize;
-    float m_HandleSize;
+    VertexArray m_CenterVAO;
+    VertexBuffer* m_CenterVBO;
+    IndexBuffer* m_CenterEBO;
 
+    std::vector<float> m_ShaftBasePositions;
+    std::vector<unsigned int> m_ShaftIndices;
+
+    std::vector<float> m_HandleBasePositions;
+    std::vector<unsigned int> m_HandleIndices;
+
+    std::vector<float> m_CenterBasePositions;
+    std::vector<unsigned int> m_CenterIndices;
+
+    unsigned int m_ShaftIndexCount;
     unsigned int m_HandleIndexCount;
+    unsigned int m_CenterIndexCount;
 
-    std::vector<float> m_HandleBaseVertices;
+    float m_GizmoSize;
+    float m_ShaftRadius;
+    float m_HandleSize;
+    float m_CenterSize;
 
 private:
-    std::vector<float> buildColoredVertices(const glm::vec3& color) const;
+    std::vector<float> buildColoredVertices(
+        const std::vector<float>& basePositions,
+        const glm::vec3& color
+    ) const;
+
+    void extractPositionOnlyVertices(
+        const std::vector<float>& interleavedVertices,
+        std::vector<float>& outPositions
+    ) const;
+
+    void normalizeAxisPrimitiveToUnitPositiveY(std::vector<float>& positions) const;
 
 public:
     ScaleGizmoRenderer();
@@ -42,4 +70,4 @@ public:
         TransformAxis activeAxis,
         TransformSpace transformSpace
     );
-};
+}; 

@@ -3,7 +3,7 @@
 #include <cmath>
 
 RotateGizmoSelector::RotateGizmoSelector()
-    : m_Radius(1.5f),
+    : m_Radius(1.05f),
     m_Thickness(0.2f)
 {
 }

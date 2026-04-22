@@ -1,24 +1,30 @@
 #include "ScaleGizmoRenderer.h"
 
-#include "../../resources/AssetPaths.h"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
 
-#include <glad/glad.h>
 #include <glm/glm/glm.hpp>
 #include <glm/glm/gtc/matrix_transform.hpp>
-#include <iostream>
 
+#include "../../resources/AssetPaths.h"
+#include "../../geometry/Mesh.h"
 #include "../../geometry/primitives/PrimitiveFactory.h"
 
-std::vector<float> ScaleGizmoRenderer::buildColoredVertices(const glm::vec3& color) const
+std::vector<float> ScaleGizmoRenderer::buildColoredVertices(
+    const std::vector<float>& basePositions,
+    const glm::vec3& color
+) const
 {
     std::vector<float> result;
-    result.reserve((m_HandleBaseVertices.size() / 6) * 6);
+    result.reserve((basePositions.size() / 3) * 6);
 
-    for (size_t i = 0; i < m_HandleBaseVertices.size(); i += 6)
+    for (size_t i = 0; i < basePositions.size(); i += 3)
     {
-        result.push_back(m_HandleBaseVertices[i + 0]);
-        result.push_back(m_HandleBaseVertices[i + 1]);
-        result.push_back(m_HandleBaseVertices[i + 2]);
+        result.push_back(basePositions[i + 0]);
+        result.push_back(basePositions[i + 1]);
+        result.push_back(basePositions[i + 2]);
 
         result.push_back(color.r);
         result.push_back(color.g);
@@ -28,28 +34,122 @@ std::vector<float> ScaleGizmoRenderer::buildColoredVertices(const glm::vec3& col
     return result;
 }
 
+void ScaleGizmoRenderer::extractPositionOnlyVertices(
+    const std::vector<float>& interleavedVertices,
+    std::vector<float>& outPositions
+) const
+{
+    outPositions.clear();
+
+    for (size_t i = 0; i < interleavedVertices.size(); i += 6)
+    {
+        outPositions.push_back(interleavedVertices[i + 0]);
+        outPositions.push_back(interleavedVertices[i + 1]);
+        outPositions.push_back(interleavedVertices[i + 2]);
+    }
+}
+
+void ScaleGizmoRenderer::normalizeAxisPrimitiveToUnitPositiveY(std::vector<float>& positions) const
+{
+    if (positions.empty())
+    {
+        return;
+    }
+
+    float minX = std::numeric_limits<float>::max();
+    float minY = std::numeric_limits<float>::max();
+    float minZ = std::numeric_limits<float>::max();
+
+    float maxX = std::numeric_limits<float>::lowest();
+    float maxY = std::numeric_limits<float>::lowest();
+    float maxZ = std::numeric_limits<float>::lowest();
+
+    for (size_t i = 0; i < positions.size(); i += 3)
+    {
+        const float x = positions[i + 0];
+        const float y = positions[i + 1];
+        const float z = positions[i + 2];
+
+        minX = std::min(minX, x);
+        minY = std::min(minY, y);
+        minZ = std::min(minZ, z);
+
+        maxX = std::max(maxX, x);
+        maxY = std::max(maxY, y);
+        maxZ = std::max(maxZ, z);
+    }
+
+    const float centerX = (minX + maxX) * 0.5f;
+    const float centerZ = (minZ + maxZ) * 0.5f;
+    const float height = maxY - minY;
+
+    float maxRadius = 0.0f;
+    for (size_t i = 0; i < positions.size(); i += 3)
+    {
+        const float localX = positions[i + 0] - centerX;
+        const float localZ = positions[i + 2] - centerZ;
+        const float radius = std::sqrt(localX * localX + localZ * localZ);
+        maxRadius = std::max(maxRadius, radius);
+    }
+
+    if (height <= 0.00001f)
+    {
+        return;
+    }
+
+    if (maxRadius <= 0.00001f)
+    {
+        maxRadius = 1.0f;
+    }
+
+    for (size_t i = 0; i < positions.size(); i += 3)
+    {
+        positions[i + 0] = (positions[i + 0] - centerX) / maxRadius;
+        positions[i + 1] = (positions[i + 1] - minY) / height;
+        positions[i + 2] = (positions[i + 2] - centerZ) / maxRadius;
+    }
+}
+
 ScaleGizmoRenderer::ScaleGizmoRenderer()
     : m_Shader(
         AssetPaths::shader("helpers/transformGizmo/vertex.glsl"),
         AssetPaths::shader("helpers/transformGizmo/fragment.glsl")
     ),
-    m_LineVBO(nullptr),
+    m_ShaftVBO(nullptr),
+    m_ShaftEBO(nullptr),
     m_HandleVBO(nullptr),
     m_HandleEBO(nullptr),
-    m_GizmoSize(1.5f),
-    m_HandleSize(0.12f),
-    m_HandleIndexCount(0)
+    m_CenterVBO(nullptr),
+    m_CenterEBO(nullptr),
+    m_ShaftIndexCount(0),
+    m_HandleIndexCount(0),
+    m_CenterIndexCount(0),
+    m_GizmoSize(1.05f),
+    m_ShaftRadius(0.011f),
+    m_HandleSize(0.070f),
+    m_CenterSize(0.060f)
 {
+    Mesh shaftCylinder = PrimitiveFactory::createCylinder(1.0f, 1.0f, 10);
+    extractPositionOnlyVertices(shaftCylinder.getVertices(), m_ShaftBasePositions);
+    normalizeAxisPrimitiveToUnitPositiveY(m_ShaftBasePositions);
 
-    float lineVertices[] =
-    {
-        0,0,0, 1,0,0,   m_GizmoSize,0,0, 1,0,0,
-        0,0,0, 0,1,0,   0,m_GizmoSize,0, 0,1,0,
-        0,0,0, 0,0,1,   0,0,m_GizmoSize, 0,0,1
-    };
+    m_ShaftIndices = shaftCylinder.getIndices();
+    m_ShaftIndexCount = static_cast<unsigned int>(m_ShaftIndices.size());
 
-    m_LineVAO.bind();
-    m_LineVBO = new VertexBuffer(lineVertices, sizeof(lineVertices));
+    std::vector<float> initialShaftVertices =
+        buildColoredVertices(m_ShaftBasePositions, glm::vec3(1.0f, 0.0f, 0.0f));
+
+    m_ShaftVAO.bind();
+
+    m_ShaftVBO = new VertexBuffer(
+        initialShaftVertices.data(),
+        static_cast<unsigned int>(initialShaftVertices.size() * sizeof(float))
+    );
+
+    m_ShaftEBO = new IndexBuffer(
+        m_ShaftIndices.data(),
+        static_cast<unsigned int>(m_ShaftIndices.size())
+    );
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -57,27 +157,28 @@ ScaleGizmoRenderer::ScaleGizmoRenderer()
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    m_LineVAO.unbind();
+    m_ShaftVAO.unbind();
+    m_ShaftVBO->unbind();
 
-    Mesh cube = PrimitiveFactory::createCube();
-    m_HandleBaseVertices = cube.getVertices();
-    std::vector<unsigned int> indices = cube.getIndices();
+    Mesh handleCube = PrimitiveFactory::createCube();
+    extractPositionOnlyVertices(handleCube.getVertices(), m_HandleBasePositions);
 
-    std::vector<float> initial =
-        buildColoredVertices(glm::vec3(1, 0, 0));
+    m_HandleIndices = handleCube.getIndices();
+    m_HandleIndexCount = static_cast<unsigned int>(m_HandleIndices.size());
 
-    m_HandleIndexCount = (unsigned int)indices.size();
+    std::vector<float> initialHandleVertices =
+        buildColoredVertices(m_HandleBasePositions, glm::vec3(1.0f, 0.0f, 0.0f));
 
     m_HandleVAO.bind();
 
     m_HandleVBO = new VertexBuffer(
-        initial.data(),
-        (unsigned int)(initial.size() * sizeof(float))
+        initialHandleVertices.data(),
+        static_cast<unsigned int>(initialHandleVertices.size() * sizeof(float))
     );
 
     m_HandleEBO = new IndexBuffer(
-        indices.data(),
-        (unsigned int)indices.size()
+        m_HandleIndices.data(),
+        static_cast<unsigned int>(m_HandleIndices.size())
     );
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
@@ -87,84 +188,180 @@ ScaleGizmoRenderer::ScaleGizmoRenderer()
     glEnableVertexAttribArray(1);
 
     m_HandleVAO.unbind();
+    m_HandleVBO->unbind();
+
+    Mesh centerCube = PrimitiveFactory::createCube();
+    extractPositionOnlyVertices(centerCube.getVertices(), m_CenterBasePositions);
+
+    m_CenterIndices = centerCube.getIndices();
+    m_CenterIndexCount = static_cast<unsigned int>(m_CenterIndices.size());
+
+    std::vector<float> initialCenterVertices =
+        buildColoredVertices(m_CenterBasePositions, glm::vec3(0.82f, 0.82f, 0.82f));
+
+    m_CenterVAO.bind();
+
+    m_CenterVBO = new VertexBuffer(
+        initialCenterVertices.data(),
+        static_cast<unsigned int>(initialCenterVertices.size() * sizeof(float))
+    );
+
+    m_CenterEBO = new IndexBuffer(
+        m_CenterIndices.data(),
+        static_cast<unsigned int>(m_CenterIndices.size())
+    );
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    m_CenterVAO.unbind();
+    m_CenterVBO->unbind();
 }
 
 ScaleGizmoRenderer::~ScaleGizmoRenderer()
 {
-    delete m_LineVBO;
+    delete m_ShaftVBO;
+    delete m_ShaftEBO;
     delete m_HandleVBO;
     delete m_HandleEBO;
+    delete m_CenterVBO;
+    delete m_CenterEBO;
 }
 
 void ScaleGizmoRenderer::render(
-    const SceneObject& obj,
+    const SceneObject& selectedObject,
     const Camera& camera,
     TransformAxis activeAxis,
-    TransformSpace space)
+    TransformSpace transformSpace
+)
 {
-    glm::vec3 x(1, 0, 0), y(0, 1, 0), z(0, 0, 1);
-    glm::vec3 dx(0.35f, 0, 0), dy(0, 0.35f, 0), dz(0, 0, 0.35f);
+    glm::vec3 xColor(0.95f, 0.20f, 0.20f);
+    glm::vec3 yColor(0.20f, 0.95f, 0.20f);
+    glm::vec3 zColor(0.20f, 0.35f, 0.95f);
 
-    glm::vec3 cx = x, cy = y, cz = z;
+    glm::vec3 dimX(0.35f, 0.08f, 0.08f);
+    glm::vec3 dimY(0.08f, 0.35f, 0.08f);
+    glm::vec3 dimZ(0.08f, 0.12f, 0.35f);
 
-    if (activeAxis == TransformAxis::X) { cy = dy; cz = dz; }
-    if (activeAxis == TransformAxis::Y) { cx = dx; cz = dz; }
-    if (activeAxis == TransformAxis::Z) { cx = dx; cy = dy; }
-
-    float line[] =
+    if (activeAxis == TransformAxis::X)
     {
-        0,0,0, cx.r,cx.g,cx.b, m_GizmoSize,0,0, cx.r,cx.g,cx.b,
-        0,0,0, cy.r,cy.g,cy.b, 0,m_GizmoSize,0, cy.r,cy.g,cy.b,
-        0,0,0, cz.r,cz.g,cz.b, 0,0,m_GizmoSize, cz.r,cz.g,cz.b
-    };
+        yColor = dimY;
+        zColor = dimZ;
+    }
+    else if (activeAxis == TransformAxis::Y)
+    {
+        xColor = dimX;
+        zColor = dimZ;
+    }
+    else if (activeAxis == TransformAxis::Z)
+    {
+        xColor = dimX;
+        yColor = dimY;
+    }
 
     glm::mat4 model(1.0f);
-    model = glm::translate(model, obj.getTransform().getPosition());
 
-    if (space == TransformSpace::Local)
+    const glm::vec3& position = selectedObject.getTransform().getPosition();
+    const glm::vec3& rotation = selectedObject.getTransform().getRotation();
+
+    model = glm::translate(model, position);
+
+    if (transformSpace == TransformSpace::Local)
     {
-        auto r = obj.getTransform().getRotation();
-        model = glm::rotate(model, glm::radians(r.x), glm::vec3(1, 0, 0));
-        model = glm::rotate(model, glm::radians(r.y), glm::vec3(0, 1, 0));
-        model = glm::rotate(model, glm::radians(r.z), glm::vec3(0, 0, 1));
+        model = glm::rotate(model, glm::radians(rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        model = glm::rotate(model, glm::radians(rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+        model = glm::rotate(model, glm::radians(rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
     }
 
     m_Shader.use();
     m_Shader.setMat4("u_View", camera.getViewMatrix());
     m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
 
-    m_LineVBO->bind();
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(line), line);
-
-    m_Shader.setMat4("u_Model", model);
-    m_LineVAO.bind();
-    glDrawArrays(GL_LINES, 0, 6);
-
-    glm::vec3 pos[3] =
     {
-        {m_GizmoSize,0,0},
-        {0,m_GizmoSize,0},
-        {0,0,m_GizmoSize}
+        std::vector<float> centerVertices =
+            buildColoredVertices(m_CenterBasePositions, glm::vec3(0.85f, 0.85f, 0.85f));
+
+        m_CenterVBO->bind();
+        glBufferSubData(
+            GL_ARRAY_BUFFER,
+            0,
+            static_cast<unsigned int>(centerVertices.size() * sizeof(float)),
+            centerVertices.data()
+        );
+
+        glm::mat4 centerModel = glm::scale(model, glm::vec3(m_CenterSize));
+        m_Shader.setMat4("u_Model", centerModel);
+
+        m_CenterVAO.bind();
+        m_CenterEBO->bind();
+        glDrawElements(GL_TRIANGLES, m_CenterIndexCount, GL_UNSIGNED_INT, nullptr);
+    }
+
+    glm::vec3 axisColors[3] = { xColor, yColor, zColor };
+
+    glm::mat4 axisRotations[3] =
+    {
+        glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 0.0f, 1.0f)), 
+        glm::mat4(1.0f),                                                                  
+        glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))  
     };
 
-    glm::vec3 col[3] = { cx,cy,cz };
-
-    for (int i = 0; i < 3; i++)
+    glm::vec3 handlePositions[3] =
     {
-        auto verts = buildColoredVertices(col[i]);
+        glm::vec3(m_GizmoSize, 0.0f, 0.0f),
+        glm::vec3(0.0f, m_GizmoSize, 0.0f),
+        glm::vec3(0.0f, 0.0f, m_GizmoSize)
+    };
 
-        m_HandleVBO->bind();
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-            (unsigned int)(verts.size() * sizeof(float)), verts.data());
+    for (int i = 0; i < 3; ++i)
+    {
+        {
+            std::vector<float> shaftVertices =
+                buildColoredVertices(m_ShaftBasePositions, axisColors[i]);
 
-        glm::mat4 m = model;
-        m = glm::translate(m, pos[i]);
-        m = glm::scale(m, glm::vec3(m_HandleSize * 2));
+            m_ShaftVBO->bind();
+            glBufferSubData(
+                GL_ARRAY_BUFFER,
+                0,
+                static_cast<unsigned int>(shaftVertices.size() * sizeof(float)),
+                shaftVertices.data()
+            );
 
-        m_Shader.setMat4("u_Model", m);
+            glm::mat4 shaftModel = model;
+            shaftModel = shaftModel * axisRotations[i];
+            shaftModel = glm::scale(shaftModel, glm::vec3(m_ShaftRadius, m_GizmoSize, m_ShaftRadius));
 
-        m_HandleVAO.bind();
-        m_HandleEBO->bind();
-        glDrawElements(GL_TRIANGLES, m_HandleIndexCount, GL_UNSIGNED_INT, nullptr);
+            m_Shader.setMat4("u_Model", shaftModel);
+
+            m_ShaftVAO.bind();
+            m_ShaftEBO->bind();
+            glDrawElements(GL_TRIANGLES, m_ShaftIndexCount, GL_UNSIGNED_INT, nullptr);
+        }
+
+        {
+            std::vector<float> handleVertices =
+                buildColoredVertices(m_HandleBasePositions, axisColors[i]);
+
+            m_HandleVBO->bind();
+            glBufferSubData(
+                GL_ARRAY_BUFFER,
+                0,
+                static_cast<unsigned int>(handleVertices.size() * sizeof(float)),
+                handleVertices.data()
+            );
+
+            glm::mat4 handleModel = model;
+            handleModel = glm::translate(handleModel, handlePositions[i]);
+            handleModel = glm::scale(handleModel, glm::vec3(m_HandleSize));
+
+            m_Shader.setMat4("u_Model", handleModel);
+
+            m_HandleVAO.bind();
+            m_HandleEBO->bind();
+            glDrawElements(GL_TRIANGLES, m_HandleIndexCount, GL_UNSIGNED_INT, nullptr);
+        }
     }
 }
