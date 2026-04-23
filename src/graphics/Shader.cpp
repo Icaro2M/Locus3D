@@ -63,6 +63,18 @@ void Shader::setMat4(const std::string& name, const glm::mat4& matrix) const
     glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
 }
 
+void Shader::setFloat(const std::string& name, float value) const
+{
+    int location = glGetUniformLocation(programID, name.c_str());
+
+    if (location == -1)
+    {
+        std::cerr << "Warning: uniform '" << name << "' not found in shader program.\n";
+    }
+
+    glUniform1f(location, value);
+}
+
 std::string Shader::loadFile(const std::string& path)
 {
     std::ifstream file(path);

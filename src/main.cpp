@@ -47,7 +47,7 @@ void scrollCallback(GLFWwindow* window, double xOffset, double yOffset)
 
 int main()
 {
-    WindowManager window(1800, 1200, "Locus3D");
+    WindowManager window(1600, 1200, "Locus3D");
 
     glEnable(GL_DEPTH_TEST);
 

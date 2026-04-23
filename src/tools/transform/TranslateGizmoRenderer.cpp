@@ -131,7 +131,7 @@ TranslateGizmoRenderer::TranslateGizmoRenderer()
     m_CenterSize(0.075f)
 {
 
-    Mesh shaftCylinder = PrimitiveFactory::createCylinder(1.0f, 1.0f, 10);
+    Mesh shaftCylinder = PrimitiveFactory::createCylinder(4, 1.0f, 10);
 
     extractPositionOnlyVertices(shaftCylinder.getVertices(), m_ShaftBasePositions);
     normalizeAxisPrimitiveToUnitPositiveY(m_ShaftBasePositions);
