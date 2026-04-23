@@ -68,7 +68,7 @@ void AxisRenderer::render(const Camera& camera)
     m_Shader.setFloat("u_CamZ", camPos.z);
 
     m_Shader.setFloat("u_Alpha", 0.95f);
-    m_Shader.setFloat("u_FadeStart", 20.0f);
+    m_Shader.setFloat("u_FadeStart", 40.0f);
     m_Shader.setFloat("u_FadeEnd", 75.0f);
     m_Shader.setFloat("u_MinAlpha", 0.0f);
 

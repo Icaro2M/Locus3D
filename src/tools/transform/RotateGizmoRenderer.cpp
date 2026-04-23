@@ -49,12 +49,10 @@ void RotateGizmoRenderer::buildRingBandMesh()
         const float c = std::cos(t);
         const float s = std::sin(t);
 
-        // vértice interno
         m_RingBasePositions.push_back(innerRadius * c);
         m_RingBasePositions.push_back(innerRadius * s);
         m_RingBasePositions.push_back(0.0f);
 
-        // vértice externo
         m_RingBasePositions.push_back(outerRadius * c);
         m_RingBasePositions.push_back(outerRadius * s);
         m_RingBasePositions.push_back(0.0f);
@@ -69,7 +67,6 @@ void RotateGizmoRenderer::buildRingBandMesh()
         const unsigned int nextInner = static_cast<unsigned int>(next * 2);
         const unsigned int nextOuter = static_cast<unsigned int>(next * 2 + 1);
 
-        // face frontal
         m_RingIndices.push_back(currentInner);
         m_RingIndices.push_back(currentOuter);
         m_RingIndices.push_back(nextOuter);
@@ -78,7 +75,6 @@ void RotateGizmoRenderer::buildRingBandMesh()
         m_RingIndices.push_back(nextOuter);
         m_RingIndices.push_back(nextInner);
 
-        // face traseira
         m_RingIndices.push_back(currentInner);
         m_RingIndices.push_back(nextOuter);
         m_RingIndices.push_back(currentOuter);
@@ -184,6 +180,8 @@ void RotateGizmoRenderer::render(
     m_Shader.setMat4("u_View", camera.getViewMatrix());
     m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
 
+    glDisable(GL_DEPTH_TEST);
+
     glm::vec3 ringColors[3] = { xColor, yColor, zColor };
 
     glm::mat4 ringRotations[3] =
@@ -213,4 +211,6 @@ void RotateGizmoRenderer::render(
         m_RingEBO->bind();
         glDrawElements(GL_TRIANGLES, m_RingIndexCount, GL_UNSIGNED_INT, nullptr);
     }
+
+    glEnable(GL_DEPTH_TEST);
 }

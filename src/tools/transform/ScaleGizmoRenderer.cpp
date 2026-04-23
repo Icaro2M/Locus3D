@@ -280,6 +280,8 @@ void ScaleGizmoRenderer::render(
     m_Shader.setMat4("u_View", camera.getViewMatrix());
     m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
 
+    glDisable(GL_DEPTH_TEST);
+
     {
         std::vector<float> centerVertices =
             buildColoredVertices(m_CenterBasePositions, glm::vec3(0.85f, 0.85f, 0.85f));
@@ -364,4 +366,6 @@ void ScaleGizmoRenderer::render(
             glDrawElements(GL_TRIANGLES, m_HandleIndexCount, GL_UNSIGNED_INT, nullptr);
         }
     }
+
+    glEnable(GL_DEPTH_TEST);
 }

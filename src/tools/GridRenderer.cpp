@@ -44,8 +44,8 @@ GridRenderer::GridRenderer()
     ),
     m_VertexCount(0)
 {
-    const float gridExtent = 200.0f;
-    const float lineSpacing = 5.0f;
+    const float gridExtent = 80.0f;
+    const float lineSpacing = 3.0f;
     const int gridDivisions = static_cast<int>(gridExtent / lineSpacing);
     const int majorLineStep = 5;
 
@@ -121,8 +121,8 @@ void GridRenderer::render(const Camera& camera)
     m_Shader.setMat4("u_Projection", camera.getProjectionMatrix());
     m_Shader.setMat4("u_Model", glm::mat4(1.0f));
 
-    m_Shader.setFloat("u_FadeStart", 40.0f);
-    m_Shader.setFloat("u_FadeEnd", 90.0f);
+    m_Shader.setFloat("u_FadeStart", 25.0f);
+    m_Shader.setFloat("u_FadeEnd", 70.0f);
     m_Shader.setFloat("u_MinAlpha", 0.0f);  
     m_Shader.setFloat("u_MaxAlpha", 0.85f);
 
