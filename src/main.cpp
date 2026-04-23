@@ -83,20 +83,20 @@ int main()
 
     Mesh cylinder = PrimitiveFactory::createCone(24, 1.5f, 4.0f);
     Mesh sphere = PrimitiveFactory::createUvSphere(32, 16, 0.8f);
-    Mesh ellipsoid = PrimitiveFactory::createEllipsoid(32, 16, 0.7f, 1.1f, 0.5f);
+    Mesh cube = PrimitiveFactory::createCube();
 
     SceneObject cylinderObject(cylinder);
     SceneObject sphereObject(sphere);
-    SceneObject ellipsoidObject(ellipsoid);
+    SceneObject cubeObject(cube);
 
     cylinderObject.getTransform().setPosition(glm::vec3(-2.0f, 0.0f, 0.0f));
     sphereObject.getTransform().setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-    ellipsoidObject.getTransform().setPosition(glm::vec3(2.0f, 0.0f, 0.0f));
+    cubeObject.getTransform().setPosition(glm::vec3(2.0f, 0.0f, 0.0f));
 
     Scene scene;
     scene.addObject(cylinderObject);
     scene.addObject(sphereObject);
-    scene.addObject(ellipsoidObject);
+    scene.addObject(cubeObject);
 
     Shader shader(
         AssetPaths::shader("basic/vertex.glsl"),

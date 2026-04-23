@@ -70,9 +70,6 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
 
     unsigned int currentTriangleIndex = 0;
 
-    // =========================
-    // LATERAIS
-    // =========================
     for (int i = 0; i < sides; i++)
     {
         int next = (i + 1) % sides;
@@ -104,8 +101,8 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
             std::sin(angle1) * topRadius
         );
 
-        glm::vec3 sideA = bottom1 - bottom0;
-        glm::vec3 sideB = top0 - bottom0;
+        glm::vec3 sideA = top0 - bottom0;
+        glm::vec3 sideB = bottom1 - bottom0;
         glm::vec3 normal = glm::cross(sideA, sideB);
 
         if (glm::length(normal) > 0.00001f)
@@ -119,10 +116,10 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
 
         unsigned int baseVertexIndex = static_cast<unsigned int>(result.vertices.size() / 6);
 
-        addVertex(result.vertices, bottom0, normal); // +0
-        addVertex(result.vertices, bottom1, normal); // +1
-        addVertex(result.vertices, top1, normal);    // +2
-        addVertex(result.vertices, top0, normal);    // +3
+        addVertex(result.vertices, bottom0, normal); 
+        addVertex(result.vertices, bottom1, normal); 
+        addVertex(result.vertices, top1, normal);    
+        addVertex(result.vertices, top0, normal);    
 
         addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 1, baseVertexIndex + 2);
         addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 2, baseVertexIndex + 3);
@@ -142,9 +139,6 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
         currentTriangleIndex += 2;
     }
 
-    // =========================
-    // TAMPA INFERIOR
-    // =========================
     if (capBottom && bottomRadius > 0.0f)
     {
         std::vector<unsigned int> bottomTriangleIndices;
@@ -195,9 +189,6 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
         );
     }
 
-    // =========================
-    // TAMPA SUPERIOR
-    // =========================
     if (capTop && topRadius > 0.0f)
     {
         std::vector<unsigned int> topTriangleIndices;
