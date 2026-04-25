@@ -10,6 +10,7 @@ set(GLAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad)
 set(GLFW_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glfw)
 set(GLM_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
+set(NLOHMANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nlohmann)
 
 # 3. Coletar arquivos de código (Sources)
 # Aqui incluímos o seu fp e os códigos-fonte das bibliotecas
@@ -29,6 +30,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${GLFW_DIR}/include"
     "${GLM_DIR}/include"
     "${IMGUI_DIR}"
+    "${NLOHMANN_DIR}"
 )
 
 # 6. Linkar Bibliotecas Binárias
