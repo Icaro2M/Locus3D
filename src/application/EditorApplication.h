@@ -11,7 +11,7 @@
 #include "controllers/CameraContext.h"
 #include "controllers/SceneContext.h"
 #include "../ui/UIContext.h"
-
+#include "../tools/selection/Raycaster.h"
 class EditorApplication {
 public:
     EditorApplication(WindowManager* window);
@@ -41,4 +41,7 @@ private:
     
     Raycaster m_raycaster;
     Shader m_shader;
+
+    void setupEventSubscriptions();
+    void syncUI();
 };

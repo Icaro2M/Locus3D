@@ -2,7 +2,7 @@
 
 CameraContext::CameraContext()
 {
-}
+m_camera.setPosition(glm::vec3(0.0f, 5.0f, 18.0f));}
 
 void CameraContext::update(GLFWwindow* window)
 {

@@ -13,4 +13,5 @@ public:
 private:
     AppEventBus* m_eventBus;
     UIContext* m_context;
+    uint32_t m_iconCubeTex = 0;
 };

@@ -25,36 +25,33 @@ void GizmoToolbar::draw()
 
     if (ImGui::Begin("GizmoToolbar", nullptr, flags))
     {
-        if (m_context->activeTransformMode == TransformMode::Translate) 
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+        bool isTranslateActive = (m_context->activeTransformMode == TransformMode::Translate);
+        if (isTranslateActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
         if (ImGui::Button("Mover (W)", ImVec2(85, 30)))
         {
             m_context->activeTransformMode = TransformMode::Translate;
         }
-        if (m_context->activeTransformMode == TransformMode::Translate) 
-            ImGui::PopStyleColor();
+        if (isTranslateActive) ImGui::PopStyleColor();
 
         ImGui::SameLine();
 
-        if (m_context->activeTransformMode == TransformMode::Rotate) 
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+        bool isRotateActive = (m_context->activeTransformMode == TransformMode::Rotate);
+        if (isRotateActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
         if (ImGui::Button("Girar (E)", ImVec2(85, 30)))
         {
             m_context->activeTransformMode = TransformMode::Rotate;
         }
-        if (m_context->activeTransformMode == TransformMode::Rotate) 
-            ImGui::PopStyleColor();
+        if (isRotateActive) ImGui::PopStyleColor();
 
         ImGui::SameLine();
 
-        if (m_context->activeTransformMode == TransformMode::Scale) 
-            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
+        bool isScaleActive = (m_context->activeTransformMode == TransformMode::Scale);
+        if (isScaleActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.2f, 1.0f));
         if (ImGui::Button("Escala (R)", ImVec2(85, 30)))
         {
             m_context->activeTransformMode = TransformMode::Scale;
         }
-        if (m_context->activeTransformMode == TransformMode::Scale) 
-            ImGui::PopStyleColor();
+        if (isScaleActive) ImGui::PopStyleColor();
     }
     
     ImGui::End();
