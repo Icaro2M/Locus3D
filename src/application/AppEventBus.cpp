@@ -1,4 +1,5 @@
 #include "AppEventBus.h"
+void removeObject(uint32_t id);
 
 Event::Event(EventType t) 
     : type(t), payloadUInt(0), payloadInt(0) 

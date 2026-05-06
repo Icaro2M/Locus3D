@@ -22,34 +22,46 @@ void InspectorPanel::draw()
 
     if (ImGui::Begin("Inspetor", nullptr, flags))
     {
+        // Área da lista de objetos
         if (ImGui::BeginChild("ObjectList", ImVec2(0, -35), true))
         {
-            for (size_t i = 0; i < m_context->sceneObjects.size(); ++i)
+            for (auto& obj : m_context->sceneObjects)
             {
-                auto& obj = m_context->sceneObjects[i];
+                ImGui::PushID(obj.id);
+
                 bool isSelected = (m_context->selectedObjectId == obj.id);
 
-                std::string label = obj.name + "##" + std::to_string(obj.id);
-                
-                if (ImGui::Selectable(label.c_str(), isSelected))
+                // A correção mágica: limitamos a largura do Selectable!
+                // Usa o espaço disponível na janela menos 35 pixels (que é o espaço do botão X)
+                float availableWidth = ImGui::GetContentRegionAvail().x;
+                float buttonSpace = 35.0f; 
+
+                // O ImVec2 no final obriga o Selectable a não invadir a área do botão
+                if (ImGui::Selectable(obj.name.c_str(), isSelected, 0, ImVec2(availableWidth - buttonSpace, 0)))
                 {
                     m_context->selectedObjectId = obj.id;
                     std::strncpy(m_renameBuffer, obj.name.c_str(), sizeof(m_renameBuffer) - 1);
                 }
 
-                if (isSelected)
+                ImGui::SameLine(ImGui::GetWindowWidth() - 35.0f);
+                
+                // Agora o botão está livre para receber o clique!
+                if (ImGui::Button("X"))
                 {
-                    ImGui::SameLine(ImGui::GetWindowWidth() - 35.0f);
-                    if (ImGui::Button(("X##del" + std::to_string(obj.id)).c_str()))
-                    {
+                    if (isSelected) {
                         m_context->selectedObjectId = 0;
-                        m_eventBus->emit(EventType::DeleteObject, obj.id);
+                        std::memset(m_renameBuffer, 0, sizeof(m_renameBuffer));
                     }
+                    // Emite o evento com segurança de tipo (casting)
+                    m_eventBus->emit(EventType::DeleteObject, static_cast<int>(obj.id));
                 }
+
+                ImGui::PopID();
             }
         }
         ImGui::EndChild();
 
+        // Área de renomear o objeto
         if (m_context->selectedObjectId != 0)
         {
             ImGui::SetNextItemWidth(-1.0f);
@@ -60,7 +72,7 @@ void InspectorPanel::draw()
                     if (obj.id == m_context->selectedObjectId)
                     {
                         obj.name = std::string(m_renameBuffer);
-                        m_eventBus->emit(EventType::RenameObject, obj.id);
+                        m_eventBus->emit(EventType::RenameObject, static_cast<int>(obj.id));
                         break;
                     }
                 }

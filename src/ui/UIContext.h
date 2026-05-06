@@ -25,6 +25,16 @@ struct UIContext {
     
     bool showCustomSolidPanel;
 
+    // =========================================================
+    // VARIÁVEIS PARA O GERADOR DE SÓLIDO PERSONALIZADO
+    // =========================================================
+    char customSolidName[256];
+    int customSolidSides;
+    float customSolidBottomRadius;
+    float customSolidTopRadius;
+    float customSolidHeight;
+    // =========================================================
+
     UIContext();
 
     void resetSelection();

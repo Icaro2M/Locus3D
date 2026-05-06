@@ -1,6 +1,7 @@
 #include "EditorApplication.h"
 #include "../resources/AssetPaths.h"
 #include <imgui.h> 
+#include <iostream>
 
 EditorApplication::EditorApplication(WindowManager* window)
     : m_window(window),
@@ -18,27 +19,80 @@ void EditorApplication::processInput()
 {
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
     
-    // Detecta se houve um clique NOVO (evita atirar raios todo frame)
+    // =========================================================
+    // --- LÓGICA DO MOUSE (CLIQUE, ARRASTO E SOLTURA) ---
+    // =========================================================
     static bool wasLeftMouseDown = false;
     bool isLeftMouseDown = glfwGetMouseButton(m_window->getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    
     bool mouseClicked = isLeftMouseDown && !wasLeftMouseDown;
+    bool mouseReleased = !isLeftMouseDown && wasLeftMouseDown; 
+    
     wasLeftMouseDown = isLeftMouseDown;
 
-    ImGuiIO & io = ImGui::GetIO();
+    ImGuiIO& io = ImGui::GetIO();
     
-    // Só tenta selecionar algo se houve um clique e se o clique NÃO foi em cima de uma janela da UI
     if (mouseClicked && !io.WantCaptureMouse)
     {
         if (!m_transformBridge.handleMouseClick(m_window->getWindow(), m_cameraContext.getCamera(), m_raycaster)) {
             m_selectionController.handleSelection(m_window->getWindow(), m_cameraContext.getCamera(), m_sceneContext.getScene());
         }
     }
+
+    if (mouseReleased)
+    {
+        m_transformBridge.handleMouseRelease();
+    }
+
+    // =========================================================
+    // --- LÓGICA DO BOTÃO DELETE ---
+    // =========================================================
+    static bool wasDeletePressed = false;
+    bool isDeletePressed = glfwGetKey(m_window->getWindow(), GLFW_KEY_DELETE) == GLFW_PRESS;
+    
+    if (isDeletePressed && !wasDeletePressed && !io.WantTextInput)
+    {
+        SceneObject* selected = m_editorState.getSelectedObject();
+        if (selected != nullptr)
+        {
+            m_eventBus.emit(EventType::DeleteObject, static_cast<int>(selected->getId()));
+        }
+    }
+    wasDeletePressed = isDeletePressed;
+
+    // =========================================================
+    // --- ATALHOS DO GIZMO (W, E, R) ---
+    // =========================================================
+    static bool wasW = false, wasE = false, wasR = false;
+    bool isW = glfwGetKey(m_window->getWindow(), GLFW_KEY_W) == GLFW_PRESS;
+    bool isE = glfwGetKey(m_window->getWindow(), GLFW_KEY_E) == GLFW_PRESS;
+    bool isR = glfwGetKey(m_window->getWindow(), GLFW_KEY_R) == GLFW_PRESS;
+
+    if (isW && !wasW && !io.WantTextInput) {
+        m_uiContext.activeTransformMode = TransformMode::Translate;
+        m_eventBus.emit(EventType::InputKeyW, 0); 
+    }
+    if (isE && !wasE && !io.WantTextInput) {
+        m_uiContext.activeTransformMode = TransformMode::Rotate;
+        m_eventBus.emit(EventType::InputKeyE, 0);
+    }
+    if (isR && !wasR && !io.WantTextInput) {
+        m_uiContext.activeTransformMode = TransformMode::Scale;
+        m_eventBus.emit(EventType::InputKeyR, 0);
+    }
+    
+    wasW = isW; 
+    wasE = isE; 
+    wasR = isR;
 }
 
 void EditorApplication::update()
 {
     m_cameraContext.update(m_window->getWindow());
+    
+    // Atualiza o arrasto do mouse
     m_transformBridge.handleMouseMove(m_window->getWindow(), m_cameraContext.getCamera(), m_raycaster);
+    
     m_faceToolController.update(m_window->getWindow(), m_cameraContext.getCamera());
     syncUI();
 }
@@ -57,35 +111,66 @@ void EditorApplication::render()
 void EditorApplication::setupEventSubscriptions()
 {
     m_eventBus.subscribe([this](const Event& e) {
-        if (e.type == EventType::AddPrimitive) {
+        
+        if (e.type == EventType::InputKeyW || 
+            e.type == EventType::InputKeyE || 
+            e.type == EventType::InputKeyR ||
+            e.type == EventType::InputKeyG ||
+            e.type == EventType::InputKeyL ||
+            e.type == EventType::InputKeyEscape) 
+        {
+            m_transformBridge.handleInputEvent(e.type);
+        }
+        
+        else if (e.type == EventType::AddPrimitive) {
             m_sceneContext.addPrimitive(e.payloadInt);
         }
         else if (e.type == EventType::AddCustomSolid) {
-            m_sceneContext.addPrimitive(3);
+            m_sceneContext.addCustomSolid(
+                m_uiContext.customSolidName,
+                m_uiContext.customSolidSides,
+                m_uiContext.customSolidBottomRadius,
+                m_uiContext.customSolidTopRadius,
+                m_uiContext.customSolidHeight
+            );
         }
+        // =======================================================================
+        // A MÁGICA ESTÁ AQUI: Só atualiza do Inspetor se NÃO estiver arrastando
+        // =======================================================================
         else if (e.type == EventType::TransformChanged) {
-            // Aplica os números digitados no painel Transform diretamente no objeto real
-            SceneObject* selected = m_editorState.getSelectedObject();
-            if (selected && selected->getId() == m_uiContext.selectedObjectId) {
-                selected->getTransform().setPosition(glm::vec3(m_uiContext.position[0], m_uiContext.position[1], m_uiContext.position[2]));
-                selected->getTransform().setRotation(glm::vec3(m_uiContext.rotation[0], m_uiContext.rotation[1], m_uiContext.rotation[2]));
-                selected->getTransform().setScale(glm::vec3(m_uiContext.scale[0], m_uiContext.scale[1], m_uiContext.scale[2]));
+            if (!m_transformBridge.getController().isDragging()) {
+                SceneObject* selected = m_editorState.getSelectedObject();
+                if (selected && selected->getId() == m_uiContext.selectedObjectId) {
+                    selected->getTransform().setPosition(glm::vec3(m_uiContext.position[0], m_uiContext.position[1], m_uiContext.position[2]));
+                    selected->getTransform().setRotation(glm::vec3(m_uiContext.rotation[0], m_uiContext.rotation[1], m_uiContext.rotation[2]));
+                    selected->getTransform().setScale(glm::vec3(m_uiContext.scale[0], m_uiContext.scale[1], m_uiContext.scale[2]));
+                }
             }
+        }
+        else if (e.type == EventType::DeleteObject) {
+            uint32_t idToDel = static_cast<uint32_t>(e.payloadInt);
+            
+            if (m_editorState.getSelectedObject() != nullptr && m_editorState.getSelectedObject()->getId() == idToDel) {
+                m_editorState.setSelectedObject(nullptr);
+                m_uiContext.selectedObjectId = 0;
+                
+                m_transformBridge.handleInputEvent(EventType::InputKeyEscape);
+            }
+
+            m_sceneContext.removeObject(idToDel);
         }
     });
 }
 
 void EditorApplication::syncUI()
 {
-    // 1. Sincronização via Clique no Inspetor:
-    // Se o usuário clicou no nome do objeto no painel, aplicamos essa seleção ao EditorState
     uint32_t stateSelectedId = m_editorState.getSelectedObject() ? m_editorState.getSelectedObject()->getId() : 0;
     
     if (m_uiContext.selectedObjectId != stateSelectedId && m_uiContext.selectedObjectId != 0)
     {
         auto& objects = m_sceneContext.getScene().getObjects();
         for (SceneObject* obj : objects) {
-            if (obj->getId() == m_uiContext.selectedObjectId) {
+            if (obj != nullptr && obj->getId() == m_uiContext.selectedObjectId) {
                 m_editorState.setSelectedObject(obj);
                 stateSelectedId = m_uiContext.selectedObjectId;
                 break;
@@ -93,12 +178,13 @@ void EditorApplication::syncUI()
         }
     }
 
-    // 2. Limpa e Atualiza os dados da Cena para a UI
     m_uiContext.sceneObjects.clear();
     auto& objects = m_sceneContext.getScene().getObjects(); 
     
     for (SceneObject* obj : objects)
     {
+        if (obj == nullptr) continue; 
+        
         SceneObjectInfo info;
         info.id = obj->getId(); 
         info.name = obj->getName(); 
@@ -106,7 +192,6 @@ void EditorApplication::syncUI()
         m_uiContext.sceneObjects.push_back(info);
     }
 
-    // 3. Sincroniza o Painel Transform
     SceneObject* selected = m_editorState.getSelectedObject();
     if (selected != nullptr)
     {
