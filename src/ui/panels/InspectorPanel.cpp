@@ -13,16 +13,17 @@ void InspectorPanel::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     
+    // Calcula o espaço que sobra acima do Transform Panel
+    float transformHeight = (viewport->Size.y - 50.0f) / 2.0f;
     ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x - 300.0f, viewport->Pos.y + 50.0f));
-    ImGui::SetNextWindowSize(ImVec2(300.0f, (viewport->Size.y - 50.0f) / 2.0f));
+    ImGui::SetNextWindowSize(ImVec2(300.0f, transformHeight));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | 
                              ImGuiWindowFlags_NoResize | 
                              ImGuiWindowFlags_NoMove;
 
-    if (ImGui::Begin("Inspetor", nullptr, flags))
+    if (ImGui::Begin("Inspector", nullptr, flags)) // Mudei o nome para inglês como no mockup
     {
-        // Área da lista de objetos
         if (ImGui::BeginChild("ObjectList", ImVec2(0, -35), true))
         {
             for (auto& obj : m_context->sceneObjects)
@@ -30,30 +31,39 @@ void InspectorPanel::draw()
                 ImGui::PushID(obj.id);
 
                 bool isSelected = (m_context->selectedObjectId == obj.id);
-
-                // A correção mágica: limitamos a largura do Selectable!
-                // Usa o espaço disponível na janela menos 35 pixels (que é o espaço do botão X)
                 float availableWidth = ImGui::GetContentRegionAvail().x;
-                float buttonSpace = 35.0f; 
+                float buttonSpace = 30.0f; 
 
-                // O ImVec2 no final obriga o Selectable a não invadir a área do botão
-                if (ImGui::Selectable(obj.name.c_str(), isSelected, 0, ImVec2(availableWidth - buttonSpace, 0)))
+                // Desenha o item selecionável
+                if (ImGui::Selectable(obj.name.c_str(), isSelected, 0, ImVec2(availableWidth - buttonSpace, 24.0f)))
                 {
                     m_context->selectedObjectId = obj.id;
                     std::strncpy(m_renameBuffer, obj.name.c_str(), sizeof(m_renameBuffer) - 1);
                 }
 
+                // Posiciona o botão de exclusão
                 ImGui::SameLine(ImGui::GetWindowWidth() - 35.0f);
                 
-                // Agora o botão está livre para receber o clique!
-                if (ImGui::Button("X"))
+                // Pinta o botão de vermelho se o item estiver selecionado (como na referência)
+                if (isSelected) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 0.8f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 1.0f, 1.0f, 1.0f));
+                }
+
+                // Usamos "X" por enquanto. Para o ícone de lixeira exato, precisaríamos carregar uma fonte de ícones (FontAwesome).
+                if (ImGui::Button("X", ImVec2(24.0f, 24.0f)))
                 {
                     if (isSelected) {
                         m_context->selectedObjectId = 0;
                         std::memset(m_renameBuffer, 0, sizeof(m_renameBuffer));
                     }
-                    // Emite o evento com segurança de tipo (casting)
                     m_eventBus->emit(EventType::DeleteObject, static_cast<int>(obj.id));
+                }
+
+                if (isSelected) {
+                    ImGui::PopStyleColor(4); // Remove as cores vermelhas para não vazar pros outros botões
                 }
 
                 ImGui::PopID();

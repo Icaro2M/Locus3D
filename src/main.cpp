@@ -2,6 +2,7 @@
 #include "application/EditorApplication.h"
 #include "ui/UILayer.h"
 #include "application/controllers/CameraContext.h" // Adicionado para manter a câmera funcionando
+#include "ui/ImGuiTheme.h"
 
 // Inclua os headers do ImGui
 #include "imgui.h"
@@ -19,6 +20,7 @@ int main()
     ImGui::CreateContext(); 
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     ImGui::StyleColorsDark();
+    ApplyModernTheme();
 
     // ==========================================================
     // 3. CARREGAMENTO DA FONTE PERSONALIZADA

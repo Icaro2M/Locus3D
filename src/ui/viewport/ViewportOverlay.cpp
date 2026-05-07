@@ -10,7 +10,8 @@ void ViewportOverlay::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 10.0f, viewport->Pos.y + 120.0f));
+    // Empurramos o texto mais para baixo (Y = 140.0f) para não bater na barra flutuante do Gizmo
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 15.0f, viewport->Pos.y + 140.0f));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | 
                              ImGuiWindowFlags_NoSavedSettings | 

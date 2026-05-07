@@ -34,10 +34,17 @@ void EditorApplication::processInput()
     
     if (mouseClicked && !io.WantCaptureMouse)
     {
+        if (m_editorState.getActiveTool() != EditorToolType::None)
+        {
+            m_eventBus.emit(EventType::InputMouseClickLeft); // Confirma a ferramenta
+        }
+        else // Se não tiver nenhuma ferramenta ativa, aí sim o clique serve para selecionar!
+        {
         if (!m_transformBridge.handleMouseClick(m_window->getWindow(), m_cameraContext.getCamera(), m_raycaster)) {
             m_selectionController.handleSelection(m_window->getWindow(), m_cameraContext.getCamera(), m_sceneContext.getScene());
         }
     }
+}
 
     if (mouseReleased)
     {
@@ -112,16 +119,62 @@ void EditorApplication::setupEventSubscriptions()
 {
     m_eventBus.subscribe([this](const Event& e) {
         
+        // =========================================================
+        // ATALHOS DO GIZMO
+        // =========================================================
         if (e.type == EventType::InputKeyW || 
             e.type == EventType::InputKeyE || 
             e.type == EventType::InputKeyR ||
             e.type == EventType::InputKeyG ||
-            e.type == EventType::InputKeyL ||
-            e.type == EventType::InputKeyEscape) 
+            e.type == EventType::InputKeyL) 
         {
             m_transformBridge.handleInputEvent(e.type);
         }
         
+        // =========================================================
+        // ESCAPE CANCELA TUDO E VOLTA PRO MODO DE OBJETO
+        // =========================================================
+        else if (e.type == EventType::InputKeyEscape) 
+        {
+            m_transformBridge.handleInputEvent(e.type);
+            m_editorState.setFaceModeActive(false); // Desliga o Face Mode
+            m_editorState.clearSelectedFace();      // Limpa seleções de face
+            m_toolManager.cancelCurrentTool();      // Cancela extrusão, etc
+            m_uiContext.isFaceModeActive = false;   // Atualiza a UI para [OBJECT MODE]
+        }
+
+        // =========================================================
+        // ATIVAÇÃO DO MODO DE FACE (TECLA 'F' OU BOTÃO NA UI)
+        // =========================================================
+        else if (e.type == EventType::InputKeyF) 
+        {
+            // Se já estava ativo, desativa. Se estava desativado, ativa.
+            bool currentMode = m_editorState.isFaceModeActive();
+            m_editorState.setFaceModeActive(!currentMode);
+            m_uiContext.isFaceModeActive = !currentMode; // Atualiza aquele textinho da UI!
+            
+            // Se desligou o Face Mode, precisamos garantir que as seleções antigas sumam
+            if (currentMode) {
+                m_editorState.clearSelectedFace();
+                m_toolManager.cancelCurrentTool();
+            }
+        }
+        
+        // =========================================================
+        // FERRAMENTAS DE FACE (EXTRUSÃO, MOVER, ESCALA)
+        // =========================================================
+        else if (e.type == EventType::InputKeyT || 
+                 e.type == EventType::InputKeyM || 
+                 e.type == EventType::InputKeyS ||
+                 e.type == EventType::InputMouseClickLeft ||
+                 e.type == EventType::InputMouseReleaseLeft)
+        {
+            m_toolManager.handleInputEvent(e.type);
+        }
+        
+        // =========================================================
+        // ADIÇÃO DE PRIMITIVAS
+        // =========================================================
         else if (e.type == EventType::AddPrimitive) {
             m_sceneContext.addPrimitive(e.payloadInt);
         }
@@ -134,9 +187,10 @@ void EditorApplication::setupEventSubscriptions()
                 m_uiContext.customSolidHeight
             );
         }
-        // =======================================================================
-        // A MÁGICA ESTÁ AQUI: Só atualiza do Inspetor se NÃO estiver arrastando
-        // =======================================================================
+        
+        // =========================================================
+        // SINCRONIZAÇÃO DO INSPETOR (LÓGICA DO ARRASTO)
+        // =========================================================
         else if (e.type == EventType::TransformChanged) {
             if (!m_transformBridge.getController().isDragging()) {
                 SceneObject* selected = m_editorState.getSelectedObject();
@@ -147,6 +201,10 @@ void EditorApplication::setupEventSubscriptions()
                 }
             }
         }
+        
+        // =========================================================
+        // DELEÇÃO DE OBJETO
+        // =========================================================
         else if (e.type == EventType::DeleteObject) {
             uint32_t idToDel = static_cast<uint32_t>(e.payloadInt);
             
@@ -159,7 +217,26 @@ void EditorApplication::setupEventSubscriptions()
 
             m_sceneContext.removeObject(idToDel);
         }
+        // ... dentro do setupEventSubscriptions ...
+
+        else if (e.type == EventType::ToolStarted)
+        {
+            if (m_editorState.isFaceModeActive())
+            {
+                // Inicia a ferramenta (Extrusão, Mover, etc.) com a câmera atual
+                m_faceToolController.startActiveTool(m_window->getWindow(), m_cameraContext.getCamera());
+            }
+        }
+        else if (e.type == EventType::ToolCanceled)
+        {
+            m_faceToolController.cancelActiveTool();
+        }
+        else if (e.type == EventType::ToolConfirmed)
+        {
+            m_faceToolController.confirmActiveTool();
+        }
     });
+    
 }
 
 void EditorApplication::syncUI()

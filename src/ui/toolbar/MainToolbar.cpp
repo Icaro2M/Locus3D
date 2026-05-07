@@ -9,108 +9,88 @@ MainToolbar::MainToolbar(AppEventBus* eventBus, UIContext* context)
 void MainToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
+    
     ImGui::SetNextWindowPos(viewport->Pos);
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, 50.0f));
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, 70.0f)); 
 
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | 
-                             ImGuiWindowFlags_NoResize | 
-                             ImGuiWindowFlags_NoMove | 
-                             ImGuiWindowFlags_NoScrollbar | 
-                             ImGuiWindowFlags_NoSavedSettings;
+    ImGuiWindowFlags topBarFlags = ImGuiWindowFlags_NoTitleBar | 
+                                   ImGuiWindowFlags_NoResize | 
+                                   ImGuiWindowFlags_NoMove | 
+                                   ImGuiWindowFlags_NoScrollbar | 
+                                   ImGuiWindowFlags_NoSavedSettings;
 
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(15.0f, 10.0f));
 
-    if (ImGui::Begin("MainToolbar", nullptr, flags))
+    if (ImGui::Begin("MainToolbar", nullptr, topBarFlags))
     {
-        // =========================================================
-        // --- FERRAMENTAS DE TRANSFORMAÇÃO GERAL (GIZMO) ---
-        // =========================================================
-        
-        // MOVER (W)
-        bool isTranslateActive = (m_context->activeTransformMode == TransformMode::Translate);
-        if (isTranslateActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.0f)); // Cor verde para destaque
-        if (ImGui::Button("Mover (W)", ImVec2(90, 30))) { 
-            m_context->activeTransformMode = TransformMode::Translate; 
-            m_eventBus->emit(EventType::InputKeyW, 0); // Avisa o motor que o modo mudou
-        }
-        if (isTranslateActive) ImGui::PopStyleColor();
+        ImVec2 btnSize(100.0f, 50.0f); 
 
-        ImGui::SameLine();
-
-        // GIRAR (E)
-        bool isRotateActive = (m_context->activeTransformMode == TransformMode::Rotate);
-        if (isRotateActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.0f));
-        if (ImGui::Button("Girar (E)", ImVec2(90, 30))) { 
-            m_context->activeTransformMode = TransformMode::Rotate; 
-            m_eventBus->emit(EventType::InputKeyE, 0);
-        }
-        if (isRotateActive) ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-
-        // ESCALA (R)
-        bool isScaleActive = (m_context->activeTransformMode == TransformMode::Scale);
-        if (isScaleActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.6f, 0.3f, 1.0f));
-        if (ImGui::Button("Escala (R)", ImVec2(90, 30))) { 
-            m_context->activeTransformMode = TransformMode::Scale; 
-            m_eventBus->emit(EventType::InputKeyR, 0);
-        }
-        if (isScaleActive) ImGui::PopStyleColor();
-
-        ImGui::SameLine();
-        ImGui::Text("  |  "); // Separador visual
-        ImGui::SameLine();
-
-        // =========================================================
-        // --- FERRAMENTAS DE MODO DE FACE ---
-        // =========================================================
+// --- FERRAMENTAS DE MODO DE FACE ---
         bool isSelecaoActive = (m_context->activeToolId == 0);
-        if (isSelecaoActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
-        if (ImGui::Button("Selecao Face", ImVec2(100, 30))) { m_context->activeToolId = 0; m_context->showCustomSolidPanel = false; }
+        if (isSelecaoActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.30f, 0.45f, 1.0f)); 
+        if (ImGui::Button("Selecao\nFace", btnSize)) { 
+            m_context->activeToolId = 0; 
+            m_context->showCustomSolidPanel = false; 
+            // Agora o botão DISPARA A TECLA F (que liga o face mode)
+            m_eventBus->emit(EventType::InputKeyF); 
+        }
         if (isSelecaoActive) ImGui::PopStyleColor();
 
         ImGui::SameLine();
 
         bool isExtrusaoActive = (m_context->activeToolId == 1);
-        if (isExtrusaoActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
-        if (ImGui::Button("Extrusao", ImVec2(80, 30))) { m_context->activeToolId = 1; m_context->showCustomSolidPanel = false; }
+        if (isExtrusaoActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.30f, 0.45f, 1.0f));
+        if (ImGui::Button("Extrusao\nde Face", btnSize)) { 
+            m_context->activeToolId = 1; 
+            m_context->showCustomSolidPanel = false; 
+            m_eventBus->emit(EventType::InputKeyT);
+        }
         if (isExtrusaoActive) ImGui::PopStyleColor();
 
         ImGui::SameLine();
-        ImGui::Text("  |  "); // Separador visual
+
+        bool isMoverActive = (m_context->activeToolId == 2);
+        if (isMoverActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.30f, 0.45f, 1.0f));
+        if (ImGui::Button("Mover\nFace", btnSize)) { 
+            m_context->activeToolId = 2; 
+            m_context->showCustomSolidPanel = false;
+            m_eventBus->emit(EventType::InputKeyM);
+        }
+        if (isMoverActive) ImGui::PopStyleColor();
+
         ImGui::SameLine();
 
-        // =========================================================
-        // --- PRIMITIVAS NATIVAS ---
-        // =========================================================
-        
-        // Botões um pouco mais escuros para diferenciar das ferramentas
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.3f, 1.0f));
-        
-        if (ImGui::Button("+ Cubo", ImVec2(70, 30))) m_eventBus->emit(EventType::AddPrimitive, 0);
-        ImGui::SameLine();
-        if (ImGui::Button("+ Esfera", ImVec2(70, 30))) m_eventBus->emit(EventType::AddPrimitive, 1);
-        ImGui::SameLine();
-        if (ImGui::Button("+ Cone", ImVec2(70, 30))) m_eventBus->emit(EventType::AddPrimitive, 2);
-        ImGui::SameLine();
-        if (ImGui::Button("+ Cilindro", ImVec2(80, 30))) m_eventBus->emit(EventType::AddPrimitive, 3);
-        
-        ImGui::PopStyleColor();
+        bool isEscalaActive = (m_context->activeToolId == 3);
+        if (isEscalaActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.30f, 0.45f, 1.0f));
+        if (ImGui::Button("Escala\nde Face", btnSize)) { 
+            m_context->activeToolId = 3; 
+            m_context->showCustomSolidPanel = false;
+            m_eventBus->emit(EventType::InputKeyS);
+        }
+        if (isEscalaActive) ImGui::PopStyleColor();
 
-        // =========================================================
-        // --- PAINEL LATERAL (SÓLIDO PERSONALIZADO) ---
-        // =========================================================
-        ImGui::SameLine(ImGui::GetWindowWidth() - 170.0f);
+        ImGui::SameLine(0, 20.0f);
+        ImGui::TextDisabled("|"); 
+        ImGui::SameLine(0, 20.0f);
+
+        ImVec2 primBtnSize(70.0f, 50.0f);
+        if (ImGui::Button("+ Cubo", primBtnSize)) m_eventBus->emit(EventType::AddPrimitive, 0);
+        ImGui::SameLine();
+        if (ImGui::Button("+ Esfera", primBtnSize)) m_eventBus->emit(EventType::AddPrimitive, 1);
+        ImGui::SameLine();
+        if (ImGui::Button("+ Cone", primBtnSize)) m_eventBus->emit(EventType::AddPrimitive, 2);
+        ImGui::SameLine();
+        if (ImGui::Button("+ Cilindro", primBtnSize)) m_eventBus->emit(EventType::AddPrimitive, 3);
+        
+        ImGui::SameLine(0, 20.0f);
+        ImGui::TextDisabled("|");
+        ImGui::SameLine(0, 20.0f);
 
         bool isCustomSolidActive = m_context->showCustomSolidPanel;
-        if (isCustomSolidActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.4f, 0.1f, 1.0f));
-        if (ImGui::Button("Solido Personalizado", ImVec2(160, 30)))
-        {
-            m_context->showCustomSolidPanel = !m_context->showCustomSolidPanel;
-        }
+        if (isCustomSolidActive) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.22f, 0.30f, 0.45f, 1.0f));
+        if (ImGui::Button("Solido\nPersonalizado", ImVec2(110.0f, 50.0f))) { m_context->showCustomSolidPanel = !m_context->showCustomSolidPanel; }
         if (isCustomSolidActive) ImGui::PopStyleColor();
     }
-    
     ImGui::End();
     ImGui::PopStyleVar();
 }
