@@ -14,25 +14,37 @@ void SelectionController::handleSelection(GLFWwindow* window, Camera& camera, Sc
 
     if (m_state->isFaceModeActive() && m_state->getSelectedObject() != nullptr)
     {
-        SceneObject* selectedObj = m_state->getSelectedObject();
-        int faceIndex = m_faceSelector.selectFace(*selectedObj, window, camera);
-
-        if (faceIndex != -1)
-        {
-            m_state->getSelectedFace().set(selectedObj, faceIndex);
-        }
-        else
-        {
-            m_state->clearSelectedFace();
-        }
+        selectFaceUnderMouse(window, camera);
     }
     else if (!m_state->isFaceModeActive())
     {
         SceneObject* hitObject = m_objectSelector.selectObject(window, camera, scene);
-        
+
         if (hitObject != m_state->getSelectedObject())
         {
             m_state->setSelectedObject(hitObject);
         }
     }
+}
+
+bool SelectionController::selectFaceUnderMouse(GLFWwindow* window, Camera& camera)
+{
+    SceneObject* selectedObj = m_state->getSelectedObject();
+
+    if (selectedObj == nullptr)
+    {
+        m_state->clearSelectedFace();
+        return false;
+    }
+
+    int faceIndex = m_faceSelector.selectFace(*selectedObj, window, camera);
+
+    if (faceIndex == -1)
+    {
+        m_state->clearSelectedFace();
+        return false;
+    }
+
+    m_state->getSelectedFace().set(selectedObj, faceIndex);
+    return true;
 }

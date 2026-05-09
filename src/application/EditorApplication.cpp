@@ -18,10 +18,7 @@ EditorApplication::EditorApplication(WindowManager* window)
 void EditorApplication::processInput()
 {
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
-    
-    // =========================================================
-    // --- LÓGICA DO MOUSE (CLIQUE, ARRASTO E SOLTURA) ---
-    // =========================================================
+
     static bool wasLeftMouseDown = false;
     bool isLeftMouseDown = glfwGetMouseButton(m_window->getWindow(), GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     
@@ -34,26 +31,47 @@ void EditorApplication::processInput()
     
     if (mouseClicked && !io.WantCaptureMouse)
     {
-        if (m_editorState.getActiveTool() != EditorToolType::None)
+        if (m_faceToolController.hasRunningTool())
         {
-            m_eventBus.emit(EventType::InputMouseClickLeft); // Confirma a ferramenta
+            m_faceToolController.confirmActiveTool();
         }
-        else // Se não tiver nenhuma ferramenta ativa, aí sim o clique serve para selecionar!
+        else if (m_editorState.getActiveTool() != EditorToolType::None)
         {
-        if (!m_transformBridge.handleMouseClick(m_window->getWindow(), m_cameraContext.getCamera(), m_raycaster)) {
-            m_selectionController.handleSelection(m_window->getWindow(), m_cameraContext.getCamera(), m_sceneContext.getScene());
+            bool selectedFace = m_selectionController.selectFaceUnderMouse(
+                m_window->getWindow(),
+                m_cameraContext.getCamera()
+            );
+
+            if (selectedFace)
+            {
+                m_faceToolController.startActiveTool(
+                    m_window->getWindow(),
+                    m_cameraContext.getCamera()
+                );
+            }
+        }
+        else
+        {
+            if (!m_transformBridge.handleMouseClick(
+                m_window->getWindow(),
+                m_cameraContext.getCamera(),
+                m_raycaster
+            ))
+            {
+                m_selectionController.handleSelection(
+                    m_window->getWindow(),
+                    m_cameraContext.getCamera(),
+                    m_sceneContext.getScene()
+                );
+            }
         }
     }
-}
 
     if (mouseReleased)
     {
         m_transformBridge.handleMouseRelease();
     }
 
-    // =========================================================
-    // --- LÓGICA DO BOTÃO DELETE ---
-    // =========================================================
     static bool wasDeletePressed = false;
     bool isDeletePressed = glfwGetKey(m_window->getWindow(), GLFW_KEY_DELETE) == GLFW_PRESS;
     
@@ -67,9 +85,6 @@ void EditorApplication::processInput()
     }
     wasDeletePressed = isDeletePressed;
 
-    // =========================================================
-    // --- ATALHOS DO GIZMO (W, E, R) ---
-    // =========================================================
     static bool wasW = false, wasE = false, wasR = false;
     bool isW = glfwGetKey(m_window->getWindow(), GLFW_KEY_W) == GLFW_PRESS;
     bool isE = glfwGetKey(m_window->getWindow(), GLFW_KEY_E) == GLFW_PRESS;
@@ -96,8 +111,7 @@ void EditorApplication::processInput()
 void EditorApplication::update()
 {
     m_cameraContext.update(m_window->getWindow());
-    
-    // Atualiza o arrasto do mouse
+
     m_transformBridge.handleMouseMove(m_window->getWindow(), m_cameraContext.getCamera(), m_raycaster);
     
     m_faceToolController.update(m_window->getWindow(), m_cameraContext.getCamera());
@@ -119,9 +133,6 @@ void EditorApplication::setupEventSubscriptions()
 {
     m_eventBus.subscribe([this](const Event& e) {
         
-        // =========================================================
-        // ATALHOS DO GIZMO
-        // =========================================================
         if (e.type == EventType::InputKeyW || 
             e.type == EventType::InputKeyE || 
             e.type == EventType::InputKeyR ||
@@ -130,51 +141,49 @@ void EditorApplication::setupEventSubscriptions()
         {
             m_transformBridge.handleInputEvent(e.type);
         }
-        
-        // =========================================================
-        // ESCAPE CANCELA TUDO E VOLTA PRO MODO DE OBJETO
-        // =========================================================
-        else if (e.type == EventType::InputKeyEscape) 
+       
+        else if (e.type == EventType::InputKeyEscape)
         {
-            m_transformBridge.handleInputEvent(e.type);
-            m_editorState.setFaceModeActive(false); // Desliga o Face Mode
-            m_editorState.clearSelectedFace();      // Limpa seleções de face
-            m_toolManager.cancelCurrentTool();      // Cancela extrusão, etc
-            m_uiContext.isFaceModeActive = false;   // Atualiza a UI para [OBJECT MODE]
-        }
+            if (m_faceToolController.hasRunningTool())
+            {
+                m_faceToolController.cancelActiveTool();
 
-        // =========================================================
-        // ATIVAÇÃO DO MODO DE FACE (TECLA 'F' OU BOTÃO NA UI)
-        // =========================================================
-        else if (e.type == EventType::InputKeyF) 
-        {
-            // Se já estava ativo, desativa. Se estava desativado, ativa.
-            bool currentMode = m_editorState.isFaceModeActive();
-            m_editorState.setFaceModeActive(!currentMode);
-            m_uiContext.isFaceModeActive = !currentMode; // Atualiza aquele textinho da UI!
-            
-            // Se desligou o Face Mode, precisamos garantir que as seleções antigas sumam
-            if (currentMode) {
-                m_editorState.clearSelectedFace();
+                m_editorState.setFaceModeActive(true);
+                m_uiContext.isFaceModeActive = true;
+            }
+            else if (m_editorState.getActiveTool() != EditorToolType::None)
+            {
                 m_toolManager.cancelCurrentTool();
+
+                m_editorState.setFaceModeActive(false);
+                m_editorState.clearSelectedFace();
+                m_uiContext.isFaceModeActive = false;
+            }
+            else
+            {
+                m_transformBridge.handleInputEvent(e.type);
+
+                m_editorState.setFaceModeActive(false);
+                m_editorState.clearSelectedFace();
+                m_uiContext.isFaceModeActive = false;
             }
         }
-        
-        // =========================================================
-        // FERRAMENTAS DE FACE (EXTRUSÃO, MOVER, ESCALA)
-        // =========================================================
-        else if (e.type == EventType::InputKeyT || 
-                 e.type == EventType::InputKeyM || 
-                 e.type == EventType::InputKeyS ||
-                 e.type == EventType::InputMouseClickLeft ||
-                 e.type == EventType::InputMouseReleaseLeft)
+
+        else if (e.type == EventType::InputKeyF)
         {
-            m_toolManager.handleInputEvent(e.type);
+            /*
+                deixar vazio por enquanto
+            */
         }
         
-        // =========================================================
-        // ADIÇÃO DE PRIMITIVAS
-        // =========================================================
+        else if (e.type == EventType::InputKeyT ||
+            e.type == EventType::InputKeyM ||
+            e.type == EventType::InputKeyS)
+        {
+            m_toolManager.handleInputEvent(e.type);
+            m_uiContext.isFaceModeActive = m_editorState.isFaceModeActive();
+        }
+        
         else if (e.type == EventType::AddPrimitive) {
             m_sceneContext.addPrimitive(e.payloadInt);
         }
@@ -188,9 +197,6 @@ void EditorApplication::setupEventSubscriptions()
             );
         }
         
-        // =========================================================
-        // SINCRONIZAÇÃO DO INSPETOR (LÓGICA DO ARRASTO)
-        // =========================================================
         else if (e.type == EventType::TransformChanged) {
             if (!m_transformBridge.getController().isDragging()) {
                 SceneObject* selected = m_editorState.getSelectedObject();
@@ -201,39 +207,39 @@ void EditorApplication::setupEventSubscriptions()
                 }
             }
         }
-        
-        // =========================================================
-        // DELEÇÃO DE OBJETO
-        // =========================================================
-        else if (e.type == EventType::DeleteObject) {
+
+        else if (e.type == EventType::DeleteObject)
+        {
             uint32_t idToDel = static_cast<uint32_t>(e.payloadInt);
-            
-            if (m_editorState.getSelectedObject() != nullptr && m_editorState.getSelectedObject()->getId() == idToDel) {
+
+            if (m_editorState.getSelectedObject() != nullptr &&
+                m_editorState.getSelectedObject()->getId() == idToDel)
+            {
                 m_editorState.setSelectedObject(nullptr);
                 m_uiContext.selectedObjectId = 0;
-                
                 m_transformBridge.handleInputEvent(EventType::InputKeyEscape);
             }
 
             m_sceneContext.removeObject(idToDel);
         }
-        // ... dentro do setupEventSubscriptions ...
 
         else if (e.type == EventType::ToolStarted)
         {
-            if (m_editorState.isFaceModeActive())
-            {
-                // Inicia a ferramenta (Extrusão, Mover, etc.) com a câmera atual
-                m_faceToolController.startActiveTool(m_window->getWindow(), m_cameraContext.getCamera());
-            }
+            m_uiContext.isFaceModeActive = m_editorState.isFaceModeActive();
         }
         else if (e.type == EventType::ToolCanceled)
         {
-            m_faceToolController.cancelActiveTool();
+            if (m_faceToolController.hasRunningTool())
+            {
+                m_faceToolController.cancelActiveTool();
+            }
         }
         else if (e.type == EventType::ToolConfirmed)
         {
-            m_faceToolController.confirmActiveTool();
+            if (m_faceToolController.hasRunningTool())
+            {
+                m_faceToolController.confirmActiveTool();
+            }
         }
     });
     
@@ -287,4 +293,23 @@ void EditorApplication::syncUI()
     {
         m_uiContext.selectedObjectId = 0;
     }
+
+    if (m_editorState.getSelectedObject() == nullptr)
+    {
+        clearFaceEditingState();
+    }
+}
+
+void EditorApplication::clearFaceEditingState()
+{
+    if (m_faceToolController.hasRunningTool())
+    {
+        m_faceToolController.cancelActiveTool();
+    }
+
+    m_editorState.clearSelectedFace();
+    m_editorState.setActiveTool(EditorToolType::None);
+    m_editorState.setFaceModeActive(false);
+
+    m_uiContext.isFaceModeActive = false;
 }

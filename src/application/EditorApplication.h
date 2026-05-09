@@ -26,6 +26,7 @@ public:
 
 private:
     WindowManager* m_window;
+
     AppEventBus m_eventBus;
     EditorState m_editorState;
     UIContext m_uiContext;
@@ -38,10 +39,12 @@ private:
     RenderCoordinator m_renderCoordinator;
     CameraContext m_cameraContext;
     SceneContext m_sceneContext;
-    
+
     Raycaster m_raycaster;
+
     Shader m_shader;
 
     void setupEventSubscriptions();
     void syncUI();
+    void clearFaceEditingState();
 };

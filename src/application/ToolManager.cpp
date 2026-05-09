@@ -7,17 +7,20 @@ ToolManager::ToolManager(EditorState* state, AppEventBus* eventBus)
 
 void ToolManager::startTool(EditorToolType toolType)
 {
-    if (m_state->getActiveTool() != EditorToolType::None)
-    {
-        cancelCurrentTool();
-    }
-
-    if (!m_state->isFaceModeActive() || !m_state->getSelectedFace().isValid())
+    if (toolType == EditorToolType::None)
     {
         return;
     }
 
+    if (m_state->getActiveTool() != EditorToolType::None)
+    {
+        m_eventBus->emit(EventType::ToolCanceled);
+    }
+
+    m_state->setFaceModeActive(true);
+    m_state->clearSelectedFace();
     m_state->setActiveTool(toolType);
+
     m_eventBus->emit(EventType::ToolStarted);
 }
 
@@ -29,6 +32,10 @@ void ToolManager::cancelCurrentTool()
     }
 
     m_eventBus->emit(EventType::ToolCanceled);
+
+    m_state->clearSelectedFace();
+    m_state->setActiveTool(EditorToolType::None);
+    m_state->setFaceModeActive(false);
 }
 
 bool ToolManager::confirmCurrentTool()
@@ -55,18 +62,11 @@ void ToolManager::handleInputEvent(EventType eventType)
         break;
 
     case EventType::InputKeyS:
-        if (m_state->isFaceModeActive())
-        {
-            startTool(EditorToolType::FaceScale);
-        }
+        startTool(EditorToolType::FaceScale);
         break;
 
     case EventType::InputKeyEscape:
         cancelCurrentTool();
-        break;
-
-    case EventType::InputMouseClickLeft:
-        confirmCurrentTool();
         break;
 
     default:

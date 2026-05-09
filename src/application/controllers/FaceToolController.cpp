@@ -51,6 +51,7 @@ void FaceToolController::update(GLFWwindow* window, Camera& camera)
 bool FaceToolController::confirmActiveTool()
 {
     EditorToolType activeTool = m_state->getActiveTool();
+
     bool success = false;
 
     if (activeTool == EditorToolType::PushPull)
@@ -68,7 +69,7 @@ bool FaceToolController::confirmActiveTool()
 
     if (success)
     {
-        m_state->setActiveTool(EditorToolType::None);
+        m_state->clearSelectedFace();
     }
 
     return success;
@@ -91,7 +92,14 @@ void FaceToolController::cancelActiveTool()
         m_faceScaleTool.cancel();
     }
 
-    m_state->setActiveTool(EditorToolType::None);
+    m_state->clearSelectedFace();
+}
+
+bool FaceToolController::hasRunningTool() const
+{
+    return m_pushPullTool.isActive() ||
+        m_faceMoveTool.isActive() ||
+        m_faceScaleTool.isActive();
 }
 
 void FaceToolController::handleKeyPress(int key)
