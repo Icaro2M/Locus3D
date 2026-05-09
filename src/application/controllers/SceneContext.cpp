@@ -8,10 +8,8 @@ SceneContext::SceneContext()
 
 void SceneContext::removeObject(uint32_t id)
 {
-    // 1. Remove da Cena (para de renderizar na tela)
     m_Scene.removeObject(id);
 
-    // 2. Remove da memória real, destruindo o ponteiro único com segurança
     m_Objects.erase(
         std::remove_if(m_Objects.begin(), m_Objects.end(),
             [id](const std::unique_ptr<SceneObject>& obj) { return obj->getId() == id; }),
@@ -26,7 +24,6 @@ void SceneContext::addPrimitive(int type)
     static int cubeCount = 1, sphereCount = 1, coneCount = 1, cylinderCount = 1;
     std::string name;
 
-    // 1. Cria a malha (Mesh) e guarda na memória de forma permanente
     std::unique_ptr<Mesh> newMesh;
 
     if (type == 0) 
@@ -56,14 +53,11 @@ void SceneContext::addPrimitive(int type)
 
     if (newMesh)
     {
-        // 2. Cria o Objeto apontando para a malha segura
         auto newObject = std::make_unique<SceneObject>(*newMesh);
         newObject->setName(name);
 
-        // 3. Adiciona na Scene (A Scene agora recebe uma referência segura)
         m_Scene.addObject(*newObject);
 
-        // 4. Guarda os ponteiros no nosso Contexto para eles nunca serem deletados
         m_Meshes.push_back(std::move(newMesh));
         m_Objects.push_back(std::move(newObject));
     }
@@ -86,25 +80,20 @@ const Scene& SceneContext::getScene() const
 
 void SceneContext::addCustomSolid(const char* name, int sides, float bottomRadius, float topRadius, float height)
 {
-    // Só cria "tampas" se o raio for maior que zero (para evitar bicos com textura bugada)
     bool capBottom = bottomRadius > 0.001f;
     bool capTop = topRadius > 0.001f;
 
-    // Chama a função matemática da sua fábrica
     auto newMesh = std::make_unique<Mesh>(PrimitiveFactory::createRadialSolid(sides, height, bottomRadius, topRadius, capBottom, capTop));
 
     if (newMesh)
     {
         auto newObject = std::make_unique<SceneObject>(*newMesh);
-        
-        // Define o nome digitado na interface (ou um padrão se estiver vazio)
+
         std::string objName = (name && name[0] != '\0') ? name : "Solido Customizado";
         newObject->setName(objName);
 
-        // Adiciona na Cena
         m_Scene.addObject(*newObject);
 
-        // Guarda os ponteiros para manter vivo na memória
         m_Meshes.push_back(std::move(newMesh));
         m_Objects.push_back(std::move(newObject));
     }

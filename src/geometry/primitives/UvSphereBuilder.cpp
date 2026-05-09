@@ -124,13 +124,13 @@ UvSphereBuilder::Result UvSphereBuilder::build(
             unsigned int c = static_cast<unsigned int>((ring + 1) * rowSize + segment + 1);
             unsigned int d = static_cast<unsigned int>(ring * rowSize + segment + 1);
 
-            addTriangle(result.indices, a, b, c);
-            addTriangle(result.indices, a, c, d);
+            addTriangle(result.indices, a, c, b);
+            addTriangle(result.indices, a, d, c);
 
             result.logicalFaces.push_back(
                 LogicalFace(
                     { currentTriangleIndex, currentTriangleIndex + 1 },
-                    { a, b, c, d }
+                    { a, d, c, b }
                 )
             );
 
