@@ -3,6 +3,7 @@
 
 #include <imgui.h>
 #include <GLFW/glfw3.h>
+#include <glad/glad.h>
 
 EditorApplication::EditorApplication(WindowManager* window)
     : m_window(window),
@@ -266,19 +267,7 @@ void EditorApplication::setupEventSubscriptions()
 
                 if (!objects.empty())
                 {
-                    SceneObject* createdObject = objects.back();
-
-                    if (createdObject != nullptr)
-                    {
-                        m_editorState.setSelectedObject(createdObject);
-                        m_uiContext.selectedObjectId = createdObject->getId();
-
-                        m_editorState.setTransformMode(TransformMode::Translate);
-                        m_editorState.setTransformAxis(TransformAxis::None);
-                        m_uiContext.activeTransformMode = TransformMode::Translate;
-
-                        m_transformBridge.handleInputEvent(EventType::InputKeyW);
-                    }
+                    selectCreatedObject(objects.back());
                 }
             }
             else if (e.type == EventType::AddCustomSolid)
@@ -297,19 +286,7 @@ void EditorApplication::setupEventSubscriptions()
 
                 if (!objects.empty())
                 {
-                    SceneObject* createdObject = objects.back();
-
-                    if (createdObject != nullptr)
-                    {
-                        m_editorState.setSelectedObject(createdObject);
-                        m_uiContext.selectedObjectId = createdObject->getId();
-
-                        m_editorState.setTransformMode(TransformMode::Translate);
-                        m_editorState.setTransformAxis(TransformAxis::None);
-                        m_uiContext.activeTransformMode = TransformMode::Translate;
-
-                        m_transformBridge.handleInputEvent(EventType::InputKeyW);
-                    }
+                    selectCreatedObject(objects.back());
                 }
             }
             else if (e.type == EventType::TransformChanged)
@@ -351,6 +328,7 @@ void EditorApplication::setupEventSubscriptions()
 
                     m_editorState.setSelectedObject(nullptr);
                     m_uiContext.selectedObjectId = 0;
+                    m_lastSyncedSelectedObjectId = 0;
 
                     m_transformBridge.handleInputEvent(EventType::InputKeyEscape);
                 }
@@ -380,23 +358,39 @@ void EditorApplication::setupEventSubscriptions()
 
 void EditorApplication::syncUI()
 {
-    uint32_t stateSelectedId =
-        m_editorState.getSelectedObject()
-        ? m_editorState.getSelectedObject()->getId()
-        : 0;
+    bool inspectorChangedSelection =
+        m_uiContext.selectedObjectId != m_lastSyncedSelectedObjectId;
 
-    if (m_uiContext.selectedObjectId != stateSelectedId &&
-        m_uiContext.selectedObjectId != 0)
+    if (inspectorChangedSelection)
     {
-        auto& objects = m_sceneContext.getScene().getObjects();
+        uint32_t requestedId = m_uiContext.selectedObjectId;
 
-        for (SceneObject* obj : objects)
+        clearFaceEditingState();
+
+        if (requestedId == 0)
         {
-            if (obj != nullptr && obj->getId() == m_uiContext.selectedObjectId)
+            m_editorState.setSelectedObject(nullptr);
+        }
+        else
+        {
+            SceneObject* objectToSelect = nullptr;
+
+            auto& objects = m_sceneContext.getScene().getObjects();
+
+            for (SceneObject* obj : objects)
             {
-                m_editorState.setSelectedObject(obj);
-                stateSelectedId = m_uiContext.selectedObjectId;
-                break;
+                if (obj != nullptr && obj->getId() == requestedId)
+                {
+                    objectToSelect = obj;
+                    break;
+                }
+            }
+
+            m_editorState.setSelectedObject(objectToSelect);
+
+            if (objectToSelect == nullptr)
+            {
+                m_uiContext.selectedObjectId = 0;
             }
         }
     }
@@ -468,6 +462,7 @@ void EditorApplication::syncUI()
     }
 
     m_uiContext.isFaceModeActive = m_editorState.isFaceModeActive();
+    m_lastSyncedSelectedObjectId = m_uiContext.selectedObjectId;
 }
 
 void EditorApplication::clearFaceEditingState()
@@ -484,4 +479,23 @@ void EditorApplication::clearFaceEditingState()
 
     m_uiContext.isFaceModeActive = false;
     m_uiContext.activeToolId = 0;
+}
+
+void EditorApplication::selectCreatedObject(SceneObject* object)
+{
+    if (object == nullptr)
+    {
+        return;
+    }
+
+    m_editorState.setSelectedObject(object);
+
+    m_uiContext.selectedObjectId = object->getId();
+    m_lastSyncedSelectedObjectId = object->getId();
+
+    m_editorState.setTransformMode(TransformMode::Translate);
+    m_editorState.setTransformAxis(TransformAxis::None);
+    m_uiContext.activeTransformMode = TransformMode::Translate;
+
+    m_transformBridge.handleInputEvent(EventType::InputKeyW);
 }
