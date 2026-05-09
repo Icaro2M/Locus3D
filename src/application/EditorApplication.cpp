@@ -229,10 +229,27 @@ void EditorApplication::setupEventSubscriptions()
             }
             else if (e.type == EventType::AddPrimitive)
             {
+                clearFaceEditingState();
+
                 m_sceneContext.addPrimitive(e.payloadInt);
+
+                auto& objects = m_sceneContext.getScene().getObjects();
+
+                if (!objects.empty())
+                {
+                    SceneObject* createdObject = objects.back();
+
+                    if (createdObject != nullptr)
+                    {
+                        m_editorState.setSelectedObject(createdObject);
+                        m_uiContext.selectedObjectId = createdObject->getId();
+                    }
+                }
             }
             else if (e.type == EventType::AddCustomSolid)
             {
+                clearFaceEditingState();
+
                 m_sceneContext.addCustomSolid(
                     m_uiContext.customSolidName,
                     m_uiContext.customSolidSides,
@@ -240,6 +257,19 @@ void EditorApplication::setupEventSubscriptions()
                     m_uiContext.customSolidTopRadius,
                     m_uiContext.customSolidHeight
                 );
+
+                auto& objects = m_sceneContext.getScene().getObjects();
+
+                if (!objects.empty())
+                {
+                    SceneObject* createdObject = objects.back();
+
+                    if (createdObject != nullptr)
+                    {
+                        m_editorState.setSelectedObject(createdObject);
+                        m_uiContext.selectedObjectId = createdObject->getId();
+                    }
+                }
             }
             else if (e.type == EventType::TransformChanged)
             {
