@@ -50,9 +50,21 @@ void RenderCoordinator::render(Scene& scene, Camera& camera, Shader& shader,
 
         FaceSelection& selectedFace = m_state->getSelectedFace();
         
-        if (selectedFace.isValid())
+        if (m_state->getHoveredFace().isValid())
         {
-            m_faceHighlightRenderer.render(*selectedFace.getObject(), selectedFace.getFaceIndex(), camera);
+            m_faceHighlightRenderer.render(
+                *m_state->getHoveredFace().getObject(),
+                m_state->getHoveredFace().getFaceIndex(),
+                camera
+            );
+        }
+        else if (m_state->getSelectedFace().isValid())
+        {
+            m_faceHighlightRenderer.render(
+                *m_state->getSelectedFace().getObject(),
+                m_state->getSelectedFace().getFaceIndex(),
+                camera
+            );
         }
     }
 }

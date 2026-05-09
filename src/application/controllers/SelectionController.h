@@ -18,6 +18,7 @@ public:
     void handleSelection(GLFWwindow* window, Camera& camera, Scene& scene);
 
     bool selectFaceUnderMouse(GLFWwindow* window, Camera& camera);
+    bool updateHoveredFace(GLFWwindow* window, Camera& camera);
 
 private:
     EditorState* m_state;

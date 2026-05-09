@@ -4,14 +4,16 @@
 #include "../tools/selection/FaceSelection.h"
 #include "../tools/transform/TransformTypes.h"
 
-enum class EditorToolType {
+enum class EditorToolType
+{
     None,
     PushPull,
     FaceMove,
     FaceScale
 };
 
-class EditorState {
+class EditorState
+{
 public:
     EditorState();
     ~EditorState() = default;
@@ -24,6 +26,9 @@ public:
 
     FaceSelection& getSelectedFace();
     void clearSelectedFace();
+
+    FaceSelection& getHoveredFace();
+    void clearHoveredFace();
 
     EditorToolType getActiveTool() const;
     void setActiveTool(EditorToolType tool);
@@ -42,12 +47,14 @@ public:
 
 private:
     bool m_faceModeActive;
-    
+
     SceneObject* m_selectedObject;
+
     FaceSelection m_selectedFace;
+    FaceSelection m_hoveredFace;
 
     EditorToolType m_activeTool;
-    
+
     TransformMode m_transformMode;
     TransformSpace m_transformSpace;
     TransformAxis m_transformAxis;

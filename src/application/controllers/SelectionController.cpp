@@ -48,3 +48,31 @@ bool SelectionController::selectFaceUnderMouse(GLFWwindow* window, Camera& camer
     m_state->getSelectedFace().set(selectedObj, faceIndex);
     return true;
 }
+
+bool SelectionController::updateHoveredFace(GLFWwindow* window, Camera& camera)
+{
+    SceneObject* selectedObj = m_state->getSelectedObject();
+
+    if (selectedObj == nullptr)
+    {
+        m_state->clearHoveredFace();
+        return false;
+    }
+
+    if (m_state->getActiveTool() == EditorToolType::None)
+    {
+        m_state->clearHoveredFace();
+        return false;
+    }
+
+    int faceIndex = m_faceSelector.selectFace(*selectedObj, window, camera);
+
+    if (faceIndex == -1)
+    {
+        m_state->clearHoveredFace();
+        return false;
+    }
+
+    m_state->getHoveredFace().set(selectedObj, faceIndex);
+    return true;
+}
