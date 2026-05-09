@@ -298,6 +298,26 @@ void EditorApplication::syncUI()
     {
         clearFaceEditingState();
     }
+
+    switch (m_editorState.getActiveTool())
+    {
+    case EditorToolType::PushPull:
+        m_uiContext.activeToolId = 1;
+        break;
+
+    case EditorToolType::FaceMove:
+        m_uiContext.activeToolId = 2;
+        break;
+
+    case EditorToolType::FaceScale:
+        m_uiContext.activeToolId = 3;
+        break;
+
+    case EditorToolType::None:
+    default:
+        m_uiContext.activeToolId = 0;
+        break;
+    }
 }
 
 void EditorApplication::clearFaceEditingState()
