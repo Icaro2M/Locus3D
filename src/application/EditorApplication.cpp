@@ -243,6 +243,12 @@ void EditorApplication::setupEventSubscriptions()
                     {
                         m_editorState.setSelectedObject(createdObject);
                         m_uiContext.selectedObjectId = createdObject->getId();
+
+                        m_editorState.setTransformMode(TransformMode::Translate);
+                        m_editorState.setTransformAxis(TransformAxis::None);
+                        m_uiContext.activeTransformMode = TransformMode::Translate;
+
+                        m_transformBridge.handleInputEvent(EventType::InputKeyW);
                     }
                 }
             }
@@ -268,6 +274,12 @@ void EditorApplication::setupEventSubscriptions()
                     {
                         m_editorState.setSelectedObject(createdObject);
                         m_uiContext.selectedObjectId = createdObject->getId();
+
+                        m_editorState.setTransformMode(TransformMode::Translate);
+                        m_editorState.setTransformAxis(TransformAxis::None);
+                        m_uiContext.activeTransformMode = TransformMode::Translate;
+
+                        m_transformBridge.handleInputEvent(EventType::InputKeyW);
                     }
                 }
             }
