@@ -6,15 +6,19 @@
 #include "../../scene/Camera.h"
 #include "../../tools/selection/ObjectSelector.h"
 #include "../../tools/selection/FaceSelector.h"
+
 #include <GLFW/glfw3.h>
 
-
-class SelectionController {
+class SelectionController
+{
 public:
     SelectionController(EditorState* state, AppEventBus* eventBus);
     ~SelectionController() = default;
 
     void handleSelection(GLFWwindow* window, Camera& camera, Scene& scene);
+
+    bool selectFaceUnderMouse(GLFWwindow* window, Camera& camera);
+    bool updateHoveredFace(GLFWwindow* window, Camera& camera);
 
 private:
     EditorState* m_state;

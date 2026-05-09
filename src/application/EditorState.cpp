@@ -2,11 +2,11 @@
 
 EditorState::EditorState()
     : m_faceModeActive(false),
-      m_selectedObject(nullptr),
-      m_activeTool(EditorToolType::None),
-      m_transformMode(TransformMode::None),
-      m_transformSpace(TransformSpace::Global),
-      m_transformAxis(TransformAxis::None)
+    m_selectedObject(nullptr),
+    m_activeTool(EditorToolType::None),
+    m_transformMode(TransformMode::None),
+    m_transformSpace(TransformSpace::Global),
+    m_transformAxis(TransformAxis::None)
 {
 }
 
@@ -18,9 +18,11 @@ bool EditorState::isFaceModeActive() const
 void EditorState::setFaceModeActive(bool active)
 {
     m_faceModeActive = active;
+
     if (!m_faceModeActive)
     {
         m_selectedFace.clear();
+        m_hoveredFace.clear();
     }
 }
 
@@ -33,6 +35,7 @@ void EditorState::setSelectedObject(SceneObject* object)
 {
     m_selectedObject = object;
     m_selectedFace.clear();
+    m_hoveredFace.clear();
 }
 
 FaceSelection& EditorState::getSelectedFace()
@@ -45,6 +48,16 @@ void EditorState::clearSelectedFace()
     m_selectedFace.clear();
 }
 
+FaceSelection& EditorState::getHoveredFace()
+{
+    return m_hoveredFace;
+}
+
+void EditorState::clearHoveredFace()
+{
+    m_hoveredFace.clear();
+}
+
 EditorToolType EditorState::getActiveTool() const
 {
     return m_activeTool;
@@ -53,6 +66,11 @@ EditorToolType EditorState::getActiveTool() const
 void EditorState::setActiveTool(EditorToolType tool)
 {
     m_activeTool = tool;
+
+    if (m_activeTool == EditorToolType::None)
+    {
+        m_hoveredFace.clear();
+    }
 }
 
 TransformMode EditorState::getTransformMode() const
@@ -89,6 +107,7 @@ void EditorState::clearAllSelections()
 {
     m_selectedObject = nullptr;
     m_selectedFace.clear();
+    m_hoveredFace.clear();
 }
 
 void EditorState::resetModes()
@@ -98,5 +117,7 @@ void EditorState::resetModes()
     m_transformMode = TransformMode::None;
     m_transformSpace = TransformSpace::Global;
     m_transformAxis = TransformAxis::None;
+
     m_selectedFace.clear();
+    m_hoveredFace.clear();
 }

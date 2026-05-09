@@ -3,7 +3,8 @@
 #include "EditorState.h"
 #include "AppEventBus.h"
 
-class ToolManager {
+class ToolManager
+{
 public:
     ToolManager(EditorState* state, AppEventBus* eventBus);
     ~ToolManager() = default;
