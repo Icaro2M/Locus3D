@@ -9,13 +9,13 @@ private:
     float m_RotationSpeed;
     float m_ZoomSpeed;
     float m_PanSpeed;
-
     float m_MinPitch;
     float m_MaxPitch;
     float m_MinDistance;
 
     double m_LastMouseX;
     double m_LastMouseY;
+
     bool m_FirstMouse;
 
 public:
@@ -24,4 +24,5 @@ public:
     void processMouse(GLFWwindow* window, Camera& camera);
     void processScroll(Camera& camera, float yOffset);
 
+    void resetMouseState();
 };

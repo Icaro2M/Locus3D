@@ -11,6 +11,7 @@ public:
     ~CameraContext() = default;
 
     void update(GLFWwindow* window);
+    void resize(int width, int height);
     
     Camera& getCamera();
     CameraController& getController();

@@ -137,7 +137,36 @@ void EditorApplication::processInput()
 
 void EditorApplication::update()
 {
-    m_cameraContext.update(m_window->getWindow());
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+
+    glfwGetFramebufferSize(
+        m_window->getWindow(),
+        &framebufferWidth,
+        &framebufferHeight
+    );
+
+    static int lastFramebufferWidth = 0;
+    static int lastFramebufferHeight = 0;
+
+    if (framebufferWidth > 0 &&
+        framebufferHeight > 0 &&
+        (framebufferWidth != lastFramebufferWidth ||
+            framebufferHeight != lastFramebufferHeight))
+    {
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
+
+        m_cameraContext.resize(framebufferWidth, framebufferHeight);
+
+        lastFramebufferWidth = framebufferWidth;
+        lastFramebufferHeight = framebufferHeight;
+    }
+
+    if (!m_transformBridge.getController().isDragging() &&
+        !m_faceToolController.hasRunningTool())
+    {
+        m_cameraContext.update(m_window->getWindow());
+    }
 
     m_transformBridge.handleMouseMove(
         m_window->getWindow(),

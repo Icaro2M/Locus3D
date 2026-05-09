@@ -27,3 +27,13 @@ void CameraContext::scrollCallback(GLFWwindow* window, double xOffset, double yO
         instance->getController().processScroll(instance->getCamera(), static_cast<float>(yOffset));
     }
 }
+
+void CameraContext::resize(int width, int height)
+{
+    if (height <= 0)
+    {
+        return;
+    }
+
+    m_camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
+}

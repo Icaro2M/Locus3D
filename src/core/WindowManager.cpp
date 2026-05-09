@@ -1,8 +1,7 @@
 #include "WindowManager.h"
-#include <iostream>
 
 WindowManager::WindowManager(int width, int height, const char* title)
-    : width(width), height(height), window(nullptr)
+    : window(nullptr), width(width), height(height)
 {
     if (!glfwInit())
     {
@@ -31,7 +30,18 @@ WindowManager::WindowManager(int width, int height, const char* title)
         return;
     }
 
-    glViewport(0, 0, width, height);
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+
+    this->width = framebufferWidth;
+    this->height = framebufferHeight;
+
+    glViewport(0, 0, framebufferWidth, framebufferHeight);
 }
 
 WindowManager::~WindowManager()
@@ -58,4 +68,38 @@ void WindowManager::swapBuffers()
 GLFWwindow* WindowManager::getWindow() const
 {
     return window;
+}
+
+int WindowManager::getWidth() const
+{
+    return width;
+}
+
+int WindowManager::getHeight() const
+{
+    return height;
+}
+
+float WindowManager::getAspectRatio() const
+{
+    if (height == 0)
+    {
+        return 1.0f;
+    }
+
+    return static_cast<float>(width) / static_cast<float>(height);
+}
+
+void WindowManager::framebufferSizeCallback(GLFWwindow* glfwWindow, int newWidth, int newHeight)
+{
+    WindowManager* manager =
+        static_cast<WindowManager*>(glfwGetWindowUserPointer(glfwWindow));
+
+    if (manager != nullptr)
+    {
+        manager->width = newWidth;
+        manager->height = newHeight;
+    }
+
+    glViewport(0, 0, newWidth, newHeight);
 }
