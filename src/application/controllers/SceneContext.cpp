@@ -1,4 +1,7 @@
 #include "SceneContext.h"
+
+#include "../../io/SceneSerializer.h"
+
 #include <string>
 #include <algorithm>
 
@@ -97,4 +100,36 @@ void SceneContext::addCustomSolid(const char* name, int sides, float bottomRadiu
         m_Meshes.push_back(std::move(newMesh));
         m_Objects.push_back(std::move(newObject));
     }
+}
+
+void SceneContext::clear()
+{
+    m_Scene = Scene();
+    m_Meshes.clear();
+    m_Objects.clear();
+}
+
+void SceneContext::replaceWith(SceneSaveData&& saveData)
+{
+    m_Scene = saveData.takeScene();
+    m_Meshes = saveData.takeMeshes();
+    m_Objects = saveData.takeObjects();
+}
+
+bool SceneContext::saveToFile(const std::string& filePath) const
+{
+    return SceneSerializer::save(m_Scene, filePath);
+}
+
+bool SceneContext::loadFromFile(const std::string& filePath)
+{
+    SceneSaveData saveData = SceneSerializer::load(filePath);
+
+    if (saveData.isEmpty())
+    {
+        return false;
+    }
+
+    replaceWith(std::move(saveData));
+    return true;
 }
