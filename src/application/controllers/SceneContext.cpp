@@ -133,3 +133,42 @@ bool SceneContext::loadFromFile(const std::string& filePath)
     replaceWith(std::move(saveData));
     return true;
 }
+
+SceneObject* SceneContext::createObjectFromMeshData(
+    const std::string& name,
+    const std::vector<float>& vertices,
+    const std::vector<unsigned int>& indices,
+    const std::vector<LogicalFace>& logicalFaces,
+    const glm::vec3& position,
+    const glm::vec3& rotation,
+    const glm::vec3& scale
+)
+{
+    if (vertices.empty() || indices.empty())
+    {
+        return nullptr;
+    }
+
+    auto newMesh = std::make_unique<Mesh>(
+        vertices.data(),
+        static_cast<unsigned int>(vertices.size() * sizeof(float)),
+        indices.data(),
+        static_cast<unsigned int>(indices.size())
+    );
+
+    newMesh->setLogicalFaces(logicalFaces);
+
+    auto newObject = std::make_unique<SceneObject>(*newMesh);
+    newObject->setName(name);
+    newObject->getTransform().setPosition(position);
+    newObject->getTransform().setRotation(rotation);
+    newObject->getTransform().setScale(scale);
+
+    SceneObject* createdObject = newObject.get();
+
+    m_Scene.addObject(*createdObject);
+    m_Meshes.push_back(std::move(newMesh));
+    m_Objects.push_back(std::move(newObject));
+
+    return createdObject;
+}
