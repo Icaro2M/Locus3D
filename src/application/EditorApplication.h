@@ -17,6 +17,9 @@
 
 #include "clipboard/ObjectClipboard.h"
 
+#include "history/UndoRedoManager.h"
+#include "history/EditorSceneSnapshotBuilder.h"
+
 #include "../ui/UIContext.h"
 #include "../tools/selection/Raycaster.h"
 
@@ -69,6 +72,7 @@ private:
     CameraContext m_cameraContext;
     SceneContext m_sceneContext;
     ObjectClipboard m_objectClipboard;
+    UndoRedoManager m_undoRedoManager;
 
     Raycaster m_raycaster;
 
@@ -87,6 +91,10 @@ private:
     void handleClipboardShortcuts();
     void copySelectedObject();
     void pasteCopiedObject();
+
+    void handleHistoryShortcuts();
+    void pushUndoSnapshot();
+    bool restoreHistorySnapshot(const EditorSceneSnapshot& snapshot);
 
     void handleFileShortcuts();
 

@@ -16,7 +16,8 @@ EditorApplication::EditorApplication(WindowManager* window)
     m_selectionController(&m_editorState, &m_eventBus),
     m_transformBridge(&m_editorState, &m_eventBus),
     m_faceToolController(&m_editorState),
-    m_renderCoordinator(&m_editorState)
+    m_renderCoordinator(&m_editorState),
+    m_undoRedoManager(12)
 {
     setupEventSubscriptions();
 }
@@ -25,6 +26,7 @@ void EditorApplication::processInput()
 {
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
     handleFileShortcuts();
+    handleHistoryShortcuts();
     handleClipboardShortcuts();
 
     static bool wasLeftMouseDown = false;
@@ -43,7 +45,14 @@ void EditorApplication::processInput()
     {
         if (m_faceToolController.hasRunningTool())
         {
+            EditorSceneSnapshot beforeConfirm = EditorSceneSnapshotBuilder::capture(
+                m_sceneContext,
+                m_editorState
+            );
+
             m_faceToolController.confirmActiveTool();
+
+            m_undoRedoManager.pushUndo(std::move(beforeConfirm));
         }
         else if (m_editorState.getActiveTool() != EditorToolType::None)
         {
@@ -64,10 +73,22 @@ void EditorApplication::processInput()
         }
         else
         {
-            if (!m_transformBridge.handleMouseClick(
+            EditorSceneSnapshot beforeTransform = EditorSceneSnapshotBuilder::capture(
+                m_sceneContext,
+                m_editorState
+            );
+
+            bool startedTransform = m_transformBridge.handleMouseClick(
                 m_window->getWindow(),
                 m_cameraContext.getCamera(),
-                m_raycaster))
+                m_raycaster
+            );
+
+            if (startedTransform)
+            {
+                m_undoRedoManager.pushUndo(std::move(beforeTransform));
+            }
+            else
             {
                 m_selectionController.handleSelection(
                     m_window->getWindow(),
@@ -262,6 +283,8 @@ void EditorApplication::setupEventSubscriptions()
             }
             else if (e.type == EventType::AddPrimitive)
             {
+                pushUndoSnapshot();
+
                 clearFaceEditingState();
 
                 m_sceneContext.addPrimitive(e.payloadInt);
@@ -275,6 +298,8 @@ void EditorApplication::setupEventSubscriptions()
             }
             else if (e.type == EventType::AddCustomSolid)
             {
+                pushUndoSnapshot();
+
                 clearFaceEditingState();
 
                 m_sceneContext.addCustomSolid(
@@ -322,6 +347,8 @@ void EditorApplication::setupEventSubscriptions()
             }
             else if (e.type == EventType::DeleteObject)
             {
+                pushUndoSnapshot();
+
                 uint32_t idToDel = static_cast<uint32_t>(e.payloadInt);
 
                 if (m_editorState.getSelectedObject() != nullptr &&
@@ -614,6 +641,7 @@ bool EditorApplication::loadSceneFromFile(const std::string& filePath)
 
     if (loaded)
     {
+        m_undoRedoManager.clear();
         m_currentScenePath = filePath;
         m_currentSceneName = extractFileName(filePath);
         syncUI();
@@ -710,6 +738,8 @@ void EditorApplication::pasteCopiedObject()
         return;
     }
 
+    pushUndoSnapshot();
+
     clearFaceEditingState();
 
     SceneObject* pastedObject = m_objectClipboard.pasteInto(m_sceneContext);
@@ -721,4 +751,137 @@ void EditorApplication::pasteCopiedObject()
 
     selectCreatedObject(pastedObject);
     syncUI();
+}
+
+void EditorApplication::pushUndoSnapshot()
+{
+    EditorSceneSnapshot snapshot = EditorSceneSnapshotBuilder::capture(
+        m_sceneContext,
+        m_editorState
+    );
+
+    m_undoRedoManager.pushUndo(std::move(snapshot));
+}
+
+bool EditorApplication::restoreHistorySnapshot(const EditorSceneSnapshot& snapshot)
+{
+    if (m_faceToolController.hasRunningTool())
+    {
+        m_faceToolController.cancelActiveTool();
+    }
+
+    m_transformBridge.getController().endDrag();
+
+    SceneObject* restoredSelectedObject = EditorSceneSnapshotBuilder::restore(
+        snapshot,
+        m_sceneContext,
+        m_editorState
+    );
+
+    m_transformBridge.getController().setSelectedObject(restoredSelectedObject);
+    m_transformBridge.getController().setMode(m_editorState.getTransformMode());
+    m_transformBridge.getController().setSpace(m_editorState.getTransformSpace());
+    m_transformBridge.getController().clearAxis();
+
+    if (restoredSelectedObject != nullptr)
+    {
+        m_uiContext.selectedObjectId = restoredSelectedObject->getId();
+        m_lastSyncedSelectedObjectId = restoredSelectedObject->getId();
+    }
+    else
+    {
+        m_uiContext.selectedObjectId = 0;
+        m_lastSyncedSelectedObjectId = 0;
+    }
+
+    m_uiContext.isFaceModeActive = m_editorState.isFaceModeActive();
+
+    switch (m_editorState.getActiveTool())
+    {
+    case EditorToolType::PushPull:
+        m_uiContext.activeToolId = 1;
+        break;
+
+    case EditorToolType::FaceMove:
+        m_uiContext.activeToolId = 2;
+        break;
+
+    case EditorToolType::FaceScale:
+        m_uiContext.activeToolId = 3;
+        break;
+
+    case EditorToolType::None:
+    default:
+        m_uiContext.activeToolId = 0;
+        break;
+    }
+
+    syncUI();
+
+    return true;
+}
+
+void EditorApplication::handleHistoryShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (io.WantTextInput)
+    {
+        return;
+    }
+
+    GLFWwindow* window = m_window->getWindow();
+
+    bool ctrlPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+
+    bool shiftPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+    bool zPressed = glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS;
+    bool yPressed = glfwGetKey(window, GLFW_KEY_Y) == GLFW_PRESS;
+
+    bool ctrlZ = ctrlPressed && !shiftPressed && zPressed;
+    bool ctrlY = ctrlPressed && !shiftPressed && yPressed;
+    bool ctrlShiftZ = ctrlPressed && shiftPressed && zPressed;
+
+    static bool wasCtrlZ = false;
+    static bool wasCtrlY = false;
+    static bool wasCtrlShiftZ = false;
+
+    if (ctrlZ && !wasCtrlZ)
+    {
+        EditorSceneSnapshot currentSnapshot = EditorSceneSnapshotBuilder::capture(
+            m_sceneContext,
+            m_editorState
+        );
+
+        EditorSceneSnapshot snapshotToRestore;
+
+        if (m_undoRedoManager.undo(std::move(currentSnapshot), snapshotToRestore))
+        {
+            restoreHistorySnapshot(snapshotToRestore);
+        }
+    }
+
+    if ((ctrlY && !wasCtrlY) || (ctrlShiftZ && !wasCtrlShiftZ))
+    {
+        EditorSceneSnapshot currentSnapshot = EditorSceneSnapshotBuilder::capture(
+            m_sceneContext,
+            m_editorState
+        );
+
+        EditorSceneSnapshot snapshotToRestore;
+
+        if (m_undoRedoManager.redo(std::move(currentSnapshot), snapshotToRestore))
+        {
+            restoreHistorySnapshot(snapshotToRestore);
+        }
+    }
+
+    wasCtrlZ = ctrlZ;
+    wasCtrlY = ctrlY;
+    wasCtrlShiftZ = ctrlShiftZ;
 }
