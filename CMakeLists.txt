@@ -10,14 +10,15 @@ set(GLAD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glad)
 set(GLFW_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glfw)
 set(GLM_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
+set(NLOHMANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nlohmann)
 
 # 3. Coletar arquivos de código (Sources)
-# Aqui incluímos o seu fp e os códigos-fonte das bibliotecas
+# Aqui incluímos os códigos-fonte do projeto e das bibliotecas
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
     "src/*.cpp"
     "${GLAD_DIR}/src/glad.c"
     "${IMGUI_DIR}/*.cpp"
-)   
+)
 
 # 4. Criar o executável
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -29,13 +30,16 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${GLFW_DIR}/include"
     "${GLM_DIR}/include"
     "${IMGUI_DIR}"
+    "${NLOHMANN_DIR}"
 )
 
 # 6. Linkar Bibliotecas Binárias
 # Para o GLFW, apontamos diretamente para o seu arquivo .lib
+# Comdlg32.lib é usado pelo explorador nativo de arquivos do Windows
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     "${GLFW_DIR}/lib/glfw3.lib"
     opengl32.lib
+    Comdlg32.lib
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

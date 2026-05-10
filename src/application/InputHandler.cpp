@@ -14,6 +14,7 @@ void InputHandler::process(GLFWwindow* window, AppEventBus* eventBus)
     if (!io.WantCaptureMouse)
     {
         bool leftMouse = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+
         if (leftMouse && !m_mouseStates[GLFW_MOUSE_BUTTON_LEFT])
         {
             eventBus->emit(EventType::InputMouseClickLeft);
@@ -22,6 +23,7 @@ void InputHandler::process(GLFWwindow* window, AppEventBus* eventBus)
         {
             eventBus->emit(EventType::InputMouseReleaseLeft);
         }
+
         m_mouseStates[GLFW_MOUSE_BUTTON_LEFT] = leftMouse;
     }
 
@@ -29,12 +31,23 @@ void InputHandler::process(GLFWwindow* window, AppEventBus* eventBus)
     {
         auto checkAndEmit = [&](int key, EventType eventType) {
             bool pressed = glfwGetKey(window, key) == GLFW_PRESS;
+
             if (pressed && !m_keyStates[key])
             {
                 eventBus->emit(eventType);
             }
+
             m_keyStates[key] = pressed;
-        };
+            };
+
+        auto updateKeyStateOnly = [&](int key) {
+            bool pressed = glfwGetKey(window, key) == GLFW_PRESS;
+            m_keyStates[key] = pressed;
+            };
+
+        bool ctrlPressed =
+            glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+            glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
 
         checkAndEmit(GLFW_KEY_W, EventType::InputKeyW);
         checkAndEmit(GLFW_KEY_E, EventType::InputKeyE);
@@ -44,7 +57,16 @@ void InputHandler::process(GLFWwindow* window, AppEventBus* eventBus)
         checkAndEmit(GLFW_KEY_F, EventType::InputKeyF);
         checkAndEmit(GLFW_KEY_T, EventType::InputKeyT);
         checkAndEmit(GLFW_KEY_M, EventType::InputKeyM);
-        checkAndEmit(GLFW_KEY_S, EventType::InputKeyS);
+
+        if (ctrlPressed)
+        {
+            updateKeyStateOnly(GLFW_KEY_S);
+        }
+        else
+        {
+            checkAndEmit(GLFW_KEY_S, EventType::InputKeyS);
+        }
+
         checkAndEmit(GLFW_KEY_ESCAPE, EventType::InputKeyEscape);
         checkAndEmit(GLFW_KEY_ENTER, EventType::InputKeyEnter);
     }

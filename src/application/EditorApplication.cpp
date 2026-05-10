@@ -1,5 +1,6 @@
 #include "EditorApplication.h"
 #include "../resources/AssetPaths.h"
+#include "../platform/NativeFileDialog.h"
 
 #include <imgui.h>
 #include <GLFW/glfw3.h>
@@ -23,6 +24,7 @@ EditorApplication::EditorApplication(WindowManager* window)
 void EditorApplication::processInput()
 {
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
+    handleFileShortcuts();
 
     static bool wasLeftMouseDown = false;
 
@@ -498,4 +500,150 @@ void EditorApplication::selectCreatedObject(SceneObject* object)
     m_uiContext.activeTransformMode = TransformMode::Translate;
 
     m_transformBridge.handleInputEvent(EventType::InputKeyW);
+}
+
+void EditorApplication::handleFileShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (io.WantTextInput)
+    {
+        return;
+    }
+
+    GLFWwindow* window = m_window->getWindow();
+
+    bool ctrlPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+
+    bool shiftPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+    static bool wasCtrlS = false;
+    static bool wasCtrlShiftS = false;
+    static bool wasCtrlO = false;
+
+    bool isS = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+    bool isO = glfwGetKey(window, GLFW_KEY_O) == GLFW_PRESS;
+
+    bool ctrlS = ctrlPressed && !shiftPressed && isS;
+    bool ctrlShiftS = ctrlPressed && shiftPressed && isS;
+    bool ctrlO = ctrlPressed && isO;
+
+    if (ctrlS && !wasCtrlS)
+    {
+        saveScene();
+    }
+
+    if (ctrlShiftS && !wasCtrlShiftS)
+    {
+        saveSceneAs();
+    }
+
+    if (ctrlO && !wasCtrlO)
+    {
+        loadSceneFromDialog();
+    }
+
+    wasCtrlS = ctrlS;
+    wasCtrlShiftS = ctrlShiftS;
+    wasCtrlO = ctrlO;
+}
+
+bool EditorApplication::saveScene()
+{
+    if (m_currentScenePath.empty())
+    {
+        return saveSceneAs();
+    }
+
+    return saveSceneToFile(m_currentScenePath);
+}
+
+bool EditorApplication::saveSceneAs()
+{
+    std::string filePath = NativeFileDialog::openSaveDialog();
+
+    if (filePath.empty())
+    {
+        return false;
+    }
+
+    return saveSceneToFile(filePath);
+}
+
+bool EditorApplication::loadSceneFromDialog()
+{
+    std::string filePath = NativeFileDialog::openLoadDialog();
+
+    if (filePath.empty())
+    {
+        return false;
+    }
+
+    return loadSceneFromFile(filePath);
+}
+
+bool EditorApplication::saveSceneToFile(const std::string& filePath)
+{
+    bool saved = m_sceneContext.saveToFile(filePath);
+
+    if (saved)
+    {
+        m_currentScenePath = filePath;
+        m_currentSceneName = extractFileName(filePath);
+    }
+
+    return saved;
+}
+
+bool EditorApplication::loadSceneFromFile(const std::string& filePath)
+{
+    clearFaceEditingState();
+
+    m_editorState.setSelectedObject(nullptr);
+    m_uiContext.selectedObjectId = 0;
+    m_lastSyncedSelectedObjectId = 0;
+
+    m_transformBridge.handleInputEvent(EventType::InputKeyEscape);
+
+    bool loaded = m_sceneContext.loadFromFile(filePath);
+
+    if (loaded)
+    {
+        m_currentScenePath = filePath;
+        m_currentSceneName = extractFileName(filePath);
+        syncUI();
+    }
+
+    return loaded;
+}
+
+std::string EditorApplication::extractFileName(const std::string& filePath) const
+{
+    size_t slashPosition = filePath.find_last_of("\\/");
+
+    if (slashPosition == std::string::npos)
+    {
+        return filePath;
+    }
+
+    return filePath.substr(slashPosition + 1);
+}
+
+const std::string& EditorApplication::getCurrentScenePath() const
+{
+    return m_currentScenePath;
+}
+
+const std::string& EditorApplication::getCurrentSceneName() const
+{
+    return m_currentSceneName;
+}
+
+bool EditorApplication::hasScenePath() const
+{
+    return !m_currentScenePath.empty();
 }

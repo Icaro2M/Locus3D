@@ -19,6 +19,7 @@
 #include "../tools/selection/Raycaster.h"
 
 #include <cstdint>
+#include <string>
 
 class EditorApplication
 {
@@ -28,6 +29,12 @@ public:
     void processInput();
     void update();
     void render();
+
+    bool saveScene();
+    bool saveSceneAs();
+    bool loadSceneFromDialog();
+    bool saveSceneToFile(const std::string& filePath);
+    bool loadSceneFromFile(const std::string& filePath);
 
     AppEventBus* getEventBus()
     {
@@ -66,8 +73,19 @@ private:
 
     uint32_t m_lastSyncedSelectedObjectId = 0;
 
+    std::string m_currentScenePath;
+    std::string m_currentSceneName = "Novo Projeto";
+
     void setupEventSubscriptions();
     void syncUI();
     void clearFaceEditingState();
     void selectCreatedObject(SceneObject* object);
+
+    void handleFileShortcuts();
+
+    std::string extractFileName(const std::string& filePath) const;
+
+    const std::string& getCurrentScenePath() const;
+    const std::string& getCurrentSceneName() const;
+    bool hasScenePath() const;
 };
