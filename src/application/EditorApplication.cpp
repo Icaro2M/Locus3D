@@ -25,6 +25,7 @@ void EditorApplication::processInput()
 {
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
     handleFileShortcuts();
+    handleClipboardShortcuts();
 
     static bool wasLeftMouseDown = false;
 
@@ -646,4 +647,78 @@ const std::string& EditorApplication::getCurrentSceneName() const
 bool EditorApplication::hasScenePath() const
 {
     return !m_currentScenePath.empty();
+}
+
+void EditorApplication::handleClipboardShortcuts()
+{
+    ImGuiIO& io = ImGui::GetIO();
+
+    if (io.WantTextInput)
+    {
+        return;
+    }
+
+    GLFWwindow* window = m_window->getWindow();
+
+    bool ctrlPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+
+    bool shiftPressed =
+        glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+        glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+
+    static bool wasCtrlC = false;
+    static bool wasCtrlV = false;
+
+    bool isC = glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
+    bool isV = glfwGetKey(window, GLFW_KEY_V) == GLFW_PRESS;
+
+    bool ctrlC = ctrlPressed && !shiftPressed && isC;
+    bool ctrlV = ctrlPressed && !shiftPressed && isV;
+
+    if (ctrlC && !wasCtrlC)
+    {
+        copySelectedObject();
+    }
+
+    if (ctrlV && !wasCtrlV)
+    {
+        pasteCopiedObject();
+    }
+
+    wasCtrlC = ctrlC;
+    wasCtrlV = ctrlV;
+}
+
+void EditorApplication::copySelectedObject()
+{
+    SceneObject* selected = m_editorState.getSelectedObject();
+
+    if (selected == nullptr)
+    {
+        return;
+    }
+
+    m_objectClipboard.copyFrom(*selected);
+}
+
+void EditorApplication::pasteCopiedObject()
+{
+    if (!m_objectClipboard.hasData())
+    {
+        return;
+    }
+
+    clearFaceEditingState();
+
+    SceneObject* pastedObject = m_objectClipboard.pasteInto(m_sceneContext);
+
+    if (pastedObject == nullptr)
+    {
+        return;
+    }
+
+    selectCreatedObject(pastedObject);
+    syncUI();
 }

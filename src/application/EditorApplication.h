@@ -15,6 +15,8 @@
 #include "controllers/CameraContext.h"
 #include "controllers/SceneContext.h"
 
+#include "clipboard/ObjectClipboard.h"
+
 #include "../ui/UIContext.h"
 #include "../tools/selection/Raycaster.h"
 
@@ -66,6 +68,7 @@ private:
     RenderCoordinator m_renderCoordinator;
     CameraContext m_cameraContext;
     SceneContext m_sceneContext;
+    ObjectClipboard m_objectClipboard;
 
     Raycaster m_raycaster;
 
@@ -81,6 +84,10 @@ private:
     void clearFaceEditingState();
     void selectCreatedObject(SceneObject* object);
 
+    void handleClipboardShortcuts();
+    void copySelectedObject();
+    void pasteCopiedObject();
+
     void handleFileShortcuts();
 
     std::string extractFileName(const std::string& filePath) const;
@@ -88,4 +95,6 @@ private:
     const std::string& getCurrentScenePath() const;
     const std::string& getCurrentSceneName() const;
     bool hasScenePath() const;
+
+
 };
