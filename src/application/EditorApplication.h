@@ -73,6 +73,7 @@ private:
     SceneContext m_sceneContext;
     ObjectClipboard m_objectClipboard;
     UndoRedoManager m_undoRedoManager;
+    
 
     Raycaster m_raycaster;
 

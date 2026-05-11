@@ -10,7 +10,7 @@ void GizmoToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 15.0f, viewport->Pos.y + 80.0f));
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 15.0f, viewport->Pos.y + 85.0f));    
     
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | 
                              ImGuiWindowFlags_NoResize | 
