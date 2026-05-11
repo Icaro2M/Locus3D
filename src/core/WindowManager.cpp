@@ -13,6 +13,8 @@ WindowManager::WindowManager(int width, int height, const char* title)
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
+    glfwWindowHint(GLFW_SAMPLES, 4);
+
     window = glfwCreateWindow(width, height, title, nullptr, nullptr);
 
     if (!window)
@@ -29,6 +31,8 @@ WindowManager::WindowManager(int width, int height, const char* title)
         std::cerr << "Failed to initialize GLAD\n";
         return;
     }
+
+    glEnable(GL_MULTISAMPLE);
 
     glfwSetWindowUserPointer(window, this);
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
