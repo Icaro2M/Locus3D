@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../UIContext.h"
+#include "../bridge/UIContext.h"
 #include "../../application/AppEventBus.h"
 
 class TransformPanel {

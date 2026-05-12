@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "../tools/transform/TransformTypes.h"
+#include "../../tools/transform/TransformTypes.h"
 
 struct SceneObjectInfo {
     uint32_t id;

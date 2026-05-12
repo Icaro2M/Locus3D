@@ -1,14 +1,18 @@
 #pragma once
 
-#include "../UIContext.h"
 #include "../../application/AppEventBus.h"
+#include "../bridge/UIContext.h"
 
-class GizmoToolbar {
+class GizmoToolbar
+{
 public:
     GizmoToolbar(AppEventBus* eventBus, UIContext* context);
     ~GizmoToolbar() = default;
 
     void draw();
+
+private:
+    void drawBackground();
 
 private:
     AppEventBus* m_eventBus;

@@ -1,14 +1,14 @@
 #pragma once
 
 #include "UIContext.h"
-#include "../application/AppEventBus.h"
-#include "toolbar/MainToolbar.h"
-#include "toolbar/GizmoToolbar.h"
-#include "panels/InspectorPanel.h"
-#include "panels/TransformPanel.h"
-#include "panels/primitives/CustomSolidPanel.h"
-#include "panels/primitives/PrimitivesMenu.h"
-#include "viewport/ViewportOverlay.h"
+#include "../../application/AppEventBus.h"
+#include "../toolbar/MainToolbar.h"
+#include "../toolbar/GizmoToolbar.h"
+#include "../panels/InspectorPanel.h"
+#include "../panels/TransformPanel.h"
+#include "../panels/primitives/CustomSolidPanel.h"
+#include "../panels/primitives/PrimitivesMenu.h"
+#include "../viewport/ViewportOverlay.h"
 
 class UILayer {
 public:
