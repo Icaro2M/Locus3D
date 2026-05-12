@@ -2,7 +2,7 @@
 
 #include <imgui.h>
 
-#include "../icons/VectorIcons.h"
+#include "../../resources/AssetPaths.h"
 #include "../widgets/buttons/DropdownButton.h"
 #include "../widgets/buttons/PopupMenuItemButton.h"
 #include "../widgets/buttons/ToggleIconButton.h"
@@ -69,7 +69,7 @@ void MainToolbar::drawSelectionGroup()
         "Selecionar face (F)",
         isSelectionActive,
         true,
-        ui::icons::DrawSelect
+        AssetPaths::toolbarIcon("select.png")
         }))
     {
         m_context->activeToolId = 0;
@@ -87,7 +87,7 @@ void MainToolbar::drawPrimitiveGroup()
         "Adicionar sólido",
         popupOpen,
         true,
-        ui::icons::DrawCube
+        AssetPaths::primitiveIcon("cube.png")
         }))
     {
         ImGui::OpenPopup("MainToolbarPrimitivePopup");
@@ -96,6 +96,7 @@ void MainToolbar::drawPrimitiveGroup()
     ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 8.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 2.0f));
+
     ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.065f, 0.070f, 0.082f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.18f, 0.20f, 0.24f, 1.0f));
 
@@ -106,7 +107,7 @@ void MainToolbar::drawPrimitiveGroup()
             "Cube",
             false,
             true,
-            ui::icons::DrawCube
+            AssetPaths::primitiveIcon("cube.png")
             }))
         {
             m_context->showCustomSolidPanel = false;
@@ -119,7 +120,7 @@ void MainToolbar::drawPrimitiveGroup()
             "Sphere",
             false,
             true,
-            ui::icons::DrawSphere
+            AssetPaths::primitiveIcon("sphere.png")
             }))
         {
             m_context->showCustomSolidPanel = false;
@@ -132,7 +133,7 @@ void MainToolbar::drawPrimitiveGroup()
             "Cone",
             false,
             true,
-            ui::icons::DrawCone
+            AssetPaths::primitiveIcon("cone.png")
             }))
         {
             m_context->showCustomSolidPanel = false;
@@ -145,7 +146,7 @@ void MainToolbar::drawPrimitiveGroup()
             "Cylinder",
             false,
             true,
-            ui::icons::DrawCylinder
+            AssetPaths::primitiveIcon("cylinder.png")
             }))
         {
             m_context->showCustomSolidPanel = false;
@@ -169,7 +170,7 @@ void MainToolbar::drawFaceToolGroup()
         "Extrusão de face (T)",
         isExtrudeActive,
         true,
-        ui::icons::DrawExtrudeFace
+        AssetPaths::toolbarIcon("extrude-face.png")
         }))
     {
         m_context->activeToolId = 1;
@@ -186,7 +187,7 @@ void MainToolbar::drawFaceToolGroup()
         "Mover face (M)",
         isMoveFaceActive,
         true,
-        ui::icons::DrawMoveFace
+        AssetPaths::toolbarIcon("move-face.png")
         }))
     {
         m_context->activeToolId = 2;
@@ -203,7 +204,7 @@ void MainToolbar::drawFaceToolGroup()
         "Escalar face (S)",
         isScaleFaceActive,
         true,
-        ui::icons::DrawScaleFace
+        AssetPaths::toolbarIcon("scale-face.png")
         }))
     {
         m_context->activeToolId = 3;
@@ -221,7 +222,7 @@ void MainToolbar::drawCustomSolidGroup()
         "Sólido personalizado",
         isCustomSolidActive,
         true,
-        ui::icons::DrawCustomSolid
+        AssetPaths::primitiveIcon("custom-solid.png")
         }))
     {
         m_context->showCustomSolidPanel = !m_context->showCustomSolidPanel;

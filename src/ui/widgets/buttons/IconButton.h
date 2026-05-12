@@ -2,16 +2,16 @@
 
 #include "ButtonTypes.h"
 
+#include <string>
+
 namespace ui
 {
     struct IconButtonConfig
     {
         const char* id = nullptr;
         const char* tooltip = nullptr;
-
         bool enabled = true;
-
-        IconDrawFn iconDrawFn = nullptr;
+        std::string iconPath;
         ButtonVisualStyle style = ButtonVisualStyle();
     };
 

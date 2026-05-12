@@ -1,5 +1,7 @@
 #include "ToggleIconButton.h"
 
+#include "../../icons/IconTextureCache.h"
+
 namespace ui
 {
     static ImVec4 ResolveBackgroundColor(const ToggleIconButtonConfig& config, bool hovered)
@@ -63,6 +65,45 @@ namespace ui
         return style.iconColor;
     }
 
+    static void DrawIconTexture(
+        const std::string& iconPath,
+        const ImVec2& center,
+        float iconSize,
+        const ImVec4& color
+    )
+    {
+        if (iconPath.empty())
+        {
+            return;
+        }
+
+        ImTextureID textureId = IconTextureCache::Get(iconPath);
+
+        if (textureId == 0)
+        {
+            return;
+        }
+
+        ImVec2 iconMin = ImVec2(
+            center.x - iconSize * 0.5f,
+            center.y - iconSize * 0.5f
+        );
+
+        ImVec2 iconMax = ImVec2(
+            center.x + iconSize * 0.5f,
+            center.y + iconSize * 0.5f
+        );
+
+        ImGui::GetWindowDrawList()->AddImage(
+            textureId,
+            iconMin,
+            iconMax,
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 1.0f),
+            ToU32(color)
+        );
+    }
+
     bool ToggleIconButton(const ToggleIconButtonConfig& config)
     {
         if (config.id == nullptr)
@@ -115,23 +156,15 @@ namespace ui
             style.borderThickness
         );
 
-        if (config.iconDrawFn != nullptr)
-        {
-            ImVec2 center = ImVec2(
-                pos.x + size.x * 0.5f,
-                pos.y + size.y * 0.5f
-            );
+        ImVec2 center = ImVec2(
+            pos.x + size.x * 0.5f,
+            pos.y + size.y * 0.5f
+        );
 
-            float iconSize = size.x < size.y ? size.x : size.y;
-            iconSize *= style.iconScale;
+        float iconSize = size.x < size.y ? size.x : size.y;
+        iconSize *= style.iconScale;
 
-            config.iconDrawFn(
-                drawList,
-                center,
-                iconSize,
-                ToU32(iconColor)
-            );
-        }
+        DrawIconTexture(config.iconPath, center, iconSize, iconColor);
 
         if (hovered && config.tooltip != nullptr && config.tooltip[0] != '\0')
         {

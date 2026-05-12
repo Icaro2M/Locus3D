@@ -2,17 +2,17 @@
 
 #include "ButtonTypes.h"
 
+#include <string>
+
 namespace ui
 {
     struct PopupMenuItemButtonConfig
     {
         const char* id = nullptr;
         const char* label = nullptr;
-
         bool active = false;
         bool enabled = true;
-
-        IconDrawFn iconDrawFn = nullptr;
+        std::string iconPath;
         PopupMenuItemStyle style = PopupMenuItemStyle();
     };
 

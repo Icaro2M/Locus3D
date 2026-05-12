@@ -1,6 +1,6 @@
 #include "core/WindowManager.h"
 #include "application/EditorApplication.h"
-#include "ui/UILayer.h"
+#include "ui/bridge/UILayer.h"
 #include "application/controllers/CameraContext.h" // Adicionado para manter a câmera funcionando
 #include "ui/ImGuiTheme.h"
 

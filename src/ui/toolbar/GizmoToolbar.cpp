@@ -2,7 +2,7 @@
 
 #include <imgui.h>
 
-#include "../icons/VectorIcons.h"
+#include "../../resources/AssetPaths.h"
 #include "../widgets/buttons/ToggleIconButton.h"
 
 GizmoToolbar::GizmoToolbar(AppEventBus* eventBus, UIContext* context)
@@ -41,7 +41,7 @@ void GizmoToolbar::draw()
             "Mover gizmo (W)",
             isTranslateActive,
             true,
-            ui::icons::DrawTranslate
+            AssetPaths::toolbarIcon("translate.png")
             }))
         {
             m_context->activeTransformMode = TransformMode::Translate;
@@ -58,7 +58,7 @@ void GizmoToolbar::draw()
             "Rotacionar gizmo (E)",
             isRotateActive,
             true,
-            ui::icons::DrawRotate
+            AssetPaths::toolbarIcon("rotate.png")
             }))
         {
             m_context->activeTransformMode = TransformMode::Rotate;
@@ -75,7 +75,7 @@ void GizmoToolbar::draw()
             "Escalar gizmo (R)",
             isScaleActive,
             true,
-            ui::icons::DrawScale
+            AssetPaths::toolbarIcon("scale.png")
             }))
         {
             m_context->activeTransformMode = TransformMode::Scale;
@@ -92,8 +92,8 @@ void GizmoToolbar::draw()
 void GizmoToolbar::drawBackground()
 {
     ImDrawList* drawList = ImGui::GetWindowDrawList();
-    ImVec2 pos = ImGui::GetCursorScreenPos();
 
+    ImVec2 pos = ImGui::GetCursorScreenPos();
     ImVec2 padding = ImVec2(8.0f, 8.0f);
     ImVec2 buttonSize = ImVec2(38.0f, 38.0f);
     float spacing = 6.0f;

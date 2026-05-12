@@ -20,7 +20,7 @@
 #include "history/UndoRedoManager.h"
 #include "history/EditorSceneSnapshotBuilder.h"
 
-#include "../ui/UIContext.h"
+#include "../ui/bridge/UIContext.h"
 #include "../tools/selection/Raycaster.h"
 
 #include <cstdint>

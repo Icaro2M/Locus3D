@@ -1,5 +1,7 @@
 #include "PopupMenuItemButton.h"
 
+#include "../../icons/IconTextureCache.h"
+
 namespace ui
 {
     static ImVec4 ResolveBackgroundColor(const PopupMenuItemButtonConfig& config, bool hovered)
@@ -41,6 +43,45 @@ namespace ui
         }
 
         return style.textColor;
+    }
+
+    static void DrawIconTexture(
+        const std::string& iconPath,
+        const ImVec2& center,
+        float iconSize,
+        const ImVec4& color
+    )
+    {
+        if (iconPath.empty())
+        {
+            return;
+        }
+
+        ImTextureID textureId = IconTextureCache::Get(iconPath);
+
+        if (textureId == 0)
+        {
+            return;
+        }
+
+        ImVec2 iconMin = ImVec2(
+            center.x - iconSize * 0.5f,
+            center.y - iconSize * 0.5f
+        );
+
+        ImVec2 iconMax = ImVec2(
+            center.x + iconSize * 0.5f,
+            center.y + iconSize * 0.5f
+        );
+
+        ImGui::GetWindowDrawList()->AddImage(
+            textureId,
+            iconMin,
+            iconMax,
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 1.0f),
+            ToU32(color)
+        );
     }
 
     bool PopupMenuItemButton(const PopupMenuItemButtonConfig& config)
@@ -86,20 +127,17 @@ namespace ui
             style.rounding
         );
 
-        if (config.iconDrawFn != nullptr)
-        {
-            ImVec2 iconCenter = ImVec2(
-                pos.x + style.iconOffsetX + style.iconSize * 0.5f,
-                pos.y + size.y * 0.5f
-            );
+        ImVec2 iconCenter = ImVec2(
+            pos.x + style.iconOffsetX + style.iconSize * 0.5f,
+            pos.y + size.y * 0.5f
+        );
 
-            config.iconDrawFn(
-                drawList,
-                iconCenter,
-                style.iconSize,
-                ToU32(iconColor)
-            );
-        }
+        DrawIconTexture(
+            config.iconPath,
+            iconCenter,
+            style.iconSize,
+            iconColor
+        );
 
         if (config.label != nullptr)
         {

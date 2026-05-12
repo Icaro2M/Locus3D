@@ -4,17 +4,9 @@
 
 namespace ui
 {
-    using IconDrawFn = void (*)(
-        ImDrawList* drawList,
-        ImVec2 center,
-        float size,
-        ImU32 color
-        );
-
     struct ButtonVisualStyle
     {
         ImVec2 size = ImVec2(38.0f, 38.0f);
-
         float rounding = 9.0f;
         float borderThickness = 1.0f;
         float iconScale = 0.56f;
@@ -38,7 +30,6 @@ namespace ui
     struct PopupMenuItemStyle
     {
         ImVec2 size = ImVec2(190.0f, 34.0f);
-
         float rounding = 6.0f;
         float iconSize = 18.0f;
         float iconOffsetX = 14.0f;
@@ -50,6 +41,7 @@ namespace ui
 
         ImVec4 iconColor = ImVec4(0.88f, 0.90f, 0.94f, 1.0f);
         ImVec4 textColor = ImVec4(0.92f, 0.94f, 0.98f, 1.0f);
+
         ImVec4 disabledIconColor = ImVec4(0.38f, 0.40f, 0.44f, 1.0f);
         ImVec4 disabledTextColor = ImVec4(0.48f, 0.50f, 0.54f, 1.0f);
     };

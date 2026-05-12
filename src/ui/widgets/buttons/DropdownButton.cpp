@@ -1,5 +1,7 @@
 #include "DropdownButton.h"
 
+#include "../../icons/IconTextureCache.h"
+
 namespace ui
 {
     static ImVec4 ResolveBackgroundColor(const DropdownButtonConfig& config, bool hovered)
@@ -72,6 +74,45 @@ namespace ui
         drawList->AddTriangleFilled(p1, p2, p3, color);
     }
 
+    static void DrawIconTexture(
+        const std::string& iconPath,
+        const ImVec2& center,
+        float iconSize,
+        const ImVec4& color
+    )
+    {
+        if (iconPath.empty())
+        {
+            return;
+        }
+
+        ImTextureID textureId = IconTextureCache::Get(iconPath);
+
+        if (textureId == 0)
+        {
+            return;
+        }
+
+        ImVec2 iconMin = ImVec2(
+            center.x - iconSize * 0.5f,
+            center.y - iconSize * 0.5f
+        );
+
+        ImVec2 iconMax = ImVec2(
+            center.x + iconSize * 0.5f,
+            center.y + iconSize * 0.5f
+        );
+
+        ImGui::GetWindowDrawList()->AddImage(
+            textureId,
+            iconMin,
+            iconMax,
+            ImVec2(0.0f, 0.0f),
+            ImVec2(1.0f, 1.0f),
+            ToU32(color)
+        );
+    }
+
     bool DropdownButton(const DropdownButtonConfig& config)
     {
         if (config.id == nullptr)
@@ -125,22 +166,14 @@ namespace ui
             style.borderThickness
         );
 
-        if (config.iconDrawFn != nullptr)
-        {
-            ImVec2 iconCenter = ImVec2(
-                pos.x + size.x * 0.38f,
-                pos.y + size.y * 0.5f
-            );
+        ImVec2 iconCenter = ImVec2(
+            pos.x + size.x * 0.38f,
+            pos.y + size.y * 0.5f
+        );
 
-            float iconSize = size.y * style.iconScale;
+        float iconSize = size.y * style.iconScale;
 
-            config.iconDrawFn(
-                drawList,
-                iconCenter,
-                iconSize,
-                ToU32(iconColor)
-            );
-        }
+        DrawIconTexture(config.iconPath, iconCenter, iconSize, iconColor);
 
         ImVec2 arrowCenter = ImVec2(
             pos.x + size.x - 15.0f,
@@ -163,4 +196,4 @@ namespace ui
 
         return pressed && config.enabled;
     }
-}   
+}
