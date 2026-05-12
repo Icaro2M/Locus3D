@@ -132,27 +132,21 @@ void EditorApplication::processInput()
     bool isE = glfwGetKey(m_window->getWindow(), GLFW_KEY_E) == GLFW_PRESS;
     bool isR = glfwGetKey(m_window->getWindow(), GLFW_KEY_R) == GLFW_PRESS;
 
-    bool canUseTransformShortcuts =
-        !io.WantTextInput &&
-        m_editorState.getActiveTool() == EditorToolType::None &&
-        !m_faceToolController.hasRunningTool();
+    bool canUseTransformShortcuts = !io.WantTextInput;
 
     if (isW && !wasW && canUseTransformShortcuts)
     {
-        m_uiContext.activeTransformMode = TransformMode::Translate;
-        m_eventBus.emit(EventType::InputKeyW, 0);
+        switchToObjectTransform(EventType::InputKeyW);
     }
 
     if (isE && !wasE && canUseTransformShortcuts)
     {
-        m_uiContext.activeTransformMode = TransformMode::Rotate;
-        m_eventBus.emit(EventType::InputKeyE, 0);
+        switchToObjectTransform(EventType::InputKeyE);
     }
 
     if (isR && !wasR && canUseTransformShortcuts)
     {
-        m_uiContext.activeTransformMode = TransformMode::Scale;
-        m_eventBus.emit(EventType::InputKeyR, 0);
+        switchToObjectTransform(EventType::InputKeyR);
     }
 
     wasW = isW;
@@ -238,8 +232,11 @@ void EditorApplication::setupEventSubscriptions()
         {
             if (e.type == EventType::InputKeyW ||
                 e.type == EventType::InputKeyE ||
-                e.type == EventType::InputKeyR ||
-                e.type == EventType::InputKeyG ||
+                e.type == EventType::InputKeyR)
+            {
+                switchToObjectTransform(e.type);
+            }
+            else if (e.type == EventType::InputKeyG ||
                 e.type == EventType::InputKeyL)
             {
                 if (m_editorState.getActiveTool() == EditorToolType::None &&
@@ -884,4 +881,52 @@ void EditorApplication::handleHistoryShortcuts()
     wasCtrlZ = ctrlZ;
     wasCtrlY = ctrlY;
     wasCtrlShiftZ = ctrlShiftZ;
+}
+
+bool EditorApplication::isTransformModeEvent(EventType eventType) const
+{
+    return eventType == EventType::InputKeyW ||
+        eventType == EventType::InputKeyE ||
+        eventType == EventType::InputKeyR;
+}
+
+void EditorApplication::switchToObjectTransform(EventType transformEventType)
+{
+    if (!isTransformModeEvent(transformEventType))
+    {
+        return;
+    }
+
+    if (m_editorState.getSelectedObject() == nullptr)
+    {
+        return;
+    }
+
+    if (m_faceToolController.hasRunningTool())
+    {
+        m_faceToolController.cancelActiveTool();
+    }
+
+    m_editorState.clearSelectedFace();
+    m_editorState.clearHoveredFace();
+    m_editorState.setActiveTool(EditorToolType::None);
+    m_editorState.setFaceModeActive(false);
+
+    m_uiContext.isFaceModeActive = false;
+    m_uiContext.activeToolId = 0;
+
+    if (transformEventType == EventType::InputKeyW)
+    {
+        m_uiContext.activeTransformMode = TransformMode::Translate;
+    }
+    else if (transformEventType == EventType::InputKeyE)
+    {
+        m_uiContext.activeTransformMode = TransformMode::Rotate;
+    }
+    else if (transformEventType == EventType::InputKeyR)
+    {
+        m_uiContext.activeTransformMode = TransformMode::Scale;
+    }
+
+    m_transformBridge.handleInputEvent(transformEventType);
 }

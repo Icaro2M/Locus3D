@@ -96,6 +96,9 @@ private:
     void pushUndoSnapshot();
     bool restoreHistorySnapshot(const EditorSceneSnapshot& snapshot);
 
+    void switchToObjectTransform(EventType transformEventType);
+    bool isTransformModeEvent(EventType eventType) const;
+
     void handleFileShortcuts();
 
     std::string extractFileName(const std::string& filePath) const;
