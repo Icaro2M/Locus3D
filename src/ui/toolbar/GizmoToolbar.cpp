@@ -15,7 +15,7 @@ void GizmoToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 10.0f, viewport->Pos.y + 78.0f));
+    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 10.0f, viewport->Pos.y + 76.0f));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -28,11 +28,18 @@ void GizmoToolbar::draw()
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 0.0f));
 
     if (ImGui::Begin("GizmoToolbar", nullptr, flags))
     {
-        drawBackground();
+        ui::ButtonVisualStyle gizmoButtonStyle;
+        gizmoButtonStyle.size = ImVec2(50.0f, 50.0f);
+        gizmoButtonStyle.rounding = 11.0f;
+        gizmoButtonStyle.borderThickness = 1.0f;
+        gizmoButtonStyle.iconScale = 0.56f;
+
+        ui::ButtonVisualStyle translateButtonStyle = gizmoButtonStyle;
+        translateButtonStyle.iconScale = 0.72f;
 
         bool isTranslateActive = m_context->activeTransformMode == TransformMode::Translate;
 
@@ -41,7 +48,8 @@ void GizmoToolbar::draw()
             "Mover gizmo (W)",
             isTranslateActive,
             true,
-            AssetPaths::toolbarIcon("translate.png")
+            AssetPaths::toolbarIcon("translate.png"),
+            translateButtonStyle
             }))
         {
             m_context->activeTransformMode = TransformMode::Translate;
@@ -58,7 +66,8 @@ void GizmoToolbar::draw()
             "Rotacionar gizmo (E)",
             isRotateActive,
             true,
-            AssetPaths::toolbarIcon("rotate.png")
+            AssetPaths::toolbarIcon("rotate.png"),
+            gizmoButtonStyle
             }))
         {
             m_context->activeTransformMode = TransformMode::Rotate;
@@ -75,7 +84,8 @@ void GizmoToolbar::draw()
             "Escalar gizmo (R)",
             isScaleActive,
             true,
-            AssetPaths::toolbarIcon("scale.png")
+            AssetPaths::toolbarIcon("scale.png"),
+            gizmoButtonStyle
             }))
         {
             m_context->activeTransformMode = TransformMode::Scale;
@@ -87,35 +97,4 @@ void GizmoToolbar::draw()
     ImGui::End();
 
     ImGui::PopStyleVar(3);
-}
-
-void GizmoToolbar::drawBackground()
-{
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    ImVec2 padding = ImVec2(8.0f, 8.0f);
-    ImVec2 buttonSize = ImVec2(38.0f, 38.0f);
-    float spacing = 6.0f;
-
-    float width = padding.x * 2.0f + buttonSize.x * 3.0f + spacing * 2.0f;
-    float height = padding.y * 2.0f + buttonSize.y;
-
-    drawList->AddRectFilled(
-        pos,
-        ImVec2(pos.x + width, pos.y + height),
-        IM_COL32(18, 20, 24, 235),
-        9.0f
-    );
-
-    drawList->AddRect(
-        pos,
-        ImVec2(pos.x + width, pos.y + height),
-        IM_COL32(42, 46, 54, 255),
-        9.0f,
-        0,
-        1.0f
-    );
-
-    ImGui::SetCursorScreenPos(ImVec2(pos.x + padding.x, pos.y + padding.y));
 }

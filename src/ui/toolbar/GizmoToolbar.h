@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../../application/AppEventBus.h"
 #include "../bridge/UIContext.h"
+#include "../../application/AppEventBus.h"
 
 class GizmoToolbar
 {
@@ -10,9 +10,6 @@ public:
     ~GizmoToolbar() = default;
 
     void draw();
-
-private:
-    void drawBackground();
 
 private:
     AppEventBus* m_eventBus;
