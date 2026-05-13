@@ -6,13 +6,15 @@ namespace ui
 {
     struct ButtonVisualStyle
     {
-        ImVec2 size = ImVec2(38.0f, 38.0f);
-        float rounding = 9.0f;
+        ImVec2 size = ImVec2(42.0f, 42.0f);
+
+        float rounding = 10.0f;
         float borderThickness = 1.0f;
-        float iconScale = 0.56f;
+        float iconScale = 0.58f;
 
         ImVec4 backgroundColor = ImVec4(0.10f, 0.11f, 0.13f, 1.0f);
         ImVec4 hoverColor = ImVec4(0.15f, 0.17f, 0.20f, 1.0f);
+
         ImVec4 activeColor = ImVec4(0.05f, 0.36f, 0.78f, 1.0f);
         ImVec4 activeHoverColor = ImVec4(0.07f, 0.43f, 0.92f, 1.0f);
 
@@ -29,11 +31,12 @@ namespace ui
 
     struct PopupMenuItemStyle
     {
-        ImVec2 size = ImVec2(190.0f, 34.0f);
-        float rounding = 6.0f;
-        float iconSize = 18.0f;
+        ImVec2 size = ImVec2(190.0f, 36.0f);
+
+        float rounding = 7.0f;
+        float iconSize = 20.0f;
         float iconOffsetX = 14.0f;
-        float textOffsetX = 44.0f;
+        float textOffsetX = 46.0f;
 
         ImVec4 backgroundColor = ImVec4(0.07f, 0.08f, 0.10f, 1.0f);
         ImVec4 hoverColor = ImVec4(0.13f, 0.15f, 0.18f, 1.0f);

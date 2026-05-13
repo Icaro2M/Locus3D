@@ -7,6 +7,42 @@
 #include "../widgets/buttons/PopupMenuItemButton.h"
 #include "../widgets/buttons/ToggleIconButton.h"
 
+namespace
+{
+    constexpr float ToolbarHeight = 72.0f;
+    constexpr float ToolbarButtonSize = 46.0f;
+    constexpr float SeparatorWidth = 22.0f;
+    constexpr float SeparatorHeightRatio = 0.70f;
+
+    ui::ButtonVisualStyle MainToolbarButtonStyle()
+    {
+        ui::ButtonVisualStyle style;
+
+        style.size = ImVec2(ToolbarButtonSize, ToolbarButtonSize);
+        style.rounding = 10.0f;
+        style.borderThickness = 1.0f;
+        style.iconScale = 0.65f;
+
+        style.backgroundColor = ImVec4(0.10f, 0.11f, 0.13f, 1.0f);
+        style.hoverColor = ImVec4(0.15f, 0.17f, 0.20f, 1.0f);
+
+        style.activeColor = ImVec4(0.05f, 0.36f, 0.78f, 1.0f);
+        style.activeHoverColor = ImVec4(0.07f, 0.43f, 0.92f, 1.0f);
+
+        style.borderColor = ImVec4(0.24f, 0.26f, 0.30f, 1.0f);
+        style.activeBorderColor = ImVec4(0.25f, 0.55f, 1.0f, 1.0f);
+
+        style.iconColor = ImVec4(0.72f, 0.75f, 0.80f, 1.0f);
+        style.activeIconColor = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
+
+        style.disabledBackgroundColor = ImVec4(0.08f, 0.09f, 0.10f, 1.0f);
+        style.disabledBorderColor = ImVec4(0.16f, 0.17f, 0.19f, 1.0f);
+        style.disabledIconColor = ImVec4(0.38f, 0.40f, 0.44f, 1.0f);
+
+        return style;
+    }
+}
+
 MainToolbar::MainToolbar(AppEventBus* eventBus, UIContext* context)
     : m_eventBus(eventBus),
     m_context(context)
@@ -18,40 +54,46 @@ void MainToolbar::draw()
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
     ImGui::SetNextWindowPos(viewport->Pos);
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, 66.0f));
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, ToolbarHeight));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
         ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove |
         ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoSavedSettings;
+        ImGuiWindowFlags_NoScrollWithMouse |
+        ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoBringToFrontOnFocus;
 
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.085f, 0.090f, 0.105f, 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 10.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(16.0f, 0.0f));
 
     if (ImGui::Begin("MainToolbar", nullptr, flags))
     {
-        drawSelectionGroup();
+        float buttonOffsetY = (ImGui::GetWindowHeight() - ToolbarButtonSize) * 0.5f;
+        if (buttonOffsetY < 0.0f)
+        {
+            buttonOffsetY = 0.0f;
+        }
 
-        ImGui::SameLine();
-        drawSeparator();
+        ImGui::SetCursorPosY(buttonOffsetY);
 
-        ImGui::SameLine();
-        drawPrimitiveGroup();
+        int itemCount = 0;
+        const ui::toolbar::MainToolbarItem* items = ui::toolbar::GetMainToolbarItems(itemCount);
 
-        ImGui::SameLine();
-        drawSeparator();
+        for (int i = 0; i < itemCount; ++i)
+        {
+            if (i > 0)
+            {
+                ImGui::SameLine();
+            }
 
-        ImGui::SameLine();
-        drawFaceToolGroup();
+            drawToolbarItem(items[i]);
+        }
 
-        ImGui::SameLine();
-        drawSeparator();
-
-        ImGui::SameLine();
-        drawCustomSolidGroup();
+        drawToolbarBottomBorder();
     }
 
     ImGui::End();
@@ -60,34 +102,56 @@ void MainToolbar::draw()
     ImGui::PopStyleColor();
 }
 
-void MainToolbar::drawSelectionGroup()
+void MainToolbar::drawToolbarItem(const ui::toolbar::MainToolbarItem& item)
 {
-    bool isSelectionActive = m_context->activeToolId == 0;
+    using namespace ui::toolbar;
 
-    if (ui::ToggleIconButton({
-        "main_toolbar_select",
-        "Selecionar face (F)",
-        isSelectionActive,
-        true,
-        AssetPaths::toolbarIcon("select.png")
-        }))
+    switch (item.type)
     {
-        m_context->activeToolId = 0;
-        m_context->showCustomSolidPanel = false;
-        m_eventBus->emit(EventType::InputKeyF);
+    case MainToolbarItemType::Button:
+    {
+        bool active = isActionActive(item.action);
+
+        if (ui::ToggleIconButton({
+            item.id,
+            item.tooltip,
+            active,
+            true,
+            item.iconPath,
+            MainToolbarButtonStyle()
+            }))
+        {
+            handleAction(item.action);
+        }
+
+        break;
+    }
+
+    case MainToolbarItemType::Dropdown:
+    {
+        drawPrimitiveDropdown(item);
+        break;
+    }
+
+    case MainToolbarItemType::Separator:
+    {
+        drawSeparator();
+        break;
+    }
     }
 }
 
-void MainToolbar::drawPrimitiveGroup()
+void MainToolbar::drawPrimitiveDropdown(const ui::toolbar::MainToolbarItem& item)
 {
     bool popupOpen = ImGui::IsPopupOpen("MainToolbarPrimitivePopup");
 
     if (ui::DropdownButton({
-        "main_toolbar_primitives",
-        "Adicionar sólido",
+        item.id,
+        item.tooltip,
         popupOpen,
         true,
-        AssetPaths::primitiveIcon("cube.png")
+        item.iconPath,
+        MainToolbarButtonStyle()
         }))
     {
         ImGui::OpenPopup("MainToolbarPrimitivePopup");
@@ -161,89 +225,104 @@ void MainToolbar::drawPrimitiveGroup()
     ImGui::PopStyleVar(3);
 }
 
-void MainToolbar::drawFaceToolGroup()
+void MainToolbar::drawToolbarBottomBorder()
 {
-    bool isExtrudeActive = m_context->activeToolId == 1;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    ImVec2 pos = ImGui::GetWindowPos();
+    ImVec2 size = ImGui::GetWindowSize();
 
-    if (ui::ToggleIconButton({
-        "main_toolbar_extrude_face",
-        "Extrusão de face (T)",
-        isExtrudeActive,
-        true,
-        AssetPaths::toolbarIcon("extrude-face.png")
-        }))
-    {
-        m_context->activeToolId = 1;
-        m_context->showCustomSolidPanel = false;
-        m_eventBus->emit(EventType::InputKeyT);
-    }
-
-    ImGui::SameLine();
-
-    bool isMoveFaceActive = m_context->activeToolId == 2;
-
-    if (ui::ToggleIconButton({
-        "main_toolbar_move_face",
-        "Mover face (M)",
-        isMoveFaceActive,
-        true,
-        AssetPaths::toolbarIcon("move-face.png")
-        }))
-    {
-        m_context->activeToolId = 2;
-        m_context->showCustomSolidPanel = false;
-        m_eventBus->emit(EventType::InputKeyM);
-    }
-
-    ImGui::SameLine();
-
-    bool isScaleFaceActive = m_context->activeToolId == 3;
-
-    if (ui::ToggleIconButton({
-        "main_toolbar_scale_face",
-        "Escalar face (S)",
-        isScaleFaceActive,
-        true,
-        AssetPaths::toolbarIcon("scale-face.png")
-        }))
-    {
-        m_context->activeToolId = 3;
-        m_context->showCustomSolidPanel = false;
-        m_eventBus->emit(EventType::InputKeyS);
-    }
-}
-
-void MainToolbar::drawCustomSolidGroup()
-{
-    bool isCustomSolidActive = m_context->showCustomSolidPanel;
-
-    if (ui::ToggleIconButton({
-        "main_toolbar_custom_solid",
-        "Sólido personalizado",
-        isCustomSolidActive,
-        true,
-        AssetPaths::primitiveIcon("custom-solid.png")
-        }))
-    {
-        m_context->showCustomSolidPanel = !m_context->showCustomSolidPanel;
-    }
+    drawList->AddLine(
+        ImVec2(pos.x, pos.y + size.y - 1.0f),
+        ImVec2(pos.x + size.x, pos.y + size.y - 1.0f),
+        IM_COL32(42, 46, 54, 255),
+        1.0f
+    );
 }
 
 void MainToolbar::drawSeparator()
 {
     ImVec2 cursor = ImGui::GetCursorScreenPos();
+    ImVec2 windowPos = ImGui::GetWindowPos();
+
     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-    float height = 34.0f;
-    float x = cursor.x + 4.0f;
-    float y = cursor.y + 2.0f;
+    float toolbarHeight = ImGui::GetWindowHeight();
+    float separatorHeight = ToolbarButtonSize * SeparatorHeightRatio;
+
+    float x = cursor.x + SeparatorWidth * 0.5f;
+    float y = windowPos.y + (toolbarHeight - separatorHeight) * 0.5f;
 
     drawList->AddLine(
         ImVec2(x, y),
-        ImVec2(x, y + height),
-        IM_COL32(58, 62, 70, 255),
+        ImVec2(x, y + separatorHeight),
+        IM_COL32(50, 54, 64, 255),
         1.0f
     );
 
-    ImGui::Dummy(ImVec2(12.0f, 38.0f));
+    ImGui::Dummy(ImVec2(SeparatorWidth, ToolbarButtonSize));
+}
+
+bool MainToolbar::isActionActive(ui::toolbar::MainToolbarAction action) const
+{
+    using namespace ui::toolbar;
+
+    switch (action)
+    {
+    case MainToolbarAction::Select:
+        return m_context->activeToolId == 0;
+
+    case MainToolbarAction::ExtrudeFace:
+        return m_context->activeToolId == 1;
+
+    case MainToolbarAction::MoveFace:
+        return m_context->activeToolId == 2;
+
+    case MainToolbarAction::ScaleFace:
+        return m_context->activeToolId == 3;
+
+    case MainToolbarAction::CustomSolid:
+        return m_context->showCustomSolidPanel;
+
+    default:
+        return false;
+    }
+}
+
+void MainToolbar::handleAction(ui::toolbar::MainToolbarAction action)
+{
+    using namespace ui::toolbar;
+
+    switch (action)
+    {
+    case MainToolbarAction::Select:
+        m_context->activeToolId = 0;
+        m_context->showCustomSolidPanel = false;
+        m_eventBus->emit(EventType::InputKeyF);
+        break;
+
+    case MainToolbarAction::ExtrudeFace:
+        m_context->activeToolId = 1;
+        m_context->showCustomSolidPanel = false;
+        m_eventBus->emit(EventType::InputKeyT);
+        break;
+
+    case MainToolbarAction::MoveFace:
+        m_context->activeToolId = 2;
+        m_context->showCustomSolidPanel = false;
+        m_eventBus->emit(EventType::InputKeyM);
+        break;
+
+    case MainToolbarAction::ScaleFace:
+        m_context->activeToolId = 3;
+        m_context->showCustomSolidPanel = false;
+        m_eventBus->emit(EventType::InputKeyS);
+        break;
+
+    case MainToolbarAction::CustomSolid:
+        m_context->showCustomSolidPanel = !m_context->showCustomSolidPanel;
+        break;
+
+    default:
+        break;
+    }
 }
