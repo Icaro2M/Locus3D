@@ -1,6 +1,8 @@
 #include "ViewportOverlay.h"
 #include <imgui.h>
 
+#include "../layout/UILayoutConstants.h"
+
 ViewportOverlay::ViewportOverlay(UIContext* context)
     : m_context(context)
 {
@@ -10,8 +12,13 @@ void ViewportOverlay::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     
-    // Empurramos o texto mais para baixo (Y = 140.0f) para não bater na barra flutuante do Gizmo
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 15.0f, viewport->Pos.y + 140.0f));
+    ImGui::SetNextWindowPos(ImVec2(
+        viewport->WorkPos.x + ui::layout::ViewportOverlayLeftMargin,
+        viewport->WorkPos.y +
+        ui::layout::MainToolbarHeight +
+        ui::layout::ToolbarSpacing +
+        48.0f
+    ));
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoDecoration | 
                              ImGuiWindowFlags_NoSavedSettings | 
@@ -35,7 +42,6 @@ void ViewportOverlay::draw()
         ImGui::Dummy(ImVec2(0.0f, 10.0f));
         
         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "Atalhos:");
-        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "F - Alternar Modo");
         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "ESC - Cancelar/Sair");
     }
     

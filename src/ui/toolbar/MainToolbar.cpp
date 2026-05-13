@@ -6,13 +6,13 @@
 #include "../widgets/buttons/DropdownButton.h"
 #include "../widgets/buttons/PopupMenuItemButton.h"
 #include "../widgets/buttons/ToggleIconButton.h"
+#include "../layout/UILayoutConstants.h"
 
 namespace
 {
-    constexpr float ToolbarHeight = 72.0f;
-    constexpr float ToolbarButtonSize = 46.0f;
-    constexpr float SeparatorWidth = 22.0f;
-    constexpr float SeparatorHeightRatio = 0.70f;
+    constexpr float ToolbarButtonSize = ui::layout::MainToolbarHeight * 0.6f;
+    constexpr float SeparatorWidth = ui::layout::MainToolbarHeight * 0.3f;
+    constexpr float SeparatorHeightRatio = 0.6f;
 
     ui::ButtonVisualStyle MainToolbarButtonStyle()
     {
@@ -53,8 +53,8 @@ void MainToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(viewport->Pos);
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, ToolbarHeight));
+    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y));
+    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, ui::layout::MainToolbarHeight));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |

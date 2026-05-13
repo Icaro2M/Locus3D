@@ -9,6 +9,7 @@
 #include "../panels/primitives/CustomSolidPanel.h"
 #include "../panels/primitives/PrimitivesMenu.h"
 #include "../viewport/ViewportOverlay.h"
+#include "../menu/TopMenuBar.h"
 
 class UILayer {
 public:
@@ -21,8 +22,10 @@ private:
     AppEventBus* m_eventBus;
     UIContext* m_context;
 
+    TopMenuBar m_topMenuBar;
     MainToolbar m_mainToolbar;
     GizmoToolbar m_gizmoToolbar;
+
     InspectorPanel m_inspectorPanel;
     TransformPanel m_transformPanel;
     CustomSolidPanel m_customSolidPanel;

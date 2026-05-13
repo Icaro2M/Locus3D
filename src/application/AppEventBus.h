@@ -11,6 +11,13 @@ enum class EventType {
     TransformChanged,
     AddPrimitive,
     AddCustomSolid,
+
+    FileNew,
+    FileOpen,
+    FileSave,
+    FileSaveAs,
+    FileExit,
+
     InputKeyW,
     InputKeyE,
     InputKeyR,

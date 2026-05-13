@@ -22,7 +22,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 # 4. Criar o executável
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES} "src/ui/menu/menus/FileMenu.h" "src/ui/menu/menus/FileMenu.cpp")
 
 # 5. Configurar Diretórios de Inclusão (Headers)
 target_include_directories(${PROJECT_NAME} PRIVATE 

@@ -236,14 +236,25 @@ void EditorApplication::setupEventSubscriptions()
 {
     m_eventBus.subscribe([this](const Event& e)
         {
-            if (e.type == EventType::InputKeyW ||
+            if (e.type == EventType::FileOpen)
+            {
+                loadSceneFromDialog();
+            }
+            else if (e.type == EventType::FileSave)
+            {
+                saveScene();
+            }
+            else if (e.type == EventType::FileSaveAs)
+            {
+                saveSceneAs();
+            }
+            else if (e.type == EventType::InputKeyW ||
                 e.type == EventType::InputKeyE ||
                 e.type == EventType::InputKeyR ||
                 e.type == EventType::InputKeyG ||
                 e.type == EventType::InputKeyL)
             {
-                if (m_editorState.getActiveTool() == EditorToolType::None &&
-                    !m_faceToolController.hasRunningTool())
+                if (m_editorState.getActiveTool() == EditorToolType::None && !m_faceToolController.hasRunningTool())
                 {
                     m_transformBridge.handleInputEvent(e.type);
                 }
@@ -253,7 +264,6 @@ void EditorApplication::setupEventSubscriptions()
                 if (m_faceToolController.hasRunningTool())
                 {
                     m_faceToolController.cancelActiveTool();
-
                     m_editorState.clearHoveredFace();
                     m_editorState.setFaceModeActive(true);
                     m_uiContext.isFaceModeActive = true;
@@ -284,13 +294,11 @@ void EditorApplication::setupEventSubscriptions()
             else if (e.type == EventType::AddPrimitive)
             {
                 pushUndoSnapshot();
-
                 clearFaceEditingState();
 
                 m_sceneContext.addPrimitive(e.payloadInt);
 
                 auto& objects = m_sceneContext.getScene().getObjects();
-
                 if (!objects.empty())
                 {
                     selectCreatedObject(objects.back());
@@ -299,7 +307,6 @@ void EditorApplication::setupEventSubscriptions()
             else if (e.type == EventType::AddCustomSolid)
             {
                 pushUndoSnapshot();
-
                 clearFaceEditingState();
 
                 m_sceneContext.addCustomSolid(
@@ -311,7 +318,6 @@ void EditorApplication::setupEventSubscriptions()
                 );
 
                 auto& objects = m_sceneContext.getScene().getObjects();
-
                 if (!objects.empty())
                 {
                     selectCreatedObject(objects.back());

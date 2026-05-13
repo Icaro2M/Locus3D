@@ -2,20 +2,23 @@
 #include <imgui.h>
 
 UILayer::UILayer(AppEventBus* eventBus, UIContext* context)
-    : m_eventBus(eventBus), 
-      m_context(context),
-      m_mainToolbar(eventBus, context),
-      m_gizmoToolbar(eventBus, context),
-      m_inspectorPanel(eventBus, context),
-      m_transformPanel(eventBus, context),
-      m_customSolidPanel(eventBus, context),
-      m_primitivesMenu(eventBus, context),
-      m_viewportOverlay(context)
+    : m_eventBus(eventBus),
+    m_context(context),
+    m_topMenuBar(eventBus, context),
+    m_mainToolbar(eventBus, context),
+    m_gizmoToolbar(eventBus, context),
+    m_inspectorPanel(eventBus, context),
+    m_transformPanel(eventBus, context),
+    m_customSolidPanel(eventBus, context),
+    m_primitivesMenu(eventBus, context),
+    m_viewportOverlay(context)
 {
 }
 
 void UILayer::draw()
 {
+    m_topMenuBar.draw();
+
     m_mainToolbar.draw();
     m_gizmoToolbar.draw();
     m_viewportOverlay.draw();

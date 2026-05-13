@@ -4,6 +4,7 @@
 
 #include "../../resources/AssetPaths.h"
 #include "../widgets/buttons/ToggleIconButton.h"
+#include "../layout/UILayoutConstants.h"
 
 GizmoToolbar::GizmoToolbar(AppEventBus* eventBus, UIContext* context)
     : m_eventBus(eventBus),
@@ -15,7 +16,10 @@ void GizmoToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 10.0f, viewport->Pos.y + 76.0f));
+    ImGui::SetNextWindowPos(ImVec2(
+        viewport->WorkPos.x + ui::layout::GizmoToolbarLeftMargin,
+        viewport->WorkPos.y + ui::layout::MainToolbarHeight + ui::layout::ToolbarSpacing
+    ));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -33,7 +37,7 @@ void GizmoToolbar::draw()
     if (ImGui::Begin("GizmoToolbar", nullptr, flags))
     {
         ui::ButtonVisualStyle gizmoButtonStyle;
-        gizmoButtonStyle.size = ImVec2(50.0f, 50.0f);
+        gizmoButtonStyle.size = ImVec2(40.0f, 40.0f);
         gizmoButtonStyle.rounding = 11.0f;
         gizmoButtonStyle.borderThickness = 1.0f;
         gizmoButtonStyle.iconScale = 0.56f;
