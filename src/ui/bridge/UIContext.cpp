@@ -40,4 +40,4 @@ void UIContext::clearScene()
 {
     sceneObjects.clear();
     resetSelection();
-}
+}   

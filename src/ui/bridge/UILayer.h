@@ -4,8 +4,7 @@
 #include "../../application/AppEventBus.h"
 #include "../toolbar/MainToolbar.h"
 #include "../toolbar/GizmoToolbar.h"
-#include "../panels/InspectorPanel.h"
-#include "../panels/TransformPanel.h"
+#include "../panels/inspector/InspectorPanel.h"
 #include "../panels/primitives/CustomSolidPanel.h"
 #include "../panels/primitives/PrimitivesMenu.h"
 #include "../viewport/ViewportOverlay.h"
@@ -27,7 +26,6 @@ private:
     GizmoToolbar m_gizmoToolbar;
 
     InspectorPanel m_inspectorPanel;
-    TransformPanel m_transformPanel;
     CustomSolidPanel m_customSolidPanel;
     PrimitivesMenu m_primitivesMenu;
     ViewportOverlay m_viewportOverlay;
