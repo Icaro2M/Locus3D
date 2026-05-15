@@ -1,22 +1,34 @@
 #pragma once
 
+#include "CustomSolidPanelState.h"
+#include "previews/CustomSolidSidePreview.h"
+#include "previews/CustomSolidTopPreview.h"
+
 #include "../../bridge/UIContext.h"
 #include "../../../application/AppEventBus.h"
 
-class CustomSolidPanel {
+class CustomSolidPanel
+{
 public:
     CustomSolidPanel(AppEventBus* eventBus, UIContext* context);
-    ~CustomSolidPanel() = default;
 
     void draw();
 
 private:
-    AppEventBus* m_eventBus;
-    UIContext* m_context;
+    void drawHeader();
+    void drawPreviews();
+    void drawFields();
+    void drawActions();
 
-    char m_nameBuffer[256];
-    int m_sides;
-    float m_bottomRadius;
-    float m_topRadius;
-    float m_height;
+    void clampState();
+    void submit();
+
+private:
+    AppEventBus* m_eventBus = nullptr;
+    UIContext* m_context = nullptr;
+
+    CustomSolidPanelState m_state;
+
+    CustomSolidTopPreview m_topPreview;
+    CustomSolidSidePreview m_sidePreview;
 };

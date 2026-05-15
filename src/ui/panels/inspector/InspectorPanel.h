@@ -5,8 +5,6 @@
 #include "InspectorObjectListSection.h"
 #include "InspectorTransformSection.h"
 
-struct ImVec2;
-
 class AppEventBus;
 
 struct UIContext;
@@ -21,8 +19,6 @@ public:
 private:
     InspectorState buildState() const;
 
-    void drawResizeHandle(const ImVec2& panelPos, float panelHeight);
-
 private:
     AppEventBus* m_eventBus = nullptr;
 
@@ -31,7 +27,4 @@ private:
     InspectorObjectListSection m_objectListSection;
 
     InspectorTransformSection m_transformSection;
-
-    float m_panelWidth = 0.0f;
-    bool m_hasUserResized = false;
 };

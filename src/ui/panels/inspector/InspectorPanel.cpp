@@ -3,7 +3,7 @@
 #include <imgui.h>
 
 #include "../../bridge/UIContext.h"
-#include "../../layout/UILayoutConstants.h"
+#include "../../layout/RightSidePanelLayout.h"
 
 namespace
 {
@@ -21,21 +21,6 @@ namespace
 
         ImGui::Spacing();
     }
-
-    float ClampInspectorWidth(float width)
-    {
-        if (width < ui::layout::InspectorMinWidth)
-        {
-            return ui::layout::InspectorMinWidth;
-        }
-
-        if (width > ui::layout::InspectorMaxWidth)
-        {
-            return ui::layout::InspectorMaxWidth;
-        }
-
-        return width;
-    }
 }
 
 InspectorPanel::InspectorPanel(AppEventBus* eventBus, UIContext* context)
@@ -50,27 +35,11 @@ void InspectorPanel::draw()
 {
     InspectorState state = buildState();
 
-    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ui::layout::RightSidePanelMetrics metrics =
+        ui::layout::CalculateRightSidePanelMetrics(m_context);
 
-    if (!m_hasUserResized)
-    {
-        m_panelWidth = ClampInspectorWidth(viewport->Size.x * ui::layout::InspectorWidthRatio);
-    }
-    else
-    {
-        m_panelWidth = ClampInspectorWidth(m_panelWidth);
-    }
-
-    const float startY = viewport->Pos.y + ui::layout::MainToolbarHeight;
-    const float panelHeight = viewport->Size.y - ui::layout::MainToolbarHeight;
-
-    const ImVec2 panelPos(
-        viewport->Pos.x + viewport->Size.x - m_panelWidth,
-        startY
-    );
-
-    ImGui::SetNextWindowPos(panelPos);
-    ImGui::SetNextWindowSize(ImVec2(m_panelWidth, panelHeight));
+    ImGui::SetNextWindowPos(metrics.position);
+    ImGui::SetNextWindowSize(metrics.size);
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -92,7 +61,7 @@ void InspectorPanel::draw()
     {
         ImVec2 contentCursor = ImGui::GetCursorScreenPos();
 
-        drawResizeHandle(panelPos, panelHeight);
+        ui::layout::DrawRightSidePanelResizeHandle(m_context, metrics);
 
         ImGui::SetCursorScreenPos(contentCursor);
 
@@ -114,44 +83,6 @@ void InspectorPanel::draw()
     ImGui::PopStyleColor(3);
 
     ImGui::PopStyleVar(4);
-}
-
-void InspectorPanel::drawResizeHandle(const ImVec2& panelPos, float panelHeight)
-{
-    const float handleWidth = ui::layout::InspectorResizeHandleWidth;
-
-    ImGui::SetCursorScreenPos(ImVec2(panelPos.x, panelPos.y));
-
-    ImGui::InvisibleButton("##InspectorResizeHandle", ImVec2(handleWidth, panelHeight));
-
-    const bool hovered = ImGui::IsItemHovered();
-    const bool active = ImGui::IsItemActive();
-
-    if (hovered || active)
-    {
-        ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-    }
-
-    if (active)
-    {
-        m_hasUserResized = true;
-        m_panelWidth = ClampInspectorWidth(m_panelWidth - ImGui::GetIO().MouseDelta.x);
-    }
-
-    if (hovered || active)
-    {
-        ImU32 color = ImGui::GetColorU32(
-            active
-            ? ImVec4(0.25f, 0.55f, 1.0f, 1.0f)
-            : ImVec4(0.30f, 0.34f, 0.42f, 1.0f)
-        );
-
-        ImGui::GetWindowDrawList()->AddRectFilled(
-            ImVec2(panelPos.x, panelPos.y),
-            ImVec2(panelPos.x + 2.0f, panelPos.y + panelHeight),
-            color
-        );
-    }
 }
 
 InspectorState InspectorPanel::buildState() const
