@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "../tools/transform/TransformTypes.h"
+#include "../../tools/transform/TransformTypes.h"
 
 struct SceneObjectInfo {
     uint32_t id;
@@ -25,15 +25,14 @@ struct UIContext {
     
     bool showCustomSolidPanel;
 
-    // =========================================================
-    // VARIÁVEIS PARA O GERADOR DE SÓLIDO PERSONALIZADO
-    // =========================================================
     char customSolidName[256];
     int customSolidSides;
     float customSolidBottomRadius;
     float customSolidTopRadius;
     float customSolidHeight;
-    // =========================================================
+
+    float rightSidePanelWidth = 0.0f;
+    bool rightSidePanelHasUserResized = false;
 
     UIContext();
 

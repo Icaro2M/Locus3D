@@ -11,6 +11,7 @@ set(GLFW_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glfw)
 set(GLM_DIR  ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/imgui)
 set(NLOHMANN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nlohmann)
+set(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor/stb)
 
 # 3. Coletar arquivos de código (Sources)
 # Aqui incluímos os códigos-fonte do projeto e das bibliotecas
@@ -21,7 +22,7 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS
 )
 
 # 4. Criar o executável
-add_executable(${PROJECT_NAME} ${SOURCES})
+add_executable(${PROJECT_NAME} ${SOURCES} "src/ui/menu/menus/FileMenu.h" "src/ui/menu/menus/FileMenu.cpp")
 
 # 5. Configurar Diretórios de Inclusão (Headers)
 target_include_directories(${PROJECT_NAME} PRIVATE 
@@ -31,6 +32,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     "${GLM_DIR}/include"
     "${IMGUI_DIR}"
     "${NLOHMANN_DIR}"
+    "${STB_DIR}"
 )
 
 # 6. Linkar Bibliotecas Binárias
