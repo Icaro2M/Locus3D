@@ -3,11 +3,14 @@
 #include <vector>
 #include <functional>
 #include <cstdint>
+#include <string>
 
 enum class EventType {
     None,
+
     DeleteObject,
     RenameObject,
+
     TransformChanged,
     AddPrimitive,
     AddCustomSolid,
@@ -29,8 +32,10 @@ enum class EventType {
     InputKeyS,
     InputKeyEscape,
     InputKeyEnter,
+
     InputMouseClickLeft,
     InputMouseReleaseLeft,
+
     ToolStarted,
     ToolCanceled,
     ToolConfirmed
@@ -40,10 +45,12 @@ struct Event {
     EventType type;
     uint32_t payloadUInt;
     int payloadInt;
+    std::string payloadString;
 
     Event(EventType t);
     Event(EventType t, uint32_t u);
     Event(EventType t, int i);
+    Event(EventType t, uint32_t u, const std::string& s);
 };
 
 using EventCallback = std::function<void(const Event&)>;
@@ -58,6 +65,7 @@ public:
     void emit(EventType type);
     void emit(EventType type, uint32_t payload);
     void emit(EventType type, int payload);
+    void emit(EventType type, uint32_t payload, const std::string& text);
 
 private:
     std::vector<EventCallback> m_subscribers;

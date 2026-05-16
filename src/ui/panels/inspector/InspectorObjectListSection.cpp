@@ -195,33 +195,22 @@ void InspectorObjectListSection::beginRename(const InspectorObjectItem& object)
 
 void InspectorObjectListSection::commitRename()
 {
-    if (m_renamingObjectId == 0)
-    {
+    if (m_renamingObjectId == 0) {
         return;
     }
 
     std::string newName = std::string(m_renameBuffer);
 
-    if (newName.empty())
-    {
+    if (newName.empty()) {
         m_renamingObjectId = 0;
         std::memset(m_renameBuffer, 0, sizeof(m_renameBuffer));
         return;
     }
 
-    int renamedObjectId = m_renamingObjectId;
-
-    for (auto& object : m_context->sceneObjects)
-    {
-        if (object.id == renamedObjectId)
-        {
-            object.name = newName;
-            break;
-        }
-    }
+    uint32_t renamedObjectId = static_cast<uint32_t>(m_renamingObjectId);
 
     m_renamingObjectId = 0;
     std::memset(m_renameBuffer, 0, sizeof(m_renameBuffer));
 
-    m_eventBus->emit(EventType::RenameObject, renamedObjectId);
+    m_eventBus->emit(EventType::RenameObject, renamedObjectId, newName);
 }

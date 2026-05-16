@@ -348,6 +348,26 @@ void EditorApplication::setupEventSubscriptions()
                     }
                 }
             }
+
+            else if (e.type == EventType::RenameObject) {
+                uint32_t idToRename = e.payloadUInt;
+
+                if (!e.payloadString.empty()) {
+                    pushUndoSnapshot();
+
+                    auto& objects = m_sceneContext.getScene().getObjects();
+
+                    for (SceneObject* obj : objects) {
+                        if (obj != nullptr && obj->getId() == idToRename) {
+                            obj->setName(e.payloadString);
+                            break;
+                        }
+                    }
+
+                    syncUI();
+                }
+                }
+
             else if (e.type == EventType::DeleteObject)
             {
                 pushUndoSnapshot();
