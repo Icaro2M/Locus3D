@@ -121,17 +121,17 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
         addVertex(result.vertices, top1, normal);    
         addVertex(result.vertices, top0, normal);    
 
-        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 1, baseVertexIndex + 2);
-        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 2, baseVertexIndex + 3);
+        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 2, baseVertexIndex + 1);
+        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 3, baseVertexIndex + 2);
 
         result.logicalFaces.push_back(
             LogicalFace(
                 { currentTriangleIndex, currentTriangleIndex + 1 },
                 {
-                    baseVertexIndex + 0,
-                    baseVertexIndex + 1,
-                    baseVertexIndex + 2,
-                    baseVertexIndex + 3
+                baseVertexIndex + 0,
+                baseVertexIndex + 3,
+                baseVertexIndex + 2,
+                baseVertexIndex + 1
                 }
             )
         );
@@ -176,7 +176,7 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
             addVertex(result.vertices, p0, glm::vec3(0.0f, -1.0f, 0.0f));
             addVertex(result.vertices, p1, glm::vec3(0.0f, -1.0f, 0.0f));
 
-            addTriangle(result.indices, centerIndex, ringIndex + 1, ringIndex + 0);
+            addTriangle(result.indices, centerIndex, ringIndex + 0, ringIndex + 1);
 
             bottomTriangleIndices.push_back(currentTriangleIndex);
             bottomBoundaryVertexIndices.push_back(ringIndex + 0);
@@ -226,7 +226,7 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
             addVertex(result.vertices, p0, glm::vec3(0.0f, 1.0f, 0.0f));
             addVertex(result.vertices, p1, glm::vec3(0.0f, 1.0f, 0.0f));
 
-            addTriangle(result.indices, centerIndex, ringIndex + 0, ringIndex + 1);
+            addTriangle(result.indices, centerIndex, ringIndex + 1, ringIndex + 0);
 
             topTriangleIndices.push_back(currentTriangleIndex);
             topBoundaryVertexIndices.push_back(ringIndex + 0);

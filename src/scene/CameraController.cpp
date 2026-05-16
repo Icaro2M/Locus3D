@@ -82,3 +82,8 @@ void CameraController::processScroll(Camera& camera, float yOffset)
 
     camera.updateOrbitPosition();
 }
+
+void CameraController::resetMouseState()
+{
+    m_FirstMouse = true;
+}

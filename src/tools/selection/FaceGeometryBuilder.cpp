@@ -3,6 +3,7 @@
 #include "../../geometry/LogicalFace.h"
 #include "../../geometry/Mesh.h"
 
+#include <algorithm>
 #include <glm/glm/glm.hpp>
 
 namespace
@@ -60,6 +61,35 @@ namespace
 
         return center / static_cast<float>(boundaryVertices.size());
     }
+
+    glm::vec3 computeNormalFromBoundary(
+        const std::vector<glm::vec3>& boundaryVertices
+    )
+    {
+        if (boundaryVertices.size() < 3)
+        {
+            return glm::vec3(0.0f, 0.0f, 0.0f);
+        }
+
+        glm::vec3 normal(0.0f, 0.0f, 0.0f);
+
+        for (size_t i = 0; i < boundaryVertices.size(); ++i)
+        {
+            const glm::vec3& current = boundaryVertices[i];
+            const glm::vec3& next = boundaryVertices[(i + 1) % boundaryVertices.size()];
+
+            normal.x += (current.y - next.y) * (current.z + next.z);
+            normal.y += (current.z - next.z) * (current.x + next.x);
+            normal.z += (current.x - next.x) * (current.y + next.y);
+        }
+
+        if (glm::length(normal) <= 0.00001f)
+        {
+            return glm::vec3(0.0f, 0.0f, 0.0f);
+        }
+
+        return glm::normalize(normal);
+    }
 }
 
 FaceGeometry FaceGeometryBuilder::build(const FaceSelection& selection) const
@@ -72,27 +102,29 @@ FaceGeometry FaceGeometryBuilder::build(const FaceSelection& selection) const
     }
 
     SceneObject* object = selection.getObject();
+
     if (object == nullptr)
     {
         return geometry;
     }
 
     const Mesh& mesh = object->getMesh();
+
     if (!mesh.hasLogicalFaces())
     {
         return geometry;
     }
 
-    const LogicalFace* logicalFace =
-        mesh.getLogicalFace(static_cast<unsigned int>(selection.getFaceIndex()));
+    const LogicalFace* logicalFace = mesh.getLogicalFace(
+        static_cast<unsigned int>(selection.getFaceIndex())
+    );
 
     if (logicalFace == nullptr || !logicalFace->isValid())
     {
         return geometry;
     }
 
-    const std::vector<unsigned int>& boundaryVertexIndices =
-        logicalFace->getBoundaryVertexIndices();
+    std::vector<unsigned int> boundaryVertexIndices = logicalFace->getBoundaryVertexIndices();
 
     std::vector<glm::vec3> localBoundaryVertices;
     localBoundaryVertices.reserve(boundaryVertexIndices.size());
@@ -112,6 +144,15 @@ FaceGeometry FaceGeometryBuilder::build(const FaceSelection& selection) const
     if (glm::length(localNormal) <= 0.00001f)
     {
         return geometry;
+    }
+
+    const glm::vec3 boundaryNormal = computeNormalFromBoundary(localBoundaryVertices);
+
+    if (glm::length(boundaryNormal) > 0.00001f &&
+        glm::dot(boundaryNormal, localNormal) < 0.0f)
+    {
+        std::reverse(boundaryVertexIndices.begin(), boundaryVertexIndices.end());
+        std::reverse(localBoundaryVertices.begin(), localBoundaryVertices.end());
     }
 
     const glm::vec3 localCenter = computeCenterFromBoundary(localBoundaryVertices);
