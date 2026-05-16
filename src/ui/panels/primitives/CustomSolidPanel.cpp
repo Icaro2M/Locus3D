@@ -12,7 +12,7 @@ namespace
 {
     void PushPanelStyle()
     {
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(ui::layout::SidePanelPaddingX, ui::layout::SidePanelPaddingY));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, ui::layout::SidePanelPaddingY));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ui::layout::SidePanelItemSpacingX, ui::layout::SidePanelItemSpacingY));
@@ -43,6 +43,13 @@ namespace
         ImGui::TextUnformatted(text);
         ImGui::PopStyleColor();
     }
+
+    void DrawFieldLabel(const char* text)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82f, 0.85f, 0.92f, 1.0f));
+        ImGui::TextUnformatted(text);
+        ImGui::PopStyleColor();
+    }
 }
 
 CustomSolidPanel::CustomSolidPanel(AppEventBus* eventBus, UIContext* context)
@@ -64,6 +71,8 @@ void CustomSolidPanel::draw()
         ImGuiWindowFlags_NoCollapse |
         ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse |
         ImGuiWindowFlags_NoSavedSettings;
 
     PushPanelStyle();
@@ -79,25 +88,19 @@ void CustomSolidPanel::draw()
         drawHeader();
 
         ImGui::Spacing();
-
         ImGui::Separator();
-
         ImGui::Spacing();
 
         drawPreviews();
 
         ImGui::Spacing();
-
         ImGui::Separator();
-
         ImGui::Spacing();
 
         drawFields();
 
         ImGui::Spacing();
-
         ImGui::Separator();
-
         ImGui::Spacing();
 
         drawActions();
@@ -116,9 +119,17 @@ void CustomSolidPanel::drawHeader()
     ImGui::TextUnformatted("SÓLIDO PERSONALIZADO");
     ImGui::PopStyleColor();
 
-    ImGui::SameLine(ImGui::GetWindowWidth() - 34.0f);
+    ImGui::SameLine();
 
-    if (ImGui::Button("X", ImVec2(24.0f, 24.0f)))
+    const float closeButtonSize = 24.0f;
+    const float closeButtonX =
+        ImGui::GetCursorPosX() +
+        ImGui::GetContentRegionAvail().x -
+        closeButtonSize;
+
+    ImGui::SetCursorPosX(closeButtonX);
+
+    if (ImGui::Button("X", ImVec2(closeButtonSize, closeButtonSize)))
     {
         m_context->showCustomSolidPanel = false;
     }
@@ -145,31 +156,34 @@ void CustomSolidPanel::drawFields()
 {
     DrawSectionTitle("CONFIGURAÇÕES");
 
-    ImGui::TextUnformatted("Nome");
-
+    DrawFieldLabel("Nome");
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputText("##CustomSolidName", m_state.name, sizeof(m_state.name));
 
+    DrawFieldLabel("Lados");
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::InputInt("Lados", &m_state.sides))
+    if (ImGui::InputInt("##CustomSolidSides", &m_state.sides))
     {
         clampState();
     }
 
+    DrawFieldLabel("Raio inferior");
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::DragFloat("Raio inferior", &m_state.bottomRadius, 0.1f, 0.0f, 100.0f, "%.2f"))
+    if (ImGui::DragFloat("##CustomSolidBottomRadius", &m_state.bottomRadius, 0.1f, 0.0f, 100.0f, "%.2f"))
     {
         clampState();
     }
 
+    DrawFieldLabel("Raio superior");
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::DragFloat("Raio superior", &m_state.topRadius, 0.1f, 0.0f, 100.0f, "%.2f"))
+    if (ImGui::DragFloat("##CustomSolidTopRadius", &m_state.topRadius, 0.1f, 0.0f, 100.0f, "%.2f"))
     {
         clampState();
     }
 
+    DrawFieldLabel("Altura");
     ImGui::SetNextItemWidth(-1.0f);
-    if (ImGui::DragFloat("Altura", &m_state.height, 0.1f, 0.1f, 100.0f, "%.2f"))
+    if (ImGui::DragFloat("##CustomSolidHeight", &m_state.height, 0.1f, 0.1f, 100.0f, "%.2f"))
     {
         clampState();
     }

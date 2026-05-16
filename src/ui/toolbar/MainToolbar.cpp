@@ -145,73 +145,61 @@ void MainToolbar::drawPrimitiveDropdown(const ui::toolbar::MainToolbarItem& item
 {
     bool popupOpen = ImGui::IsPopupOpen("MainToolbarPrimitivePopup");
 
-    if (ui::DropdownButton({
+    bool pressed = ui::DropdownButton({
         item.id,
         item.tooltip,
         popupOpen,
         true,
         item.iconPath,
         MainToolbarButtonStyle()
-        }))
+        });
+
+    ImVec2 buttonMin = ImGui::GetItemRectMin();
+    ImVec2 buttonMax = ImGui::GetItemRectMax();
+
+    if (pressed)
     {
         ImGui::OpenPopup("MainToolbarPrimitivePopup");
     }
 
-    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 8.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 8.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 2.0f));
+    ImVec2 popupPos = ImVec2(buttonMin.x, buttonMax.y + 8.0f);
+
+    ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 6.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
     ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(0.065f, 0.070f, 0.082f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.18f, 0.20f, 0.24f, 1.0f));
 
     if (ImGui::BeginPopup("MainToolbarPrimitivePopup"))
     {
-        if (ui::PopupMenuItemButton({
-            "primitive_cube",
-            "Cube",
-            false,
-            true,
-            AssetPaths::primitiveIcon("cube.png")
-            }))
+        ui::PopupMenuItemStyle itemStyle;
+        itemStyle.rounding = 0.0f;
+
+        if (ui::PopupMenuItemButton({ "primitive_cube", "Cube", false, true, AssetPaths::primitiveIcon("cube.png"), itemStyle }))
         {
             m_context->showCustomSolidPanel = false;
             m_eventBus->emit(EventType::AddPrimitive, 0);
             ImGui::CloseCurrentPopup();
         }
 
-        if (ui::PopupMenuItemButton({
-            "primitive_sphere",
-            "Sphere",
-            false,
-            true,
-            AssetPaths::primitiveIcon("sphere.png")
-            }))
+        if (ui::PopupMenuItemButton({ "primitive_sphere", "Sphere", false, true, AssetPaths::primitiveIcon("sphere.png"), itemStyle }))
         {
             m_context->showCustomSolidPanel = false;
             m_eventBus->emit(EventType::AddPrimitive, 1);
             ImGui::CloseCurrentPopup();
         }
 
-        if (ui::PopupMenuItemButton({
-            "primitive_cone",
-            "Cone",
-            false,
-            true,
-            AssetPaths::primitiveIcon("cone.png")
-            }))
+        if (ui::PopupMenuItemButton({ "primitive_cone", "Cone", false, true, AssetPaths::primitiveIcon("cone.png"), itemStyle }))
         {
             m_context->showCustomSolidPanel = false;
             m_eventBus->emit(EventType::AddPrimitive, 2);
             ImGui::CloseCurrentPopup();
         }
 
-        if (ui::PopupMenuItemButton({
-            "primitive_cylinder",
-            "Cylinder",
-            false,
-            true,
-            AssetPaths::primitiveIcon("cylinder.png")
-            }))
+        if (ui::PopupMenuItemButton({ "primitive_cylinder", "Cylinder", false, true, AssetPaths::primitiveIcon("cylinder.png"), itemStyle }))
         {
             m_context->showCustomSolidPanel = false;
             m_eventBus->emit(EventType::AddPrimitive, 3);

@@ -10,7 +10,7 @@ namespace ui::layout
     constexpr float ViewportOverlayLeftMargin = 20.0f;
     constexpr float ViewportOverlayTopMargin = 16.0f;
 
-    constexpr float SidePanelWidthRatio = 0.22f;
+    constexpr float SidePanelWidthRatio = 0.19f;
     constexpr float SidePanelMinWidth = 350.0f;
     constexpr float SidePanelMaxWidth = 650.0f;
     constexpr float SidePanelResizeHandleWidth = 7.0f;
