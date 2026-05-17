@@ -53,7 +53,10 @@ void MainToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
 
-    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y));
+    ImGui::SetNextWindowPos(ImVec2(
+        viewport->WorkPos.x,
+        viewport->WorkPos.y + ui::layout::TitleBarHeight
+    ));
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, ui::layout::MainToolbarHeight));
 
     ImGuiWindowFlags flags =

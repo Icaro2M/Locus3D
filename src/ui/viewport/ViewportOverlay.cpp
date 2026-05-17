@@ -15,6 +15,7 @@ void ViewportOverlay::draw()
     ImGui::SetNextWindowPos(ImVec2(
         viewport->WorkPos.x + ui::layout::ViewportOverlayLeftMargin,
         viewport->WorkPos.y +
+        ui::layout::TitleBarHeight +
         ui::layout::MainToolbarHeight +
         ui::layout::ToolbarSpacing +
         48.0f

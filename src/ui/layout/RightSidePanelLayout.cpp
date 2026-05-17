@@ -36,8 +36,9 @@ namespace ui::layout
             context->rightSidePanelWidth = ClampPanelWidth(context->rightSidePanelWidth);
         }
 
-        const float startY = viewport->Pos.y + MainToolbarHeight;
-        const float height = viewport->Size.y - MainToolbarHeight;
+        const float topOffset = TitleBarHeight + MainToolbarHeight;
+        const float startY = viewport->Pos.y + topOffset;
+        const float height = viewport->Size.y - topOffset;
 
         RightSidePanelMetrics metrics;
 

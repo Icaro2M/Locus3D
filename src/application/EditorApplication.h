@@ -14,6 +14,7 @@
 #include "controllers/RenderCoordinator.h"
 #include "controllers/CameraContext.h"
 #include "controllers/SceneContext.h"
+#include "controllers/WindowController.h"
 
 #include "clipboard/ObjectClipboard.h"
 
@@ -56,6 +57,11 @@ public:
         return m_cameraContext;
     }
 
+    WindowController* getWindowController()
+    {
+        return &m_windowController;
+    }
+
 private:
     WindowManager* m_window;
 
@@ -70,6 +76,7 @@ private:
     FaceToolController m_faceToolController;
     RenderCoordinator m_renderCoordinator;
     CameraContext m_cameraContext;
+    WindowController m_windowController;
     SceneContext m_sceneContext;
     ObjectClipboard m_objectClipboard;
     UndoRedoManager m_undoRedoManager;

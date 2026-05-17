@@ -19,6 +19,7 @@ void GizmoToolbar::draw()
     ImGui::SetNextWindowPos(ImVec2(
         viewport->WorkPos.x + ui::layout::GizmoToolbarLeftMargin,
         viewport->WorkPos.y + ui::layout::MainToolbarHeight + ui::layout::ToolbarSpacing
+        + ui::layout::TitleBarHeight
     ));
 
     ImGuiWindowFlags flags =

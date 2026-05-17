@@ -2,6 +2,7 @@
 
 namespace ui::layout
 {
+    constexpr float TitleBarHeight = 36.0f;
     constexpr float MainToolbarHeight = 72.0f;
     constexpr float ToolbarSpacing = 6.0f;
 
