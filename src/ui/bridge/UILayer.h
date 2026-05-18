@@ -2,6 +2,7 @@
 
 #include "UIContext.h"
 #include "../../application/AppEventBus.h"
+#include "../../application/controllers/WindowController.h"
 #include "../toolbar/MainToolbar.h"
 #include "../toolbar/GizmoToolbar.h"
 #include "../panels/inspector/InspectorPanel.h"
@@ -12,7 +13,7 @@
 
 class UILayer {
 public:
-    UILayer(AppEventBus* eventBus, UIContext* context);
+    UILayer(AppEventBus* eventBus, UIContext* context, WindowController* windowController);
     ~UILayer() = default;
 
     void draw();
@@ -20,6 +21,7 @@ public:
 private:
     AppEventBus* m_eventBus;
     UIContext* m_context;
+    WindowController* m_windowController;
 
     TopMenuBar m_topMenuBar;
     MainToolbar m_mainToolbar;

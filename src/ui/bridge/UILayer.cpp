@@ -1,10 +1,11 @@
 #include "UILayer.h"
 #include <imgui.h>
 
-UILayer::UILayer(AppEventBus* eventBus, UIContext* context)
+UILayer::UILayer(AppEventBus* eventBus, UIContext* context, WindowController* windowController)
     : m_eventBus(eventBus),
     m_context(context),
-    m_topMenuBar(eventBus, context),
+    m_windowController(windowController),
+    m_topMenuBar(eventBus, context, windowController),
     m_mainToolbar(eventBus, context),
     m_gizmoToolbar(eventBus, context),
     m_inspectorPanel(eventBus, context),

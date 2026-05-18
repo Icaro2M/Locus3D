@@ -17,6 +17,7 @@ EditorApplication::EditorApplication(WindowManager* window)
     m_transformBridge(&m_editorState, &m_eventBus),
     m_faceToolController(&m_editorState),
     m_renderCoordinator(&m_editorState),
+    m_windowController(window),
     m_undoRedoManager(12)
 {
     setupEventSubscriptions();

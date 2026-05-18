@@ -3,10 +3,13 @@
 #include "ui/bridge/UILayer.h"
 #include "application/controllers/CameraContext.h" 
 #include "ui/ImGuiTheme.h"
+#include "ui/UIFonts.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
+
+#include <functional>
 
 int main()
 {
@@ -19,34 +22,54 @@ int main()
     ImGui::StyleColorsDark();
     ApplyModernTheme();
 
-    io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 16.0f);
+    ui::fonts::LoadFonts(io);
     
     ImGui_ImplGlfw_InitForOpenGL(window.getWindow(), true);
     ImGui_ImplOpenGL3_Init("#version 450");
 
     EditorApplication app(&window);
-    UILayer uiLayer(app.getEventBus(), app.getUIContext());
+    UILayer uiLayer(app.getEventBus(), app.getUIContext(), app.getWindowController());
 
-    glfwSetWindowUserPointer(window.getWindow(), &app.getCameraContext());
-    glfwSetScrollCallback(window.getWindow(), CameraContext::scrollCallback);
+    window.setScrollCallback([&app](double xOffset, double yOffset)
+        {
+            (void)xOffset;
+            app.getCameraContext().getController().processScroll(
+                app.getCameraContext().getCamera(),
+                static_cast<float>(yOffset)
+            );
+        });
+
+    std::function<void(bool)> drawFrame = [&](bool processInput)
+        {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            if (processInput)
+            {
+                app.processInput();
+            }
+
+            app.update();
+            app.render();
+
+            uiLayer.draw();
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            window.swapBuffers();
+        };
+
+    window.setRefreshCallback([&drawFrame]()
+        {
+            drawFrame(false);
+        });
 
     while (!window.shouldClose())
     {
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        app.processInput();
-        app.update();
-        app.render();
-
-        uiLayer.draw();
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
         window.pollEvents();
-        window.swapBuffers();
+        drawFrame(true);
     }
 
     ImGui_ImplOpenGL3_Shutdown();

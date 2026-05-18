@@ -42,6 +42,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     "${GLFW_DIR}/lib/glfw3.lib"
     opengl32.lib
     Comdlg32.lib
+    Comctl32.lib
 )
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

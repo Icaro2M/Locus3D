@@ -11,11 +11,14 @@ ViewportOverlay::ViewportOverlay(UIContext* context)
 void ViewportOverlay::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float titleBarHeight = ui::layout::GetTitleBarHeight(viewport->WorkSize.y);
+    const float mainToolbarHeight = ui::layout::GetMainToolbarHeight(viewport->WorkSize.y);
     
     ImGui::SetNextWindowPos(ImVec2(
         viewport->WorkPos.x + ui::layout::ViewportOverlayLeftMargin,
         viewport->WorkPos.y +
-        ui::layout::MainToolbarHeight +
+        titleBarHeight +
+        mainToolbarHeight +
         ui::layout::ToolbarSpacing +
         48.0f
     ));

@@ -10,16 +10,31 @@
 
 namespace
 {
-    constexpr float ToolbarButtonSize = ui::layout::MainToolbarHeight * 0.6f;
-    constexpr float SeparatorWidth = ui::layout::MainToolbarHeight * 0.3f;
+    float GetToolbarHeight()
+    {
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        return ui::layout::GetMainToolbarHeight(viewport->WorkSize.y);
+    }
+
+    float GetToolbarButtonSize()
+    {
+        return GetToolbarHeight() * 0.64f;
+    }
+
+    float GetSeparatorWidth()
+    {
+        return GetToolbarHeight() * 0.25f;
+    }
+
     constexpr float SeparatorHeightRatio = 0.6f;
 
     ui::ButtonVisualStyle MainToolbarButtonStyle()
     {
         ui::ButtonVisualStyle style;
+        const float buttonSize = GetToolbarButtonSize();
 
-        style.size = ImVec2(ToolbarButtonSize, ToolbarButtonSize);
-        style.rounding = 10.0f;
+        style.size = ImVec2(buttonSize, buttonSize);
+        style.rounding = 8.0f;
         style.borderThickness = 1.0f;
         style.iconScale = 0.65f;
 
@@ -52,9 +67,14 @@ MainToolbar::MainToolbar(AppEventBus* eventBus, UIContext* context)
 void MainToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float titleBarHeight = ui::layout::GetTitleBarHeight(viewport->WorkSize.y);
+    const float toolbarHeight = ui::layout::GetMainToolbarHeight(viewport->WorkSize.y);
 
-    ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y));
-    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, ui::layout::MainToolbarHeight));
+    ImGui::SetNextWindowPos(ImVec2(
+        viewport->WorkPos.x,
+        viewport->WorkPos.y + titleBarHeight
+    ));
+    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, toolbarHeight));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -72,7 +92,8 @@ void MainToolbar::draw()
 
     if (ImGui::Begin("MainToolbar", nullptr, flags))
     {
-        float buttonOffsetY = (ImGui::GetWindowHeight() - ToolbarButtonSize) * 0.5f;
+        const float buttonSize = GetToolbarButtonSize();
+        float buttonOffsetY = (ImGui::GetWindowHeight() - buttonSize) * 0.5f;
         if (buttonOffsetY < 0.0f)
         {
             buttonOffsetY = 0.0f;
@@ -235,9 +256,11 @@ void MainToolbar::drawSeparator()
     ImDrawList* drawList = ImGui::GetWindowDrawList();
 
     float toolbarHeight = ImGui::GetWindowHeight();
-    float separatorHeight = ToolbarButtonSize * SeparatorHeightRatio;
+    const float buttonSize = GetToolbarButtonSize();
+    const float separatorWidth = GetSeparatorWidth();
+    float separatorHeight = buttonSize * SeparatorHeightRatio;
 
-    float x = cursor.x + SeparatorWidth * 0.5f;
+    float x = cursor.x + separatorWidth * 0.5f;
     float y = windowPos.y + (toolbarHeight - separatorHeight) * 0.5f;
 
     drawList->AddLine(
@@ -247,7 +270,7 @@ void MainToolbar::drawSeparator()
         1.0f
     );
 
-    ImGui::Dummy(ImVec2(SeparatorWidth, ToolbarButtonSize));
+    ImGui::Dummy(ImVec2(separatorWidth, buttonSize));
 }
 
 bool MainToolbar::isActionActive(ui::toolbar::MainToolbarAction action) const
