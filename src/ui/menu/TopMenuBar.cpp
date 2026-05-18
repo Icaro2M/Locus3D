@@ -2,6 +2,7 @@
 
 #include "WindowControlButton.h"
 #include "../layout/UILayoutConstants.h"
+#include "../UIFonts.h"
 
 #include <imgui.h>
 
@@ -22,18 +23,30 @@ TopMenuBar::TopMenuBar(AppEventBus* eventBus, UIContext* context, WindowControll
 void TopMenuBar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float titleBarHeight = ui::layout::GetTitleBarHeight(viewport->WorkSize.y);
+    ImFont* topBarFont = ui::fonts::TopBar(viewport->WorkSize.y);
+    const float topBarFontSize = topBarFont != nullptr
+        ? ui::fonts::TopBarSize(viewport->WorkSize.y)
+        : ImGui::GetFontSize();
+    float titleBarFramePaddingY =
+        (titleBarHeight - topBarFontSize) * 0.5f;
+
+    if (titleBarFramePaddingY < 4.0f)
+    {
+        titleBarFramePaddingY = 4.0f;
+    }
 
     if (m_windowController != nullptr)
     {
         m_windowController->setTitleBarMetrics(
-            ui::layout::TitleBarHeight,
+            titleBarHeight,
             InitialDragStartX,
             WindowControlsWidth
         );
     }
 
     ImGui::SetNextWindowPos(viewport->Pos);
-    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, ui::layout::TitleBarHeight));
+    ImGui::SetNextWindowSize(ImVec2(viewport->Size.x, titleBarHeight));
 
     ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar |
@@ -47,7 +60,7 @@ void TopMenuBar::draw()
         ImGuiWindowFlags_MenuBar;
 
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 7.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, titleBarFramePaddingY));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10.0f, 0.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 
@@ -57,6 +70,11 @@ void TopMenuBar::draw()
     ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImVec4(0.18f, 0.22f, 0.30f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImVec4(0.12f, 0.30f, 0.60f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88f, 0.90f, 0.94f, 1.0f));
+
+    if (topBarFont != nullptr)
+    {
+        ImGui::PushFont(topBarFont);
+    }
 
     if (ImGui::Begin("TopMenuBar", nullptr, flags))
     {
@@ -70,7 +88,7 @@ void TopMenuBar::draw()
             if (m_windowController != nullptr)
             {
                 m_windowController->setTitleBarMetrics(
-                    ui::layout::TitleBarHeight,
+                    titleBarHeight,
                     dragStartX,
                     WindowControlsWidth
                 );
@@ -82,7 +100,7 @@ void TopMenuBar::draw()
             const float minTitleX = dragStartX;
 
             ImGui::SetCursorPosX(centeredTitleX > minTitleX ? centeredTitleX : minTitleX);
-            ImGui::TextDisabled("%s", title);
+            ImGui::TextUnformatted(title);
 
             ImGui::SetCursorPosX(viewport->Size.x - WindowControlsWidth);
 
@@ -137,6 +155,11 @@ void TopMenuBar::draw()
     }
 
     ImGui::End();
+
+    if (topBarFont != nullptr)
+    {
+        ImGui::PopFont();
+    }
 
     ImGui::PopStyleColor(6);
     ImGui::PopStyleVar(4);

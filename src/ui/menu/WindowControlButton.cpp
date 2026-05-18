@@ -105,10 +105,12 @@ namespace ui::menu
     )
     {
         ImGui::PushID(id);
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float titleBarHeight = ui::layout::GetTitleBarHeight(viewport->WorkSize.y);
 
         const bool pressed = ImGui::InvisibleButton(
             id,
-            ImVec2(WindowControlButtonWidth, ui::layout::TitleBarHeight)
+            ImVec2(WindowControlButtonWidth, titleBarHeight)
         );
 
         const bool hovered = ImGui::IsItemHovered();

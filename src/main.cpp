@@ -3,6 +3,7 @@
 #include "ui/bridge/UILayer.h"
 #include "application/controllers/CameraContext.h" 
 #include "ui/ImGuiTheme.h"
+#include "ui/UIFonts.h"
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
@@ -21,7 +22,7 @@ int main()
     ImGui::StyleColorsDark();
     ApplyModernTheme();
 
-    io.Fonts->AddFontFromFileTTF("assets/fonts/Roboto-Regular.ttf", 16.0f);
+    ui::fonts::LoadFonts(io);
     
     ImGui_ImplGlfw_InitForOpenGL(window.getWindow(), true);
     ImGui_ImplOpenGL3_Init("#version 450");

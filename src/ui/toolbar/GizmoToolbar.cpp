@@ -15,11 +15,13 @@ GizmoToolbar::GizmoToolbar(AppEventBus* eventBus, UIContext* context)
 void GizmoToolbar::draw()
 {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const float titleBarHeight = ui::layout::GetTitleBarHeight(viewport->WorkSize.y);
+    const float mainToolbarHeight = ui::layout::GetMainToolbarHeight(viewport->WorkSize.y);
 
     ImGui::SetNextWindowPos(ImVec2(
         viewport->WorkPos.x + ui::layout::GizmoToolbarLeftMargin,
-        viewport->WorkPos.y + ui::layout::MainToolbarHeight + ui::layout::ToolbarSpacing
-        + ui::layout::TitleBarHeight
+        viewport->WorkPos.y + mainToolbarHeight + ui::layout::ToolbarSpacing
+        + titleBarHeight
     ));
 
     ImGuiWindowFlags flags =
