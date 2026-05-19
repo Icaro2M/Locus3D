@@ -31,6 +31,22 @@ namespace
         indices.push_back(b);
         indices.push_back(c);
     }
+
+    glm::vec3 computeNormal(
+        const glm::vec3& a,
+        const glm::vec3& b,
+        const glm::vec3& c
+    )
+    {
+        glm::vec3 normal = glm::cross(b - a, c - a);
+
+        if (glm::length(normal) <= 0.00001f)
+        {
+            return glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+
+        return glm::normalize(normal);
+    }
 }
 
 RadialSolidBuilder::Result RadialSolidBuilder::build(
@@ -101,42 +117,95 @@ RadialSolidBuilder::Result RadialSolidBuilder::build(
             std::sin(angle1) * topRadius
         );
 
-        glm::vec3 sideA = top0 - bottom0;
-        glm::vec3 sideB = bottom1 - bottom0;
-        glm::vec3 normal = glm::cross(sideA, sideB);
-
-        if (glm::length(normal) > 0.00001f)
+        if (bottomRadius <= 0.00001f && topRadius > 0.00001f)
         {
-            normal = glm::normalize(normal);
+            glm::vec3 normal = computeNormal(bottom0, top0, top1);
+
+            unsigned int baseVertexIndex = static_cast<unsigned int>(result.vertices.size() / 6);
+
+            addVertex(result.vertices, bottom0, normal);
+            addVertex(result.vertices, top0, normal);
+            addVertex(result.vertices, top1, normal);
+
+            addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 1, baseVertexIndex + 2);
+
+            result.logicalFaces.push_back(
+                LogicalFace(
+                    { currentTriangleIndex },
+                    {
+                    baseVertexIndex + 0,
+                    baseVertexIndex + 1,
+                    baseVertexIndex + 2
+                    }
+                )
+            );
+
+            currentTriangleIndex += 1;
         }
-        else
+        else if (topRadius <= 0.00001f && bottomRadius > 0.00001f)
         {
-            normal = glm::vec3(0.0f, 0.0f, 1.0f);
+            glm::vec3 normal = computeNormal(bottom0, top0, bottom1);
+
+            unsigned int baseVertexIndex = static_cast<unsigned int>(result.vertices.size() / 6);
+
+            addVertex(result.vertices, bottom0, normal);
+            addVertex(result.vertices, top0, normal);
+            addVertex(result.vertices, bottom1, normal);
+
+            addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 1, baseVertexIndex + 2);
+
+            result.logicalFaces.push_back(
+                LogicalFace(
+                    { currentTriangleIndex },
+                    {
+                    baseVertexIndex + 0,
+                    baseVertexIndex + 1,
+                    baseVertexIndex + 2
+                    }
+                )
+            );
+
+            currentTriangleIndex += 1;
         }
+        else if (bottomRadius > 0.00001f || topRadius > 0.00001f)
+        {
+            glm::vec3 normalA = computeNormal(bottom0, top1, bottom1);
+            glm::vec3 normalB = computeNormal(bottom0, top0, top1);
+            glm::vec3 normal = normalA + normalB;
 
-        unsigned int baseVertexIndex = static_cast<unsigned int>(result.vertices.size() / 6);
+            if (glm::length(normal) > 0.00001f)
+            {
+                normal = glm::normalize(normal);
+            }
+            else
+            {
+                normal = normalA;
+            }
 
-        addVertex(result.vertices, bottom0, normal); 
-        addVertex(result.vertices, bottom1, normal); 
-        addVertex(result.vertices, top1, normal);    
-        addVertex(result.vertices, top0, normal);    
+            unsigned int baseVertexIndex = static_cast<unsigned int>(result.vertices.size() / 6);
 
-        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 2, baseVertexIndex + 1);
-        addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 3, baseVertexIndex + 2);
+            addVertex(result.vertices, bottom0, normal);
+            addVertex(result.vertices, bottom1, normal);
+            addVertex(result.vertices, top1, normal);
+            addVertex(result.vertices, top0, normal);
 
-        result.logicalFaces.push_back(
-            LogicalFace(
-                { currentTriangleIndex, currentTriangleIndex + 1 },
-                {
-                baseVertexIndex + 0,
-                baseVertexIndex + 3,
-                baseVertexIndex + 2,
-                baseVertexIndex + 1
-                }
-            )
-        );
+            addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 2, baseVertexIndex + 1);
+            addTriangle(result.indices, baseVertexIndex + 0, baseVertexIndex + 3, baseVertexIndex + 2);
 
-        currentTriangleIndex += 2;
+            result.logicalFaces.push_back(
+                LogicalFace(
+                    { currentTriangleIndex, currentTriangleIndex + 1 },
+                    {
+                    baseVertexIndex + 0,
+                    baseVertexIndex + 3,
+                    baseVertexIndex + 2,
+                    baseVertexIndex + 1
+                    }
+                )
+            );
+
+            currentTriangleIndex += 2;
+        }
     }
 
     if (capBottom && bottomRadius > 0.0f)
