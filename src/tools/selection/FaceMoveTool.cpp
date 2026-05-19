@@ -298,6 +298,18 @@ float FaceMoveTool::getCurrentDistance() const
     return m_CurrentDistance;
 }
 
+void FaceMoveTool::setCurrentDistanceFromNumericInput(float distance)
+{
+    if (!m_Active)
+    {
+        return;
+    }
+
+    m_CurrentDistance = distance;
+    m_UsingNumericInput = true;
+    m_HasCommittedNumericValue = true;
+}
+
 const FaceSelection& FaceMoveTool::getSelection() const
 {
     return m_Selection;

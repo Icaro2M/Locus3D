@@ -55,6 +55,7 @@ public:
 
     bool isActive() const;
     float getCurrentScaleFactor() const;
+    void setCurrentScaleFactorFromNumericInput(float scaleFactor);
 
     const FaceSelection& getSelection() const;
     const FaceGeometry& getBaseGeometry() const;

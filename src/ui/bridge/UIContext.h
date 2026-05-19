@@ -22,6 +22,9 @@ struct UIContext {
     bool isFaceModeActive;
     int activeToolId;
     TransformMode activeTransformMode;
+
+    bool faceToolNumericInputVisible;
+    float faceToolNumericInputValue;
     
     bool showCustomSolidPanel;
 

@@ -11,7 +11,8 @@ UILayer::UILayer(AppEventBus* eventBus, UIContext* context, WindowController* wi
     m_inspectorPanel(eventBus, context),
     m_customSolidPanel(eventBus, context),
     m_primitivesMenu(eventBus, context),
-    m_viewportOverlay(context)
+    m_viewportOverlay(context),
+    m_faceToolNumericInputOverlay(eventBus, context)
 {
 }
 
@@ -22,6 +23,7 @@ void UILayer::draw()
     m_mainToolbar.draw();
     m_gizmoToolbar.draw();
     m_viewportOverlay.draw();
+    m_faceToolNumericInputOverlay.draw();
 
     if (m_context->showCustomSolidPanel)
     {

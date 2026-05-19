@@ -46,6 +46,7 @@ public:
 
     bool isActive() const;
     float getCurrentDistance() const;
+    void setCurrentDistanceFromNumericInput(float distance);
 
     const FaceSelection& getSelection() const;
     const FaceGeometry& getBaseGeometry() const;
