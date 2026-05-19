@@ -237,6 +237,18 @@ float PushPullTool::getCurrentDistance() const
     return m_CurrentDistance;
 }
 
+void PushPullTool::setCurrentDistanceFromNumericInput(float distance)
+{
+    if (!m_Active)
+    {
+        return;
+    }
+
+    m_CurrentDistance = distance;
+    m_UsingNumericInput = true;
+    m_HasCommittedNumericValue = true;
+}
+
 const FaceSelection& PushPullTool::getSelection() const
 {
     return m_Selection;

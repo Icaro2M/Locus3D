@@ -1,5 +1,29 @@
 #include "FaceToolController.h"
 
+#include <cstdlib>
+
+namespace
+{
+    bool parseFloatStrict(const std::string& text, float& value)
+    {
+        if (text.empty())
+        {
+            return false;
+        }
+
+        char* end = nullptr;
+        const float parsed = std::strtof(text.c_str(), &end);
+
+        if (end == text.c_str() || *end != '\0')
+        {
+            return false;
+        }
+
+        value = parsed;
+        return true;
+    }
+}
+
 FaceToolController::FaceToolController(EditorState* state)
     : m_state(state)
 {
@@ -118,6 +142,59 @@ void FaceToolController::handleKeyPress(int key)
     {
         m_faceScaleTool.onKeyPressed(key);
     }
+}
+
+bool FaceToolController::getActiveNumericInput(float& value) const
+{
+    if (m_pushPullTool.isActive())
+    {
+        value = m_pushPullTool.getCurrentDistance();
+        return true;
+    }
+
+    if (m_faceMoveTool.isActive())
+    {
+        value = m_faceMoveTool.getCurrentDistance();
+        return true;
+    }
+
+    if (m_faceScaleTool.isActive())
+    {
+        value = m_faceScaleTool.getCurrentScaleFactor();
+        return true;
+    }
+
+    return false;
+}
+
+bool FaceToolController::applyActiveNumericInput(const std::string& text)
+{
+    float value = 0.0f;
+
+    if (!parseFloatStrict(text, value))
+    {
+        return false;
+    }
+
+    if (m_pushPullTool.isActive())
+    {
+        m_pushPullTool.setCurrentDistanceFromNumericInput(value);
+        return true;
+    }
+
+    if (m_faceMoveTool.isActive())
+    {
+        m_faceMoveTool.setCurrentDistanceFromNumericInput(value);
+        return true;
+    }
+
+    if (m_faceScaleTool.isActive())
+    {
+        m_faceScaleTool.setCurrentScaleFactorFromNumericInput(value);
+        return true;
+    }
+
+    return false;
 }
 
 PushPullTool& FaceToolController::getPushPullTool()

@@ -330,6 +330,18 @@ float FaceScaleTool::getCurrentScaleFactor() const
     return m_CurrentScaleFactor;
 }
 
+void FaceScaleTool::setCurrentScaleFactorFromNumericInput(float scaleFactor)
+{
+    if (!m_Active)
+    {
+        return;
+    }
+
+    m_CurrentScaleFactor = clampScaleFactor(scaleFactor);
+    m_UsingNumericInput = true;
+    m_HasCommittedNumericValue = true;
+}
+
 const FaceSelection& FaceScaleTool::getSelection() const
 {
     return m_Selection;

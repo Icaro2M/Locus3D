@@ -25,6 +25,23 @@ EditorApplication::EditorApplication(WindowManager* window)
 
 void EditorApplication::processInput()
 {
+    ImGuiIO& io = ImGui::GetIO();
+
+    static bool wasCapturedEscapePressed = false;
+    const bool isCapturedEscapePressed =
+        glfwGetKey(m_window->getWindow(), GLFW_KEY_ESCAPE) == GLFW_PRESS;
+
+    if (m_faceToolController.hasRunningTool() &&
+        io.WantCaptureKeyboard &&
+        isCapturedEscapePressed &&
+        !wasCapturedEscapePressed)
+    {
+        m_eventBus.emit(EventType::InputKeyEscape);
+    }
+
+    wasCapturedEscapePressed =
+        io.WantCaptureKeyboard && isCapturedEscapePressed;
+
     m_inputHandler.process(m_window->getWindow(), &m_eventBus);
     handleFileShortcuts();
     handleHistoryShortcuts();
@@ -39,8 +56,6 @@ void EditorApplication::processInput()
     bool mouseReleased = !isLeftMouseDown && wasLeftMouseDown;
 
     wasLeftMouseDown = isLeftMouseDown;
-
-    ImGuiIO& io = ImGui::GetIO();
 
     if (mouseClicked && !io.WantCaptureMouse)
     {
@@ -349,6 +364,24 @@ void EditorApplication::setupEventSubscriptions()
                     }
                 }
             }
+            else if (e.type == EventType::FaceToolNumericInputChanged)
+            {
+                m_faceToolController.applyActiveNumericInput(e.payloadString);
+            }
+            else if (e.type == EventType::FaceToolNumericInputConfirmed)
+            {
+                if (m_faceToolController.hasRunningTool())
+                {
+                    EditorSceneSnapshot beforeConfirm = EditorSceneSnapshotBuilder::capture(
+                        m_sceneContext,
+                        m_editorState
+                    );
+
+                    m_faceToolController.confirmActiveTool();
+
+                    m_undoRedoManager.pushUndo(std::move(beforeConfirm));
+                }
+            }
 
             else if (e.type == EventType::RenameObject) {
                 uint32_t idToRename = e.payloadUInt;
@@ -516,6 +549,20 @@ void EditorApplication::syncUI()
     }
 
     m_uiContext.isFaceModeActive = m_editorState.isFaceModeActive();
+
+    float numericInputValue = 0.0f;
+    m_uiContext.faceToolNumericInputVisible =
+        m_faceToolController.getActiveNumericInput(numericInputValue);
+
+    if (m_uiContext.faceToolNumericInputVisible)
+    {
+        m_uiContext.faceToolNumericInputValue = numericInputValue;
+    }
+    else
+    {
+        m_uiContext.faceToolNumericInputValue = 0.0f;
+    }
+
     m_lastSyncedSelectedObjectId = m_uiContext.selectedObjectId;
 }
 
@@ -533,6 +580,8 @@ void EditorApplication::clearFaceEditingState()
 
     m_uiContext.isFaceModeActive = false;
     m_uiContext.activeToolId = 0;
+    m_uiContext.faceToolNumericInputVisible = false;
+    m_uiContext.faceToolNumericInputValue = 0.0f;
 }
 
 void EditorApplication::selectCreatedObject(SceneObject* object)

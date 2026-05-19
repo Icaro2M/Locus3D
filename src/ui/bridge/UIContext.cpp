@@ -5,6 +5,8 @@ UIContext::UIContext()
     isFaceModeActive(false),
     activeToolId(0),
     activeTransformMode(TransformMode::None),
+    faceToolNumericInputVisible(false),
+    faceToolNumericInputValue(0.0f),
     showCustomSolidPanel(false),
     customSolidSides(6),
     customSolidBottomRadius(1.0f),

@@ -9,6 +9,7 @@
 #include "../panels/primitives/CustomSolidPanel.h"
 #include "../panels/primitives/PrimitivesMenu.h"
 #include "../viewport/ViewportOverlay.h"
+#include "../viewport/FaceToolNumericInputOverlay.h"
 #include "../menu/TopMenuBar.h"
 
 class UILayer {
@@ -31,4 +32,5 @@ private:
     CustomSolidPanel m_customSolidPanel;
     PrimitivesMenu m_primitivesMenu;
     ViewportOverlay m_viewportOverlay;
+    FaceToolNumericInputOverlay m_faceToolNumericInputOverlay;
 };

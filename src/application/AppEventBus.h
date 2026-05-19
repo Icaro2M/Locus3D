@@ -36,6 +36,9 @@ enum class EventType {
     InputMouseClickLeft,
     InputMouseReleaseLeft,
 
+    FaceToolNumericInputChanged,
+    FaceToolNumericInputConfirmed,
+
     ToolStarted,
     ToolCanceled,
     ToolConfirmed

@@ -7,6 +7,7 @@
 #include "../../tools/selection/FaceScaleTool.h"
 
 #include <GLFW/glfw3.h>
+#include <string>
 
 class FaceToolController
 {
@@ -23,6 +24,9 @@ public:
     bool hasRunningTool() const;
 
     void handleKeyPress(int key);
+
+    bool getActiveNumericInput(float& value) const;
+    bool applyActiveNumericInput(const std::string& text);
 
     PushPullTool& getPushPullTool();
     FaceMoveTool& getFaceMoveTool();
