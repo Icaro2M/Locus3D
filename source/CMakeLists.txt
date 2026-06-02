@@ -5,6 +5,7 @@ add_executable(Locus3D)
 
 target_sources(Locus3D PRIVATE
     launcher/main.cpp
+    graphics/window/Window.cpp
     kernel/geometry/mesh/LEM.cpp
 )
 
@@ -15,8 +16,8 @@ target_sources(Locus3D PRIVATE
     ${IMGUI_DIR}/imgui_draw.cpp
     ${IMGUI_DIR}/imgui_tables.cpp
     ${IMGUI_DIR}/imgui_widgets.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
-    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    ${IMGUI_DIR}/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/imgui_impl_opengl3.cpp
 )
 
 target_include_directories(Locus3D PRIVATE
@@ -26,7 +27,6 @@ target_include_directories(Locus3D PRIVATE
     ${GLFW_DIR}/include
     ${GLM_DIR}/include
     ${IMGUI_DIR}
-    ${IMGUI_DIR}/backends
     ${NLOHMANN_DIR}
     ${STB_DIR}
 )
