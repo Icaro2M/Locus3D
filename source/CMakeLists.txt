@@ -6,6 +6,7 @@ add_executable(Locus3D)
 target_sources(Locus3D PRIVATE
     launcher/main.cpp
     graphics/window/Window.cpp
+    graphics/context/OpenGLContext.cpp
     kernel/geometry/mesh/LEM.cpp
 )
 

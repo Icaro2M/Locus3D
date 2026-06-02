@@ -27,6 +27,12 @@ namespace locus::graphics
         bool maximized = false;
 
         bool requestOpenGLContext = true;
+
+        i32 openglMajorVersion = 4;
+        i32 openglMinorVersion = 5;
+        bool openglCoreProfile = true;
+        bool openglForwardCompatible = true;
+        bool openglDebugContext = true;
     };
 
     class Window

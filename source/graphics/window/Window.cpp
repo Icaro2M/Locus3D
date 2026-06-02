@@ -53,7 +53,7 @@ namespace locus::graphics
             return GLFW_ARROW_CURSOR;
         }
 
-    } // namespace
+    } 
 
     Window::~Window()
     {
@@ -127,7 +127,26 @@ namespace locus::graphics
         glfwWindowHint(GLFW_DECORATED, to_glfw_bool(createInfo.decorated));
         glfwWindowHint(GLFW_MAXIMIZED, to_glfw_bool(createInfo.maximized));
 
-        if (!createInfo.requestOpenGLContext)
+        if (createInfo.requestOpenGLContext)
+        {
+            glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, createInfo.openglMajorVersion);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, createInfo.openglMinorVersion);
+
+            if (createInfo.openglCoreProfile)
+            {
+                glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+            }
+
+            glfwWindowHint(
+                GLFW_OPENGL_FORWARD_COMPAT,
+                to_glfw_bool(createInfo.openglForwardCompatible));
+
+            glfwWindowHint(
+                GLFW_OPENGL_DEBUG_CONTEXT,
+                to_glfw_bool(createInfo.openglDebugContext));
+        }
+        else
         {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         }
