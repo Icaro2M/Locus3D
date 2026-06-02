@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/context/OpenGLContext.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -14,7 +19,10 @@ namespace locus::graphics
 
     namespace
     {
-
+        /*
+         * OpenGL debug output can be extremely noisy. Notifications are useful
+         * while debugging drivers, but they drown out actual errors in normal logs.
+         */
         void APIENTRY opengl_debug_callback(
             unsigned int source,
             unsigned int type,
@@ -75,6 +83,10 @@ namespace locus::graphics
 
         window_ = &window;
 
+        /*
+         * GLAD must load function pointers from the context that will use them,
+         * so the GLFW context is made current before calling gladLoadGLLoader.
+         */
         glfwMakeContextCurrent(window.native_handle());
 
         auto loadResult = load_opengl_functions();
@@ -191,6 +203,10 @@ namespace locus::graphics
 
     void OpenGLContext::read_capabilities()
     {
+        /*
+         * Capability strings and integer limits are cached once during context
+         * initialization so later systems can query them without touching OpenGL.
+         */
         capabilities_.vendor = safe_gl_string(glGetString(GL_VENDOR));
         capabilities_.renderer = safe_gl_string(glGetString(GL_RENDERER));
         capabilities_.version = safe_gl_string(glGetString(GL_VERSION));

@@ -1,6 +1,9 @@
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/window/Window.h"
+#include "graphics/gpu/Buffer.h"
+#include "graphics/gpu/VertexArray.h"
+#include "graphics/gpu/Shader.h"
 
 #include <glad/glad.h>
 
@@ -41,6 +44,60 @@ int main()
     if (!contextResult)
     {
         std::cerr << contextResult.error().message << '\n';
+        return 1;
+    }
+
+    const std::string vertexShaderSource = R"(
+#version 450 core
+
+layout (location = 0) in vec3 a_Position;
+
+void main()
+{
+    gl_Position = vec4(a_Position, 1.0);
+}
+)";
+
+    const std::string fragmentShaderSource = R"(
+#version 450 core
+
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = vec4(0.9, 0.5, 0.2, 1.0);
+}
+)";
+
+    locus::graphics::Shader shader;
+
+    auto shaderResult = shader.create_from_source(
+        vertexShaderSource,
+        fragmentShaderSource);
+
+    if (!shaderResult)
+    {
+        std::cerr << shaderResult.error().message << '\n';
+        return 1;
+    }
+
+    locus::graphics::Buffer vertexBuffer;
+    auto vbResult = vertexBuffer.create(
+        locus::graphics::BufferType::Vertex,
+        locus::graphics::BufferUsage::Static);
+
+    if (!vbResult)
+    {
+        std::cerr << vbResult.error().message << '\n';
+        return 1;
+    }
+
+    locus::graphics::VertexArray vertexArray;
+    auto vaoResult = vertexArray.create();
+
+    if (!vaoResult)
+    {
+        std::cerr << vaoResult.error().message << '\n';
         return 1;
     }
 

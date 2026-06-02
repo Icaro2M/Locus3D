@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/window/Window.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -11,7 +16,10 @@ namespace locus::graphics
 
     namespace
     {
-
+        /*
+         * GLFW uses integer constants for boolean hints, while the graphics
+         * interface keeps the user-facing configuration as bool values.
+         */
         int to_glfw_bool(bool value)
         {
             return value ? GLFW_TRUE : GLFW_FALSE;
@@ -74,6 +82,10 @@ namespace locus::graphics
 
         destroy();
 
+        /*
+         * Transfer the native window pointer and then rebind GLFW's user pointer
+         * so static callbacks continue to reach the new C++ owner.
+         */
         window_ = other.window_;
         cursor_ = other.cursor_;
 
@@ -127,6 +139,10 @@ namespace locus::graphics
         glfwWindowHint(GLFW_DECORATED, to_glfw_bool(createInfo.decorated));
         glfwWindowHint(GLFW_MAXIMIZED, to_glfw_bool(createInfo.maximized));
 
+        /*
+         * Window creation owns the context hints because GLFW consumes them only
+         * while creating the native window.
+         */
         if (createInfo.requestOpenGLContext)
         {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
@@ -182,6 +198,11 @@ namespace locus::graphics
     {
         release_cursor();
 
+        /*
+         * GLFW is currently initialized per Window instance. This is simple for
+         * the initial layer, but should become reference-counted if multi-window
+         * support is introduced.
+         */
         if (window_)
         {
             glfwDestroyWindow(window_);
@@ -369,6 +390,10 @@ namespace locus::graphics
 
     void Window::install_callbacks()
     {
+        /*
+         * GLFW callbacks are static C hooks. Each callback resolves the owning
+         * Window through glfwGetWindowUserPointer before dispatching user code.
+         */
         glfwSetWindowSizeCallback(window_, &Window::glfw_window_size_callback);
         glfwSetFramebufferSizeCallback(window_, &Window::glfw_framebuffer_size_callback);
         glfwSetWindowFocusCallback(window_, &Window::glfw_window_focus_callback);

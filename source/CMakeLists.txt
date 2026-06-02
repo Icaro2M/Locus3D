@@ -8,7 +8,9 @@ target_sources(Locus3D PRIVATE
     graphics/window/Window.cpp
     graphics/context/OpenGLContext.cpp
     kernel/geometry/mesh/LEM.cpp
-)
+ "graphics/gpu/Buffer.cpp"
+ "graphics/gpu/VertexArray.cpp"
+ "graphics/gpu/Shader.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c
