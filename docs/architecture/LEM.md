@@ -21,7 +21,7 @@ LEM is composed of four main topological elements:
 - `Loop`
 - `Face`
 
-![LEM elements](../../assets/geometry/lem-elements.svg)
+![LEM elements](assets/lem-elements.svg)
 
 ---
 
@@ -127,7 +127,7 @@ For a quad face, the cycle contains four loops:
 Loop A → Loop B → Loop C → Loop D → Loop A
 ```
 
-![LEM face cycle](../../assets/geometry/lem-face-cycle.svg)
+![LEM face cycle](assets/lem-face-cycle.svg)
 
 The face cycle is used to answer questions such as:
 
@@ -152,7 +152,7 @@ radialPrevious
 
 An edge stores one loop as an entry point into this radial cycle.
 
-![LEM radial cycle](../../assets/geometry/lem-radial-cycle.svg)
+![LEM radial cycle](assets/lem-radial-cycle.svg)
 
 The radial cycle is used to classify edge usage:
 
