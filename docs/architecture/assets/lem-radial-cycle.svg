@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="620" viewBox="0 0 960 620">
+<defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#111827" />
+    </marker>
+</defs>
+
+<style>
+    .bg { fill: #ffffff; }
+    .title { font: 700 22px Arial, sans-serif; fill: #111827; }
+    .subtitle { font: 400 13px Arial, sans-serif; fill: #4b5563; }
+
+    .label { font: 700 15px Arial, sans-serif; fill: #111827; }
+    .small { font: 400 12px Arial, sans-serif; fill: #374151; }
+    .tiny { font: 400 11px Arial, sans-serif; fill: #6b7280; }
+
+    .edge-box { fill: #f9fafb; stroke: #111827; stroke-width: 1.7; }
+    .loop { fill: #ffffff; stroke: #111827; stroke-width: 1.7; }
+    .face-box { fill: #f3f4f6; stroke: #9ca3af; stroke-width: 1.2; stroke-dasharray: 5 4; }
+
+    .edge-line { stroke: #111827; stroke-width: 2.4; fill: none; }
+    .vertex { fill: #111827; }
+
+    .ref-line { stroke: #9ca3af; stroke-width: 1.4; fill: none; stroke-dasharray: 5 5; }
+    .cycle-arrow { stroke: #111827; stroke-width: 2.1; fill: none; marker-end: url(#arrow); }
+
+    .note-box { fill: #f9fafb; stroke: #d1d5db; stroke-width: 1.2; }
+</style>
+
+<rect class="bg" x="0" y="0" width="960" height="620"/>
+
+<text class="title" x="48" y="56">LEM radial cycle</text>
+<text class="subtitle" x="48" y="80">Loops sharing the same edge are linked through radialNext / radialPrevious.</text>
+
+<!-- Shared edge representation -->
+<rect class="edge-box" x="350" y="255" width="260" height="110" rx="16" ry="16"/>
+<text class="label" x="480" y="286" text-anchor="middle">Edge e0</text>
+<text class="small" x="480" y="309" text-anchor="middle">shared by multiple loops</text>
+
+<line class="edge-line" x1="405" y1="335" x2="555" y2="335"/>
+<circle class="vertex" cx="405" cy="335" r="6"/>
+<circle class="vertex" cx="555" cy="335" r="6"/>
+<text class="tiny" x="405" y="356" text-anchor="middle">v0</text>
+<text class="tiny" x="555" y="356" text-anchor="middle">v1</text>
+
+<!-- Loop nodes -->
+<rect class="face-box" x="390" y="115" width="180" height="72" rx="14" ry="14"/>
+<text class="tiny" x="480" y="137" text-anchor="middle">Face A</text>
+<circle class="loop" cx="480" cy="177" r="34"/>
+<text class="label" x="480" y="182" text-anchor="middle">Loop A</text>
+
+<rect class="face-box" x="655" y="387" width="180" height="72" rx="14" ry="14"/>
+<text class="tiny" x="745" y="409" text-anchor="middle">Face B</text>
+<circle class="loop" cx="745" cy="449" r="34"/>
+<text class="label" x="745" y="454" text-anchor="middle">Loop B</text>
+
+<rect class="face-box" x="125" y="387" width="180" height="72" rx="14" ry="14"/>
+<text class="tiny" x="215" y="409" text-anchor="middle">Face C</text>
+<circle class="loop" cx="215" cy="449" r="34"/>
+<text class="label" x="215" y="454" text-anchor="middle">Loop C</text>
+
+<!-- Dotted references to same edge -->
+<path class="ref-line" d="M480 211 C480 226, 480 239, 480 255"/>
+<path class="ref-line" d="M711 431 C664 396, 621 369, 595 355"/>
+<path class="ref-line" d="M249 431 C296 396, 339 369, 365 355"/>
+
+<text class="tiny" x="500" y="236">references e0</text>
+<text class="tiny" x="654" y="386">references e0</text>
+<text class="tiny" x="286" y="386">references e0</text>
+
+<!-- Radial cycle arrows -->
+<path class="cycle-arrow" d="M512 189 C650 220, 752 306, 749 411"/>
+<text class="small" x="665" y="257" text-anchor="middle">radialNext</text>
+
+<path class="cycle-arrow" d="M711 463 C560 540, 400 540, 249 463"/>
+<text class="small" x="480" y="538" text-anchor="middle">radialNext</text>
+
+<path class="cycle-arrow" d="M211 411 C208 306, 310 220, 448 189"/>
+<text class="small" x="295" y="257" text-anchor="middle">radialNext</text>
+
+<!-- Explanation note -->
+<rect class="note-box" x="270" y="535" width="420" height="52" rx="12" ry="12"/>
+<text class="small" x="480" y="558" text-anchor="middle">All three loops reference the same edge.</text>
+<text class="small" x="480" y="577" text-anchor="middle">The radial cycle links them as Loop A → Loop B → Loop C → Loop A.</text>
+</svg>

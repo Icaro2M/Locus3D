@@ -1,7 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Icaro2M
+# SPDX-License-Identifier: Apache-2.0
+
 add_executable(Locus3D)
 
 target_sources(Locus3D PRIVATE
     launcher/main.cpp
+    kernel/geometry/mesh/LEM.cpp
 )
 
 target_sources(Locus3D PRIVATE
