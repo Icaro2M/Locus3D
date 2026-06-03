@@ -10,7 +10,9 @@ target_sources(Locus3D PRIVATE
     kernel/geometry/mesh/LEM.cpp
  "graphics/gpu/Buffer.cpp"
  "graphics/gpu/VertexArray.cpp"
- "graphics/gpu/Shader.cpp")
+ "graphics/gpu/Shader.cpp"
+ "graphics/mesh/GpuMesh.cpp"
+ "graphics/mesh/MeshUploader.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c
