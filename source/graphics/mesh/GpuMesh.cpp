@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/mesh/GpuMesh.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -76,6 +81,7 @@ namespace locus::graphics
         drawData_.indexed = uploadData.has_indices();
         drawData_.vertexCount = static_cast<u32>(uploadData.vertices.size());
         drawData_.indexCount = static_cast<u32>(uploadData.indices.size());
+        // MeshUploadData stores indices as u32, so the draw path uses UInt32.
         drawData_.indexType = IndexType::UInt32;
 
         return {};
@@ -217,6 +223,7 @@ namespace locus::graphics
             return colorAttributeResult.error();
         }
 
+        // The VAO captures the index-buffer binding while it is bound.
         if (indexBuffer_.is_valid())
         {
             indexBuffer_.bind();

@@ -12,7 +12,10 @@ target_sources(Locus3D PRIVATE
  "graphics/gpu/VertexArray.cpp"
  "graphics/gpu/Shader.cpp"
  "graphics/mesh/GpuMesh.cpp"
- "graphics/mesh/MeshUploader.cpp")
+ "graphics/mesh/MeshUploader.cpp"
+ "graphics/scene/RenderObject.cpp"
+ "graphics/scene/RenderScene.cpp"
+ "graphics/renderer/Renderer.cpp" "graphics/scene/RenderTransform.cpp" "graphics/camera/Projection.cpp" "graphics/camera/Camera.cpp" "graphics/camera/OrbitCameraRig.cpp" "graphics/viewport/Viewport.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

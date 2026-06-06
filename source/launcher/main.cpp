@@ -1,10 +1,13 @@
+#include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/mesh/MeshUploader.h"
+#include "graphics/renderer/Renderer.h"
+#include "graphics/scene/RenderObject.h"
+#include "graphics/scene/RenderScene.h"
+#include "graphics/viewport/Viewport.h"
 #include "graphics/window/Window.h"
-
-#include <glad/glad.h>
 
 #include <iostream>
 #include <string>
@@ -28,7 +31,6 @@ int main()
     windowInfo.openglForwardCompatible = graphicsConfig.forwardCompatible;
 
     locus::graphics::Window window;
-
     auto windowResult = window.create(windowInfo);
 
     if (!windowResult)
@@ -38,12 +40,12 @@ int main()
     }
 
     locus::graphics::OpenGLContext context;
-
     auto contextResult = context.initialize(window, graphicsConfig);
 
     if (!contextResult)
     {
         std::cerr << contextResult.error().message << '\n';
+        window.destroy();
         return 1;
     }
 
@@ -61,12 +63,14 @@ layout (location = 0) in vec3 a_Position;
 layout (location = 1) in vec3 a_Normal;
 layout (location = 2) in vec4 a_Color;
 
+uniform mat4 u_MVP;
+
 out vec4 v_Color;
 
 void main()
 {
     v_Color = a_Color;
-    gl_Position = vec4(a_Position, 1.0);
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
 
@@ -84,14 +88,16 @@ void main()
 )";
 
     locus::graphics::Shader shader;
-
     auto shaderResult = shader.create_from_source(
         vertexShaderSource,
-        fragmentShaderSource);
+        fragmentShaderSource
+    );
 
     if (!shaderResult)
     {
         std::cerr << shaderResult.error().message << '\n';
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
@@ -100,18 +106,18 @@ void main()
     meshData.vertices = {
         {
             { -0.5f, -0.5f, 0.0f },
-            {  0.0f,  0.0f, 1.0f },
-            {  1.0f,  0.4f, 0.2f, 1.0f }
+            { 0.0f, 0.0f, 1.0f },
+            { 1.0f, 0.4f, 0.2f, 1.0f }
         },
         {
-            {  0.5f, -0.5f, 0.0f },
-            {  0.0f,  0.0f, 1.0f },
-            {  0.2f,  0.8f, 1.0f, 1.0f }
+            { 0.5f, -0.5f, 0.0f },
+            { 0.0f, 0.0f, 1.0f },
+            { 0.2f, 0.8f, 1.0f, 1.0f }
         },
         {
-            {  0.0f,  0.5f, 0.0f },
-            {  0.0f,  0.0f, 1.0f },
-            {  0.9f,  0.9f, 0.2f, 1.0f }
+            { 0.0f, 0.5f, 0.0f },
+            { 0.0f, 0.0f, 1.0f },
+            { 0.9f, 0.9f, 0.2f, 1.0f }
         }
     };
 
@@ -119,38 +125,60 @@ void main()
     meshData.usage = locus::graphics::BufferUsage::Static;
 
     locus::graphics::MeshUploader meshUploader;
-
     auto meshResult = meshUploader.upload(meshData);
 
     if (!meshResult)
     {
         std::cerr << meshResult.error().message << '\n';
+        shader.destroy();
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
     locus::graphics::GpuMesh gpuMesh = meshResult.move_value();
 
+    locus::graphics::RenderScene scene;
+
+    locus::graphics::RenderObject triangleObject;
+    triangleObject.id = 1;
+    triangleObject.name = "Triangle";
+    triangleObject.mesh = &gpuMesh;
+    triangleObject.shader = &shader;
+
+    scene.add_object(triangleObject);
+
+    locus::graphics::Viewport viewport;
+    viewport.set_clear_color(graphicsConfig.defaultClearColor);
+    viewport.camera().projection().set_perspective(
+        0.78539816339f,
+        16.0f / 9.0f,
+        0.01f,
+        1000.0f
+    );
+
+    locus::graphics::OrbitCameraRig orbitRig;
+    orbitRig.set_target({ 0.0f, 0.0f, 0.0f });
+    orbitRig.set_distance(2.5f);
+    orbitRig.set_angles(0.0f, 0.25f);
+    orbitRig.apply(viewport.camera());
+
+    locus::graphics::Renderer renderer;
+
     while (!window.should_close())
     {
         window.poll_events();
 
-        glViewport(
-            0,
-            0,
-            window.framebuffer_width(),
-            window.framebuffer_height());
+        viewport.sync_with_window(window);
 
-        glClearColor(
-            graphicsConfig.defaultClearColor.r,
-            graphicsConfig.defaultClearColor.g,
-            graphicsConfig.defaultClearColor.b,
-            graphicsConfig.defaultClearColor.a);
+        orbitRig.apply(viewport.camera());
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        renderer.set_view_matrix(viewport.camera().view_matrix());
+        renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
-        shader.bind();
-        gpuMesh.draw();
-        shader.unbind();
+        viewport.begin_frame();
+
+        renderer.render(scene);
 
         context.swap_buffers();
     }
