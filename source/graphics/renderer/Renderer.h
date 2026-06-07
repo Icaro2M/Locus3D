@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "graphics/lighting/LightEnvironment.h"
 #include "graphics/renderer/RenderStats.h"
 #include "graphics/scene/RenderScene.h"
 
@@ -49,6 +50,13 @@ namespace locus::graphics
         void set_projection_matrix(const glm::mat4& projection);
 
         /**
+         * @brief Sets the lighting environment used by material-aware shaders.
+         *
+         * @param environment Lighting environment or nullptr to disable scene lighting uniforms.
+         */
+        void set_light_environment(const LightEnvironment* environment);
+
+        /**
          * @brief Renders every drawable object in the scene.
          *
          * @param scene Scene to submit.
@@ -70,6 +78,13 @@ namespace locus::graphics
         [[nodiscard]] const glm::mat4& projection_matrix() const;
 
         /**
+         * @brief Returns the current lighting environment.
+         *
+         * @return Lighting environment or nullptr.
+         */
+        [[nodiscard]] const LightEnvironment* light_environment() const;
+
+        /**
          * @brief Returns counters for the most recent render call.
          *
          * @return Read-only render statistics.
@@ -78,10 +93,12 @@ namespace locus::graphics
 
     private:
         void render_object(const RenderObject& object);
+        void apply_lighting_uniforms(const Shader& shader) const;
 
     private:
         glm::mat4 viewMatrix_{ 1.0f };
         glm::mat4 projectionMatrix_{ 1.0f };
+        const LightEnvironment* lightEnvironment_ = nullptr;
         RenderStats stats_{};
     };
 }

@@ -2,6 +2,7 @@
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
+#include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
@@ -63,12 +64,15 @@ layout (location = 0) in vec3 a_Position;
 layout (location = 1) in vec3 a_Normal;
 layout (location = 2) in vec4 a_Color;
 
+uniform mat4 u_Model;
 uniform mat4 u_MVP;
 
+out vec3 v_Normal;
 out vec4 v_Color;
 
 void main()
 {
+    v_Normal = mat3(transpose(inverse(u_Model))) * a_Normal;
     v_Color = a_Color;
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
@@ -77,13 +81,53 @@ void main()
     const std::string fragmentShaderSource = R"(
 #version 450 core
 
+in vec3 v_Normal;
 in vec4 v_Color;
+
+uniform vec4 u_BaseColor;
+uniform int u_UseVertexColor;
+
+uniform int u_ShadingMode;
+uniform vec4 u_AmbientColor;
+uniform float u_AmbientIntensity;
+uniform vec3 u_LightDirection;
+uniform vec4 u_LightColor;
+uniform float u_LightIntensity;
 
 out vec4 FragColor;
 
 void main()
 {
-    FragColor = v_Color;
+    vec4 baseColor = u_BaseColor;
+
+    if (u_UseVertexColor == 1)
+    {
+        baseColor = v_Color;
+    }
+
+    if (u_ShadingMode == 0)
+    {
+        FragColor = baseColor;
+        return;
+    }
+
+    if (u_ShadingMode == 2)
+    {
+        vec3 normalColor = normalize(v_Normal) * 0.5 + 0.5;
+        FragColor = vec4(normalColor, baseColor.a);
+        return;
+    }
+
+    vec3 normal = normalize(v_Normal);
+    vec3 lightDirection = normalize(-u_LightDirection);
+
+    float diffuse = max(dot(normal, lightDirection), 0.0);
+
+    vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
+    vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
+    vec3 finalColor = baseColor.rgb * (ambient + light);
+
+    FragColor = vec4(finalColor, baseColor.a);
 }
 )";
 
@@ -142,7 +186,7 @@ void main()
 
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
-    triangleObject.name = "Triangle";
+    triangleObject.name = "LitTriangle";
     triangleObject.mesh = &gpuMesh;
     triangleObject.shader = &shader;
 
@@ -163,21 +207,23 @@ void main()
     orbitRig.set_angles(0.0f, 0.25f);
     orbitRig.apply(viewport.camera());
 
+    locus::graphics::LightEnvironment lightEnvironment;
+    lightEnvironment.reset_default_viewport_lighting();
+
     locus::graphics::Renderer renderer;
+    renderer.set_light_environment(&lightEnvironment);
 
     while (!window.should_close())
     {
         window.poll_events();
 
         viewport.sync_with_window(window);
-
         orbitRig.apply(viewport.camera());
 
         renderer.set_view_matrix(viewport.camera().view_matrix());
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
         viewport.begin_frame();
-
         renderer.render(scene);
 
         context.swap_buffers();

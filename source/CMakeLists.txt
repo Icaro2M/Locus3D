@@ -15,7 +15,13 @@ target_sources(Locus3D PRIVATE
  "graphics/mesh/MeshUploader.cpp"
  "graphics/scene/RenderObject.cpp"
  "graphics/scene/RenderScene.cpp"
- "graphics/renderer/Renderer.cpp" "graphics/scene/RenderTransform.cpp" "graphics/camera/Projection.cpp" "graphics/camera/Camera.cpp" "graphics/camera/OrbitCameraRig.cpp" "graphics/viewport/Viewport.cpp")
+ "graphics/renderer/Renderer.cpp"
+ "graphics/scene/RenderTransform.cpp"
+ "graphics/camera/Projection.cpp"
+ "graphics/camera/Camera.cpp"
+ "graphics/camera/OrbitCameraRig.cpp"
+ "graphics/viewport/Viewport.cpp"
+ "graphics/appearance/VisualMaterial.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

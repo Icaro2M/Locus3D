@@ -9,11 +9,43 @@ namespace locus::graphics
 {
     bool RenderObject::is_drawable() const
     {
+        const Shader* activeShader = resolved_shader();
+
         // Keep renderer-side validation cheap and explicit before issuing GPU calls.
         return visibility.visible
             && mesh != nullptr
-            && shader != nullptr
+            && activeShader != nullptr
             && mesh->is_valid()
-            && shader->is_valid();
+            && activeShader->is_valid();
+    }
+
+    const Shader* RenderObject::resolved_shader() const
+    {
+        if (material != nullptr && material->is_valid())
+        {
+            return material->shader();
+        }
+
+        return shader;
+    }
+
+    ColorRGBA RenderObject::resolved_color() const
+    {
+        if (material != nullptr)
+        {
+            return material->color();
+        }
+
+        return { 1.0f, 1.0f, 1.0f, 1.0f };
+    }
+
+    bool RenderObject::uses_vertex_color() const
+    {
+        if (material != nullptr)
+        {
+            return material->use_vertex_color();
+        }
+
+        return true;
     }
 }
