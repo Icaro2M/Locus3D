@@ -4,6 +4,8 @@
 #include "graphics/gpu/Shader.h"
 #include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
+#include "graphics/overlay/renderers/AxisRenderer.h"
+#include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
@@ -145,52 +147,89 @@ void main()
         return 1;
     }
 
-    locus::graphics::MeshUploadData meshData;
+    locus::graphics::MeshUploader meshUploader;
 
-    meshData.vertices = {
+    locus::graphics::MeshUploadData triangleData;
+
+    triangleData.vertices = {
         {
-            { -0.5f, -0.5f, 0.0f },
-            { 0.0f, 0.0f, 1.0f },
+            { -0.5f, 0.05f, -0.5f },
+            { 0.0f, 1.0f, 0.0f },
             { 1.0f, 0.4f, 0.2f, 1.0f }
         },
         {
-            { 0.5f, -0.5f, 0.0f },
-            { 0.0f, 0.0f, 1.0f },
+            { 0.5f, 0.05f, -0.5f },
+            { 0.0f, 1.0f, 0.0f },
             { 0.2f, 0.8f, 1.0f, 1.0f }
         },
         {
-            { 0.0f, 0.5f, 0.0f },
-            { 0.0f, 0.0f, 1.0f },
+            { 0.0f, 0.05f, 0.5f },
+            { 0.0f, 1.0f, 0.0f },
             { 0.9f, 0.9f, 0.2f, 1.0f }
         }
     };
 
-    meshData.topology = locus::graphics::PrimitiveTopology::Triangles;
-    meshData.usage = locus::graphics::BufferUsage::Static;
+    triangleData.topology = locus::graphics::PrimitiveTopology::Triangles;
+    triangleData.usage = locus::graphics::BufferUsage::Static;
 
-    locus::graphics::MeshUploader meshUploader;
-    auto meshResult = meshUploader.upload(meshData);
+    auto triangleMeshResult = meshUploader.upload(triangleData);
 
-    if (!meshResult)
+    if (!triangleMeshResult)
     {
-        std::cerr << meshResult.error().message << '\n';
+        std::cerr << triangleMeshResult.error().message << '\n';
         shader.destroy();
         context.shutdown();
         window.destroy();
         return 1;
     }
 
-    locus::graphics::GpuMesh gpuMesh = meshResult.move_value();
+    locus::graphics::GpuMesh triangleMesh = triangleMeshResult.move_value();
 
-    locus::graphics::RenderScene scene;
+    locus::graphics::GridRendererConfig gridConfig;
+    gridConfig.halfExtent = 500.0f;
+    gridConfig.minorSpacing = 1.0f;
+    gridConfig.majorSpacing = 5.0f;
+    gridConfig.fadeStart = 80.0f;
+    gridConfig.fadeEnd = 280.0f;
+
+    locus::graphics::GridRenderer gridRenderer;
+    auto gridResult = gridRenderer.create(meshUploader, gridConfig);
+
+    if (!gridResult)
+    {
+        std::cerr << gridResult.error().message << '\n';
+        triangleMesh.destroy();
+        shader.destroy();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    locus::graphics::AxisRendererConfig axisConfig;
+    axisConfig.extent = 500.0f;
+    axisConfig.verticalExtent = 40.0f;
+    axisConfig.planeOffset = 0.004f;
+
+    locus::graphics::AxisRenderer axisRenderer;
+    auto axisResult = axisRenderer.create(meshUploader, axisConfig);
+
+    if (!axisResult)
+    {
+        std::cerr << axisResult.error().message << '\n';
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
 
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
-    triangleObject.name = "LitTriangle";
-    triangleObject.mesh = &gpuMesh;
+    triangleObject.name = "Triangle";
+    triangleObject.mesh = &triangleMesh;
     triangleObject.shader = &shader;
-
-    scene.add_object(triangleObject);
+    triangleObject.layer = locus::graphics::RenderLayer::Default;
 
     locus::graphics::Viewport viewport;
     viewport.set_clear_color(graphicsConfig.defaultClearColor);
@@ -203,8 +242,8 @@ void main()
 
     locus::graphics::OrbitCameraRig orbitRig;
     orbitRig.set_target({ 0.0f, 0.0f, 0.0f });
-    orbitRig.set_distance(2.5f);
-    orbitRig.set_angles(0.0f, 0.25f);
+    orbitRig.set_distance(8.0f);
+    orbitRig.set_angles(0.75f, 0.9f);
     orbitRig.apply(viewport.camera());
 
     locus::graphics::LightEnvironment lightEnvironment;
@@ -220,8 +259,16 @@ void main()
         viewport.sync_with_window(window);
         orbitRig.apply(viewport.camera());
 
+        gridRenderer.update(viewport.camera());
+
         renderer.set_view_matrix(viewport.camera().view_matrix());
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
+
+        locus::graphics::RenderScene scene;
+        scene.reserve(3);
+        scene.add_object(gridRenderer.render_object());
+        scene.add_object(triangleObject);
+        scene.add_object(axisRenderer.render_object());
 
         viewport.begin_frame();
         renderer.render(scene);
@@ -229,7 +276,9 @@ void main()
         context.swap_buffers();
     }
 
-    gpuMesh.destroy();
+    axisRenderer.destroy();
+    gridRenderer.destroy();
+    triangleMesh.destroy();
     shader.destroy();
     context.shutdown();
     window.destroy();
