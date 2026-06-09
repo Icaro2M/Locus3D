@@ -1,7 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
+#include "graphics/gpu/ShaderManager.h"
 #include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/overlay/renderers/AxisRenderer.h"
@@ -59,6 +65,38 @@ int main()
     std::cout << "OpenGL Version: " << capabilities.version << '\n';
     std::cout << "GLSL Version: " << capabilities.shadingLanguageVersion << '\n';
 
+    locus::graphics::ShaderManager shaderManager;
+    shaderManager.set_shader_root("assets/shaders");
+
+    auto gridShaderResult = shaderManager.load(
+        "viewport/grid",
+        "viewport/grid_vert.glsl",
+        "viewport/grid_frag.glsl"
+    );
+
+    if (!gridShaderResult)
+    {
+        std::cerr << gridShaderResult.error().message << '\n';
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    auto axisShaderResult = shaderManager.load(
+        "viewport/axis",
+        "viewport/axis_vert.glsl",
+        "viewport/axis_frag.glsl"
+    );
+
+    if (!axisShaderResult)
+    {
+        std::cerr << axisShaderResult.error().message << '\n';
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
     const std::string vertexShaderSource = R"(
 #version 450 core
 
@@ -76,6 +114,7 @@ void main()
 {
     v_Normal = mat3(transpose(inverse(u_Model))) * a_Normal;
     v_Color = a_Color;
+
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
@@ -127,6 +166,7 @@ void main()
 
     vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
     vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
+
     vec3 finalColor = baseColor.rgb * (ambient + light);
 
     FragColor = vec4(finalColor, baseColor.a);
@@ -142,6 +182,7 @@ void main()
     if (!shaderResult)
     {
         std::cerr << shaderResult.error().message << '\n';
+        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -150,7 +191,6 @@ void main()
     locus::graphics::MeshUploader meshUploader;
 
     locus::graphics::MeshUploadData triangleData;
-
     triangleData.vertices = {
         {
             { -0.5f, 0.05f, -0.5f },
@@ -168,7 +208,6 @@ void main()
             { 0.9f, 0.9f, 0.2f, 1.0f }
         }
     };
-
     triangleData.topology = locus::graphics::PrimitiveTopology::Triangles;
     triangleData.usage = locus::graphics::BufferUsage::Static;
 
@@ -178,6 +217,7 @@ void main()
     {
         std::cerr << triangleMeshResult.error().message << '\n';
         shader.destroy();
+        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -193,13 +233,18 @@ void main()
     gridConfig.fadeEnd = 280.0f;
 
     locus::graphics::GridRenderer gridRenderer;
-    auto gridResult = gridRenderer.create(meshUploader, gridConfig);
+    auto gridResult = gridRenderer.create(
+        meshUploader,
+        shaderManager,
+        gridConfig
+    );
 
     if (!gridResult)
     {
         std::cerr << gridResult.error().message << '\n';
         triangleMesh.destroy();
         shader.destroy();
+        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -211,7 +256,11 @@ void main()
     axisConfig.planeOffset = 0.004f;
 
     locus::graphics::AxisRenderer axisRenderer;
-    auto axisResult = axisRenderer.create(meshUploader, axisConfig);
+    auto axisResult = axisRenderer.create(
+        meshUploader,
+        shaderManager,
+        axisConfig
+    );
 
     if (!axisResult)
     {
@@ -219,6 +268,7 @@ void main()
         gridRenderer.destroy();
         triangleMesh.destroy();
         shader.destroy();
+        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -271,6 +321,7 @@ void main()
         scene.add_object(axisRenderer.render_object());
 
         viewport.begin_frame();
+
         renderer.render(scene);
 
         context.swap_buffers();
@@ -280,6 +331,8 @@ void main()
     gridRenderer.destroy();
     triangleMesh.destroy();
     shader.destroy();
+    shaderManager.clear();
+
     context.shutdown();
     window.destroy();
 

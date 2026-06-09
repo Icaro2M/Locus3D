@@ -5,10 +5,17 @@
 
 #include "graphics/overlay/renderers/AxisRenderer.h"
 
+#include "graphics/common/GraphicsError.h"
+
 #include <utility>
 
 namespace locus::graphics
 {
+    namespace
+    {
+        constexpr const char* AxisShaderName = "viewport/axis";
+    }
+
     AxisRenderer::~AxisRenderer()
     {
         destroy();
@@ -16,15 +23,13 @@ namespace locus::graphics
 
     AxisRenderer::AxisRenderer(AxisRenderer&& other) noexcept
         : config_(other.config_),
-        shader_(std::move(other.shader_)),
         mesh_(std::move(other.mesh_)),
         object_(std::move(other.object_))
     {
-        // RenderObject stores raw resource pointers, so moves must rebind them.
-        object_.shader = &shader_;
+        // RenderObject stores a raw mesh pointer, so moves must rebind it.
         object_.mesh = &mesh_;
-        other.object_.shader = nullptr;
         other.object_.mesh = nullptr;
+        other.object_.shader = nullptr;
     }
 
     AxisRenderer& AxisRenderer::operator=(AxisRenderer&& other) noexcept
@@ -34,15 +39,13 @@ namespace locus::graphics
             destroy();
 
             config_ = other.config_;
-            shader_ = std::move(other.shader_);
             mesh_ = std::move(other.mesh_);
             object_ = std::move(other.object_);
 
-            // RenderObject stores raw resource pointers, so moves must rebind them.
-            object_.shader = &shader_;
+            // RenderObject stores a raw mesh pointer, so moves must rebind it.
             object_.mesh = &mesh_;
-            other.object_.shader = nullptr;
             other.object_.mesh = nullptr;
+            other.object_.shader = nullptr;
         }
 
         return *this;
@@ -50,6 +53,7 @@ namespace locus::graphics
 
     GraphicsResult<void> AxisRenderer::create(
         const MeshUploader& uploader,
+        const ShaderManager& shaderManager,
         const AxisRendererConfig& config)
     {
         destroy();
@@ -62,24 +66,23 @@ namespace locus::graphics
             );
         }
 
-        config_ = config;
+        const Shader* shader = shaderManager.find(AxisShaderName);
 
-        auto shaderResult = shader_.create_from_source(
-            vertex_shader_source(),
-            fragment_shader_source()
-        );
-
-        if (!shaderResult)
+        if (shader == nullptr)
         {
-            return shaderResult.error();
+            return GraphicsError::make(
+                GraphicsErrorCode::ResourceNotFound,
+                "AxisRenderer requires shader: viewport/axis."
+            );
         }
+
+        config_ = config;
 
         MeshUploadData meshData = build_mesh_data(config_);
         auto meshResult = uploader.upload(meshData);
 
         if (!meshResult)
         {
-            shader_.destroy();
             return meshResult.error();
         }
 
@@ -88,7 +91,7 @@ namespace locus::graphics
         object_.id = 1002;
         object_.name = "ViewportAxes";
         object_.mesh = &mesh_;
-        object_.shader = &shader_;
+        object_.shader = shader;
         object_.layer = RenderLayer::Overlay;
 
         return {};
@@ -97,7 +100,6 @@ namespace locus::graphics
     void AxisRenderer::destroy()
     {
         mesh_.destroy();
-        shader_.destroy();
 
         object_.mesh = nullptr;
         object_.shader = nullptr;
@@ -131,8 +133,8 @@ namespace locus::graphics
 
         add_line(
             data,
-            { 0.0f, 0.0f, -config.extent },
-            { 0.0f, 0.0f, config.extent },
+            { 0.0f, y, -config.extent },
+            { 0.0f, y, config.extent },
             config.zColor
         );
 
@@ -178,41 +180,5 @@ namespace locus::graphics
 
         data.vertices.push_back(vertexA);
         data.vertices.push_back(vertexB);
-    }
-
-    const char* AxisRenderer::vertex_shader_source()
-    {
-        return R"(
-#version 450 core
-
-layout (location = 0) in vec3 a_Position;
-layout (location = 2) in vec4 a_Color;
-
-uniform mat4 u_MVP;
-
-out vec4 v_Color;
-
-void main()
-{
-    v_Color = a_Color;
-    gl_Position = u_MVP * vec4(a_Position, 1.0);
-}
-)";
-    }
-
-    const char* AxisRenderer::fragment_shader_source()
-    {
-        return R"(
-#version 450 core
-
-in vec4 v_Color;
-
-out vec4 FragColor;
-
-void main()
-{
-    FragColor = v_Color;
-}
-)";
     }
 }
