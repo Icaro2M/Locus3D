@@ -24,7 +24,9 @@ target_sources(Locus3D PRIVATE
  "graphics/appearance/VisualMaterial.cpp"
  "graphics/overlay/renderers/GridRenderer.cpp"
  "graphics/overlay/renderers/AxisRenderer.cpp"
- "graphics/gpu/ShaderManager.cpp")
+ "graphics/gpu/ShaderManager.cpp"
+ "graphics/renderer/RenderQueue.cpp"
+ "graphics/camera/CameraRayBuilder.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

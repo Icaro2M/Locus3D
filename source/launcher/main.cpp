@@ -1,8 +1,4 @@
-/*
- * SPDX-FileCopyrightText: 2026 Icaro2M
- * SPDX-License-Identifier: Apache-2.0
- */
-
+#include "graphics/camera/CameraRayBuilder.h"
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
@@ -77,6 +73,7 @@ int main()
     if (!gridShaderResult)
     {
         std::cerr << gridShaderResult.error().message << '\n';
+        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -114,7 +111,6 @@ void main()
 {
     v_Normal = mat3(transpose(inverse(u_Model))) * a_Normal;
     v_Color = a_Color;
-
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
@@ -166,22 +162,21 @@ void main()
 
     vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
     vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
-
     vec3 finalColor = baseColor.rgb * (ambient + light);
 
     FragColor = vec4(finalColor, baseColor.a);
 }
 )";
 
-    locus::graphics::Shader shader;
-    auto shaderResult = shader.create_from_source(
+    locus::graphics::Shader triangleShader;
+    auto triangleShaderResult = triangleShader.create_from_source(
         vertexShaderSource,
         fragmentShaderSource
     );
 
-    if (!shaderResult)
+    if (!triangleShaderResult)
     {
-        std::cerr << shaderResult.error().message << '\n';
+        std::cerr << triangleShaderResult.error().message << '\n';
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -216,7 +211,7 @@ void main()
     if (!triangleMeshResult)
     {
         std::cerr << triangleMeshResult.error().message << '\n';
-        shader.destroy();
+        triangleShader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -243,7 +238,7 @@ void main()
     {
         std::cerr << gridResult.error().message << '\n';
         triangleMesh.destroy();
-        shader.destroy();
+        triangleShader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -267,7 +262,7 @@ void main()
         std::cerr << axisResult.error().message << '\n';
         gridRenderer.destroy();
         triangleMesh.destroy();
-        shader.destroy();
+        triangleShader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -278,14 +273,16 @@ void main()
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
     triangleObject.mesh = &triangleMesh;
-    triangleObject.shader = &shader;
+    triangleObject.shader = &triangleShader;
     triangleObject.layer = locus::graphics::RenderLayer::Default;
 
     locus::graphics::Viewport viewport;
     viewport.set_clear_color(graphicsConfig.defaultClearColor);
+    viewport.sync_with_window(window);
+
     viewport.camera().projection().set_perspective(
         0.78539816339f,
-        16.0f / 9.0f,
+        viewport.state().aspectRatio,
         0.01f,
         1000.0f
     );
@@ -302,17 +299,50 @@ void main()
     locus::graphics::Renderer renderer;
     renderer.set_light_environment(&lightEnvironment);
 
+    bool printedCenterRay = false;
+
     while (!window.should_close())
     {
         window.poll_events();
 
         viewport.sync_with_window(window);
-        orbitRig.apply(viewport.camera());
 
+        orbitRig.apply(viewport.camera());
         gridRenderer.update(viewport.camera());
 
         renderer.set_view_matrix(viewport.camera().view_matrix());
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
+
+        if (!printedCenterRay)
+        {
+            const locus::graphics::ViewportRect rect = viewport.state().rect;
+
+            const float centerX =
+                static_cast<float>(rect.x) + static_cast<float>(rect.width) * 0.5f;
+
+            const float centerY =
+                static_cast<float>(rect.y) + static_cast<float>(rect.height) * 0.5f;
+
+            const locus::graphics::CameraRay centerRay =
+                locus::graphics::CameraRayBuilder::from_viewport_pixel(
+                    viewport.camera(),
+                    rect,
+                    centerX,
+                    centerY
+                );
+
+            std::cout << "Center ray origin: "
+                << centerRay.origin.x << ", "
+                << centerRay.origin.y << ", "
+                << centerRay.origin.z << '\n';
+
+            std::cout << "Center ray direction: "
+                << centerRay.direction.x << ", "
+                << centerRay.direction.y << ", "
+                << centerRay.direction.z << '\n';
+
+            printedCenterRay = true;
+        }
 
         locus::graphics::RenderScene scene;
         scene.reserve(3);
@@ -330,7 +360,8 @@ void main()
     axisRenderer.destroy();
     gridRenderer.destroy();
     triangleMesh.destroy();
-    shader.destroy();
+    triangleShader.destroy();
+
     shaderManager.clear();
 
     context.shutdown();

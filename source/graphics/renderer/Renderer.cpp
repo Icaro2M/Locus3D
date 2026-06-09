@@ -24,12 +24,28 @@ namespace locus::graphics
 
     void Renderer::render(const RenderScene& scene)
     {
+        RenderQueue queue;
+        queue.build_from_scene(scene);
+        queue.sort();
+
+        render(queue);
+    }
+
+    void Renderer::render(const RenderQueue& queue)
+    {
         stats_.reset();
 
-        // Validate each object before touching GPU state so invalid editor entries are harmless.
-        for (const RenderObject& object : scene.objects())
+        for (const RenderCommand& command : queue.commands())
         {
             ++stats_.objectsSubmitted;
+
+            if (command.object == nullptr)
+            {
+                ++stats_.objectsSkipped;
+                continue;
+            }
+
+            const RenderObject& object = *command.object;
 
             if (!object.is_drawable())
             {
@@ -75,14 +91,17 @@ namespace locus::graphics
         const glm::mat4 mvp = projectionMatrix_ * viewMatrix_ * model;
         const ColorRGBA color = object.resolved_color();
 
-        // The shader currently expects a single combined transform matrix.
         shader->bind();
+
         shader->set_mat4("u_Model", &model[0][0]);
         shader->set_mat4("u_MVP", &mvp[0][0]);
         shader->set_vec4("u_BaseColor", color.r, color.g, color.b, color.a);
         shader->set_int("u_UseVertexColor", object.uses_vertex_color() ? 1 : 0);
+
         apply_lighting_uniforms(*shader);
+
         object.mesh->draw();
+
         shader->unbind();
 
         ++stats_.objectsDrawn;

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "graphics/lighting/LightEnvironment.h"
+#include "graphics/renderer/RenderQueue.h"
 #include "graphics/renderer/RenderStats.h"
 #include "graphics/scene/RenderScene.h"
 
@@ -62,6 +63,13 @@ namespace locus::graphics
          * @param scene Scene to submit.
          */
         void render(const RenderScene& scene);
+
+        /**
+         * @brief Renders every drawable object already stored in a sorted render queue.
+         *
+         * @param queue Queue containing render commands.
+         */
+        void render(const RenderQueue& queue);
 
         /**
          * @brief Returns the current view matrix.
