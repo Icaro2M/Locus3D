@@ -30,6 +30,7 @@ target_sources(Locus3D PRIVATE
  "graphics/gpu/Texture.cpp"
  "graphics/gpu/Framebuffer.cpp"
  "graphics/picking/PickingBuffer.cpp"
+ "graphics/picking/PickingRenderer.cpp"
 )
 
 target_sources(Locus3D PRIVATE
