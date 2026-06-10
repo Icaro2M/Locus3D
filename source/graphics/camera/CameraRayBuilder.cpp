@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/camera/CameraRayBuilder.h"
 
 #include <algorithm>
@@ -19,6 +24,7 @@ namespace locus::graphics
         const glm::vec4 nearClip{ ndc.x, ndc.y, -1.0f, 1.0f };
         const glm::vec4 farClip{ ndc.x, ndc.y, 1.0f, 1.0f };
 
+        // Unproject near and far clip-space points, then use them as the ray segment.
         glm::vec4 nearWorld = inverseViewProjection * nearClip;
         glm::vec4 farWorld = inverseViewProjection * farClip;
 
@@ -52,6 +58,7 @@ namespace locus::graphics
         const float localY = pixelY - static_cast<float>(viewport.y);
 
         const float ndcX = (localX / width) * 2.0f - 1.0f;
+        // Window coordinates grow downward, while OpenGL NDC grows upward.
         const float ndcY = 1.0f - (localY / height) * 2.0f;
 
         return glm::vec2{ ndcX, ndcY };

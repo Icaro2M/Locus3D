@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/gpu/RenderState.h"
 
 #include <glad/glad.h>
@@ -117,6 +122,7 @@ namespace locus::graphics
 
     void RenderState::reset_default()
     {
+        // Keep this baseline explicit so passes can recover from specialized state.
         set_depth_test(true);
         set_depth_write(true);
         set_depth_func(DepthFunc::Less);

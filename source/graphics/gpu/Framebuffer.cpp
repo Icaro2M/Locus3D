@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/gpu/Framebuffer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -85,6 +90,7 @@ namespace locus::graphics
         width_ = info.width;
         height_ = info.height;
 
+        // Attachments are owned textures so framebuffer lifetime stays self-contained.
         if (info.createColorAttachment)
         {
             TextureCreateInfo textureInfo;
@@ -119,6 +125,7 @@ namespace locus::graphics
         }
         else
         {
+            // Depth-only framebuffers must opt out of color reads and writes.
             glNamedFramebufferDrawBuffer(id_, GL_NONE);
             glNamedFramebufferReadBuffer(id_, GL_NONE);
         }

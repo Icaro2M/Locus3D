@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/picking/PickingRenderer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -39,6 +44,7 @@ namespace locus::graphics
     {
         RenderQueue queue;
         queue.build_from_scene(scene);
+        // Reuse the normal render ordering so picking matches visible stacking.
         queue.sort();
 
         render(pickingBuffer, queue);
@@ -57,6 +63,7 @@ namespace locus::graphics
         pickingBuffer.bind();
         pickingBuffer.clear();
 
+        // Picking renders a clean ID-only pass into the offscreen target.
         RenderState::set_viewport(
             0,
             0,
@@ -121,6 +128,7 @@ namespace locus::graphics
         const glm::mat4 model = object.transform.matrix();
         const glm::mat4 mvp = projectionMatrix_ * viewMatrix_ * model;
 
+        // The picking shader writes a flat color instead of visual material shading.
         shader_->bind();
 
         shader_->set_mat4("u_MVP", &mvp[0][0]);

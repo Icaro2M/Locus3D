@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/gpu/Texture.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -80,6 +85,7 @@ namespace locus::graphics
         height_ = info.height;
         format_ = info.format;
 
+        // Use direct-state-access calls so creation does not disturb global bindings.
         glTextureParameteri(id_, GL_TEXTURE_MIN_FILTER, static_cast<GLint>(gl_filter(info.minFilter)));
         glTextureParameteri(id_, GL_TEXTURE_MAG_FILTER, static_cast<GLint>(gl_filter(info.magFilter)));
         glTextureParameteri(id_, GL_TEXTURE_WRAP_S, static_cast<GLint>(gl_wrap(info.wrapS)));
@@ -148,6 +154,7 @@ namespace locus::graphics
             );
         }
 
+        // Depth-stencil textures are attachment-only in this wrapper.
         if (sourceFormat == TextureFormat::Unknown || is_depth_stencil_format(sourceFormat))
         {
             return GraphicsError::make(

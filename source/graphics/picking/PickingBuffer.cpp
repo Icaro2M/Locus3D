@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/picking/PickingBuffer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -53,6 +58,7 @@ namespace locus::graphics
         FramebufferCreateInfo info;
         info.width = width;
         info.height = height;
+        // RGBA8 keeps picking IDs easy to read back as byte channels.
         info.colorFormat = TextureFormat::RGBA8;
         info.depthStencilFormat = TextureFormat::Depth24Stencil8;
         info.createColorAttachment = true;
@@ -125,6 +131,7 @@ namespace locus::graphics
 
         unsigned char pixel[4] = { 0, 0, 0, 0 };
 
+        // Read only the color attachment; depth is handled by the picking pass.
         glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer_.id());
         glReadBuffer(GL_COLOR_ATTACHMENT0);
 

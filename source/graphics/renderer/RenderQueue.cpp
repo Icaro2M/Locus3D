@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/renderer/RenderQueue.h"
 
 #include "graphics/scene/RenderObject.h"
@@ -44,6 +49,7 @@ namespace locus::graphics
 
     void RenderQueue::sort()
     {
+        // Keep equal-priority objects in scene order so draw output remains deterministic.
         std::stable_sort(
             commands_.begin(),
             commands_.end(),
