@@ -26,7 +26,11 @@ target_sources(Locus3D PRIVATE
  "graphics/overlay/renderers/AxisRenderer.cpp"
  "graphics/gpu/ShaderManager.cpp"
  "graphics/renderer/RenderQueue.cpp"
- "graphics/camera/CameraRayBuilder.cpp")
+ "graphics/camera/CameraRayBuilder.cpp"
+ "graphics/gpu/Texture.cpp"
+ "graphics/gpu/Framebuffer.cpp"
+ "graphics/picking/PickingBuffer.cpp"
+)
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

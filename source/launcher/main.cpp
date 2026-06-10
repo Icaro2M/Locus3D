@@ -8,6 +8,7 @@
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/picking/PickingBuffer.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
@@ -293,6 +294,32 @@ void main()
     orbitRig.set_angles(0.75f, 0.9f);
     orbitRig.apply(viewport.camera());
 
+    locus::graphics::PickingBuffer pickingBuffer;
+
+    auto pickingBufferResult = pickingBuffer.create(
+        viewport.state().rect.width,
+        viewport.state().rect.height
+    );
+
+    if (!pickingBufferResult)
+    {
+        std::cerr << pickingBufferResult.error().message << '\n';
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        triangleShader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    std::cout << "PickingBuffer created: "
+        << pickingBuffer.width()
+        << "x"
+        << pickingBuffer.height()
+        << '\n';
+
     locus::graphics::LightEnvironment lightEnvironment;
     lightEnvironment.reset_default_viewport_lighting();
 
@@ -300,12 +327,26 @@ void main()
     renderer.set_light_environment(&lightEnvironment);
 
     bool printedCenterRay = false;
+    bool printedPickingRead = false;
+    bool running = true;
 
-    while (!window.should_close())
+    while (running && !window.should_close())
     {
         window.poll_events();
 
         viewport.sync_with_window(window);
+
+        auto resizePickingResult = pickingBuffer.resize(
+            viewport.state().rect.width,
+            viewport.state().rect.height
+        );
+
+        if (!resizePickingResult)
+        {
+            std::cerr << resizePickingResult.error().message << '\n';
+            running = false;
+            continue;
+        }
 
         orbitRig.apply(viewport.camera());
         gridRenderer.update(viewport.camera());
@@ -344,6 +385,29 @@ void main()
             printedCenterRay = true;
         }
 
+        pickingBuffer.bind();
+        pickingBuffer.clear();
+
+        const locus::graphics::PickingId centerPick =
+            pickingBuffer.read_id(
+                pickingBuffer.width() / 2,
+                pickingBuffer.height() / 2
+            );
+
+        locus::graphics::PickingBuffer::bind_default();
+
+        if (!printedPickingRead)
+        {
+            std::cout << "Picking center id: " << centerPick.value << '\n';
+
+            if (!centerPick.is_valid())
+            {
+                std::cout << "Picking center is invalid, as expected before PickingRenderer.\n";
+            }
+
+            printedPickingRead = true;
+        }
+
         locus::graphics::RenderScene scene;
         scene.reserve(3);
         scene.add_object(gridRenderer.render_object());
@@ -357,8 +421,11 @@ void main()
         context.swap_buffers();
     }
 
+    pickingBuffer.destroy();
+
     axisRenderer.destroy();
     gridRenderer.destroy();
+
     triangleMesh.destroy();
     triangleShader.destroy();
 
