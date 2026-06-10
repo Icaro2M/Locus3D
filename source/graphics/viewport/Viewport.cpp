@@ -5,6 +5,8 @@
 
 #include "graphics/viewport/Viewport.h"
 
+#include "graphics/gpu/RenderState.h"
+
 #include <glad/glad.h>
 
 #include <algorithm>
@@ -52,21 +54,14 @@ namespace locus::graphics
     void Viewport::begin_frame()
     {
         // Apply the viewport before clearing so only this framebuffer region is affected.
-        glViewport(
+        RenderState::set_viewport(
             state_.rect.x,
             state_.rect.y,
             state_.rect.width,
             state_.rect.height
         );
 
-        if (settings_.depthTest)
-        {
-            glEnable(GL_DEPTH_TEST);
-        }
-        else
-        {
-            glDisable(GL_DEPTH_TEST);
-        }
+        RenderState::set_depth_test(settings_.depthTest);
 
         glClearColor(
             settings_.clearState.color.r,

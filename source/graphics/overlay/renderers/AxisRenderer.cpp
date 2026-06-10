@@ -93,6 +93,7 @@ namespace locus::graphics
         object_.mesh = &mesh_;
         object_.shader = shader;
         object_.layer = RenderLayer::Overlay;
+        object_.visibility.selectable = false;
 
         return {};
     }

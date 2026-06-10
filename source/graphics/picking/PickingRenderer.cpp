@@ -1,10 +1,9 @@
 #include "graphics/picking/PickingRenderer.h"
 
 #include "graphics/common/GraphicsError.h"
+#include "graphics/gpu/RenderState.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/scene/RenderObject.h"
-
-#include <glad/glad.h>
 
 namespace locus::graphics
 {
@@ -58,16 +57,20 @@ namespace locus::graphics
         pickingBuffer.bind();
         pickingBuffer.clear();
 
-        glViewport(
+        RenderState::set_viewport(
             0,
             0,
             pickingBuffer.width(),
             pickingBuffer.height()
         );
 
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glDepthMask(GL_TRUE);
+        RenderState::set_depth_test(true);
+        RenderState::set_depth_func(DepthFunc::Less);
+        RenderState::set_depth_write(true);
+        RenderState::set_blend(false);
+        RenderState::set_cull_face(false);
+        RenderState::set_polygon_mode(RenderPolygonMode::Fill);
+        RenderState::set_color_write(true, true, true, true);
 
         for (const RenderCommand& command : queue.commands())
         {
@@ -90,6 +93,11 @@ namespace locus::graphics
     void PickingRenderer::render_object(const RenderObject& object) const
     {
         if (!object.is_drawable())
+        {
+            return;
+        }
+
+        if (!object.visibility.selectable)
         {
             return;
         }

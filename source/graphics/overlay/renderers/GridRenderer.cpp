@@ -98,6 +98,7 @@ namespace locus::graphics
         object_.mesh = &mesh_;
         object_.shader = shader;
         object_.layer = RenderLayer::Grid;
+        object_.visibility.selectable = false;
         object_.transform.position = { 0.0f, 0.0f, 0.0f };
 
         // Grid appearance is shader-driven; the mesh is only a large ground plane.
