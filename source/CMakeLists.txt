@@ -34,7 +34,10 @@ target_sources(Locus3D PRIVATE
  "graphics/gpu/RenderState.cpp"
  "graphics/gpu/UniformBuffer.cpp"
  "graphics/debug/DebugDraw.cpp" 
- "graphics/overlay/renderers/BoundingBoxRenderer.cpp")
+ "graphics/overlay/renderers/BoundingBoxRenderer.cpp"
+ "graphics/mesh/MeshRenderCache.cpp"
+ "graphics/renderer/DrawList.cpp"
+ "graphics/renderer/RenderPipeline.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

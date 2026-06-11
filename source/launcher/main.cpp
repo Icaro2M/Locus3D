@@ -1,6 +1,7 @@
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
+#include "graphics/debug/DebugDraw.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/lighting/LightEnvironment.h"
@@ -8,9 +9,9 @@
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/BoundingBoxRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/renderer/RenderPipeline.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
-#include "graphics/scene/RenderScene.h"
 #include "graphics/viewport/Viewport.h"
 #include "graphics/window/Window.h"
 
@@ -100,6 +101,21 @@ int main()
     if (!boundingBoxShaderResult)
     {
         std::cerr << boundingBoxShaderResult.error().message << '\n';
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    auto debugShaderResult = shaderManager.load(
+        "debug/draw",
+        "debug/debug_vert.glsl",
+        "debug/debug_frag.glsl"
+    );
+
+    if (!debugShaderResult)
+    {
+        std::cerr << debugShaderResult.error().message << '\n';
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -298,6 +314,22 @@ void main()
         return 1;
     }
 
+    locus::graphics::DebugDraw debugDraw;
+    auto debugDrawResult = debugDraw.create(shaderManager);
+    if (!debugDrawResult)
+    {
+        std::cerr << debugDrawResult.error().message << '\n';
+        boundingBoxRenderer.destroy();
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
@@ -326,6 +358,8 @@ void main()
 
     locus::graphics::Renderer renderer;
     renderer.set_light_environment(&lightEnvironment);
+
+    locus::graphics::RenderPipeline pipeline;
 
     while (!window.should_close())
     {
@@ -360,21 +394,45 @@ void main()
             break;
         }
 
-        locus::graphics::RenderScene scene;
-        scene.reserve(4);
+        debugDraw.clear();
 
-        scene.add_object(gridRenderer.render_object());
-        scene.add_object(triangleObject);
-        scene.add_object(axisRenderer.render_object());
-        boundingBoxRenderer.submit(scene);
+        debugDraw.add_line(
+            { -2.0f, 1.0f, 0.0f },
+            { 2.0f, 1.0f, 0.0f },
+            { 1.0f, 0.85f, 0.15f, 1.0f }
+        );
+
+        debugDraw.add_ray(
+            { 0.0f, 0.25f, 0.0f },
+            { 0.0f, 1.0f, 0.0f },
+            2.5f,
+            { 0.2f, 1.0f, 0.35f, 1.0f }
+        );
+
+        auto debugUploadResult = debugDraw.upload(meshUploader);
+        if (!debugUploadResult)
+        {
+            std::cerr << debugUploadResult.error().message << '\n';
+            break;
+        }
+
+        pipeline.begin_frame();
+        pipeline.reserve(5);
+
+        pipeline.submit(gridRenderer.render_object());
+        pipeline.submit(triangleObject);
+        pipeline.submit(axisRenderer.render_object());
+        pipeline.submit(boundingBoxRenderer.render_object());
+        pipeline.submit(debugDraw.render_object());
 
         viewport.begin_frame();
 
-        renderer.render(scene);
+        pipeline.render(renderer);
 
         context.swap_buffers();
     }
 
+    debugDraw.destroy();
     boundingBoxRenderer.destroy();
     axisRenderer.destroy();
     gridRenderer.destroy();
