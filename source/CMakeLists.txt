@@ -31,7 +31,9 @@ target_sources(Locus3D PRIVATE
  "graphics/gpu/Framebuffer.cpp"
  "graphics/picking/PickingBuffer.cpp"
  "graphics/picking/PickingRenderer.cpp"
- "graphics/gpu/RenderState.cpp")
+ "graphics/gpu/RenderState.cpp"
+ "graphics/gpu/UniformBuffer.cpp"
+ "graphics/debug/DebugDraw.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

@@ -1,15 +1,18 @@
-#include "graphics/camera/CameraRayBuilder.h"
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
+#include "graphics/debug/DebugDraw.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
-#include "graphics/picking/PickingBuffer.h"
-#include "graphics/picking/PickingRenderer.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
@@ -39,7 +42,6 @@ int main()
 
     locus::graphics::Window window;
     auto windowResult = window.create(windowInfo);
-
     if (!windowResult)
     {
         std::cerr << windowResult.error().message << '\n';
@@ -48,7 +50,6 @@ int main()
 
     locus::graphics::OpenGLContext context;
     auto contextResult = context.initialize(window, graphicsConfig);
-
     if (!contextResult)
     {
         std::cerr << contextResult.error().message << '\n';
@@ -75,7 +76,6 @@ int main()
     if (!gridShaderResult)
     {
         std::cerr << gridShaderResult.error().message << '\n';
-        shaderManager.clear();
         context.shutdown();
         window.destroy();
         return 1;
@@ -96,15 +96,15 @@ int main()
         return 1;
     }
 
-    auto pickingShaderResult = shaderManager.load(
-        "picking/object",
-        "picking/picking_vert.glsl",
-        "picking/picking_frag.glsl"
+    auto debugShaderResult = shaderManager.load(
+        "debug/draw",
+        "debug/debug_vert.glsl",
+        "debug/debug_frag.glsl"
     );
 
-    if (!pickingShaderResult)
+    if (!debugShaderResult)
     {
-        std::cerr << pickingShaderResult.error().message << '\n';
+        std::cerr << debugShaderResult.error().message << '\n';
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -142,8 +142,10 @@ uniform vec4 u_BaseColor;
 uniform int u_UseVertexColor;
 
 uniform int u_ShadingMode;
+
 uniform vec4 u_AmbientColor;
 uniform float u_AmbientIntensity;
+
 uniform vec3 u_LightDirection;
 uniform vec4 u_LightColor;
 uniform float u_LightIntensity;
@@ -179,21 +181,22 @@ void main()
 
     vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
     vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
+
     vec3 finalColor = baseColor.rgb * (ambient + light);
 
     FragColor = vec4(finalColor, baseColor.a);
 }
 )";
 
-    locus::graphics::Shader triangleShader;
-    auto triangleShaderResult = triangleShader.create_from_source(
+    locus::graphics::Shader shader;
+    auto shaderResult = shader.create_from_source(
         vertexShaderSource,
         fragmentShaderSource
     );
 
-    if (!triangleShaderResult)
+    if (!shaderResult)
     {
-        std::cerr << triangleShaderResult.error().message << '\n';
+        std::cerr << shaderResult.error().message << '\n';
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -224,11 +227,10 @@ void main()
     triangleData.usage = locus::graphics::BufferUsage::Static;
 
     auto triangleMeshResult = meshUploader.upload(triangleData);
-
     if (!triangleMeshResult)
     {
         std::cerr << triangleMeshResult.error().message << '\n';
-        triangleShader.destroy();
+        shader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -255,7 +257,7 @@ void main()
     {
         std::cerr << gridResult.error().message << '\n';
         triangleMesh.destroy();
-        triangleShader.destroy();
+        shader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -279,7 +281,22 @@ void main()
         std::cerr << axisResult.error().message << '\n';
         gridRenderer.destroy();
         triangleMesh.destroy();
-        triangleShader.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    locus::graphics::DebugDraw debugDraw;
+    auto debugDrawResult = debugDraw.create(shaderManager);
+    if (!debugDrawResult)
+    {
+        std::cerr << debugDrawResult.error().message << '\n';
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -290,16 +307,15 @@ void main()
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
     triangleObject.mesh = &triangleMesh;
-    triangleObject.shader = &triangleShader;
+    triangleObject.shader = &shader;
     triangleObject.layer = locus::graphics::RenderLayer::Default;
 
     locus::graphics::Viewport viewport;
     viewport.set_clear_color(graphicsConfig.defaultClearColor);
-    viewport.sync_with_window(window);
 
     viewport.camera().projection().set_perspective(
         0.78539816339f,
-        viewport.state().aspectRatio,
+        16.0f / 9.0f,
         0.01f,
         1000.0f
     );
@@ -310,77 +326,17 @@ void main()
     orbitRig.set_angles(0.75f, 0.9f);
     orbitRig.apply(viewport.camera());
 
-    locus::graphics::PickingBuffer pickingBuffer;
-
-    auto pickingBufferResult = pickingBuffer.create(
-        viewport.state().rect.width,
-        viewport.state().rect.height
-    );
-
-    if (!pickingBufferResult)
-    {
-        std::cerr << pickingBufferResult.error().message << '\n';
-        axisRenderer.destroy();
-        gridRenderer.destroy();
-        triangleMesh.destroy();
-        triangleShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    std::cout << "PickingBuffer created: "
-        << pickingBuffer.width()
-        << "x"
-        << pickingBuffer.height()
-        << '\n';
-
-    locus::graphics::PickingRenderer pickingRenderer;
-
-    auto pickingRendererResult = pickingRenderer.create(shaderManager);
-
-    if (!pickingRendererResult)
-    {
-        std::cerr << pickingRendererResult.error().message << '\n';
-        pickingBuffer.destroy();
-        axisRenderer.destroy();
-        gridRenderer.destroy();
-        triangleMesh.destroy();
-        triangleShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
     locus::graphics::LightEnvironment lightEnvironment;
     lightEnvironment.reset_default_viewport_lighting();
 
     locus::graphics::Renderer renderer;
     renderer.set_light_environment(&lightEnvironment);
 
-    bool printedCenterRay = false;
-    bool printedPickingRead = false;
-    bool running = true;
-
-    while (running && !window.should_close())
+    while (!window.should_close())
     {
         window.poll_events();
 
         viewport.sync_with_window(window);
-
-        auto resizePickingResult = pickingBuffer.resize(
-            viewport.state().rect.width,
-            viewport.state().rect.height
-        );
-
-        if (!resizePickingResult)
-        {
-            std::cerr << resizePickingResult.error().message << '\n';
-            running = false;
-            continue;
-        }
 
         orbitRig.apply(viewport.camera());
         gridRenderer.update(viewport.camera());
@@ -388,72 +344,41 @@ void main()
         renderer.set_view_matrix(viewport.camera().view_matrix());
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
-        pickingRenderer.set_view_matrix(viewport.camera().view_matrix());
-        pickingRenderer.set_projection_matrix(viewport.camera().projection_matrix());
+        debugDraw.clear();
 
-        if (!printedCenterRay)
+        debugDraw.add_line(
+            { -2.0f, 1.0f, 0.0f },
+            { 2.0f, 1.0f, 0.0f },
+            { 1.0f, 0.85f, 0.15f, 1.0f }
+        );
+
+        debugDraw.add_ray(
+            { 0.0f, 0.25f, 0.0f },
+            { 0.0f, 1.0f, 0.0f },
+            2.5f,
+            { 0.2f, 1.0f, 0.35f, 1.0f }
+        );
+
+        debugDraw.add_box(
+            { -1.0f, 0.0f, -1.0f },
+            { 1.0f, 2.0f, 1.0f },
+            { 0.2f, 0.85f, 1.0f, 1.0f }
+        );
+
+        auto debugUploadResult = debugDraw.upload(meshUploader);
+        if (!debugUploadResult)
         {
-            const locus::graphics::ViewportRect rect = viewport.state().rect;
-
-            const float centerX =
-                static_cast<float>(rect.x) + static_cast<float>(rect.width) * 0.5f;
-
-            const float centerY =
-                static_cast<float>(rect.y) + static_cast<float>(rect.height) * 0.5f;
-
-            const locus::graphics::CameraRay centerRay =
-                locus::graphics::CameraRayBuilder::from_viewport_pixel(
-                    viewport.camera(),
-                    rect,
-                    centerX,
-                    centerY
-                );
-
-            std::cout << "Center ray origin: "
-                << centerRay.origin.x << ", "
-                << centerRay.origin.y << ", "
-                << centerRay.origin.z << '\n';
-
-            std::cout << "Center ray direction: "
-                << centerRay.direction.x << ", "
-                << centerRay.direction.y << ", "
-                << centerRay.direction.z << '\n';
-
-            printedCenterRay = true;
+            std::cerr << debugUploadResult.error().message << '\n';
+            break;
         }
 
         locus::graphics::RenderScene scene;
-        scene.reserve(3);
+        scene.reserve(4);
+
         scene.add_object(gridRenderer.render_object());
         scene.add_object(triangleObject);
         scene.add_object(axisRenderer.render_object());
-
-        pickingRenderer.render(
-            pickingBuffer,
-            scene
-        );
-
-        const locus::graphics::PickingId centerPick =
-            pickingBuffer.read_id(
-                pickingBuffer.width() / 2,
-                pickingBuffer.height() / 2
-            );
-
-        if (!printedPickingRead)
-        {
-            std::cout << "Picking center id: " << centerPick.value << '\n';
-
-            if (centerPick.is_valid())
-            {
-                std::cout << "Picking center is valid.\n";
-            }
-            else
-            {
-                std::cout << "Picking center is invalid.\n";
-            }
-
-            printedPickingRead = true;
-        }
+        debugDraw.submit(scene);
 
         viewport.begin_frame();
 
@@ -462,16 +387,12 @@ void main()
         context.swap_buffers();
     }
 
-    pickingBuffer.destroy();
-
+    debugDraw.destroy();
     axisRenderer.destroy();
     gridRenderer.destroy();
-
     triangleMesh.destroy();
-    triangleShader.destroy();
-
+    shader.destroy();
     shaderManager.clear();
-
     context.shutdown();
     window.destroy();
 
