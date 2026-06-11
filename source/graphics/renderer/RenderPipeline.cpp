@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/renderer/RenderPipeline.h"
 
 #include <utility>
@@ -53,6 +58,7 @@ namespace locus::graphics
             return;
         }
 
+        // Rebuild lazily so multiple submissions in one frame pay sorting cost once.
         drawList_.build_queue(queue_);
         queueDirty_ = false;
     }

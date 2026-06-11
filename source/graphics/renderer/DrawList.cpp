@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/renderer/DrawList.h"
 
 #include <utility>
@@ -75,6 +80,7 @@ namespace locus::graphics
             queue.add_object(object);
         }
 
+        // RenderQueue owns the final ordering policy for layers, materials, and depth.
         queue.sort();
     }
 

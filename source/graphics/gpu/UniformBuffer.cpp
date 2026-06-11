@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/gpu/UniformBuffer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -10,6 +15,7 @@ namespace locus::graphics
 {
     namespace
     {
+        // Keep API-level usage flags decoupled from OpenGL enum values.
         u32 to_gl_usage(BufferUsage usage)
         {
             switch (usage)

@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/debug/DebugDraw.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -40,6 +45,7 @@ namespace locus::graphics
 
         if (mesh_.is_valid())
         {
+            // The moved render object may still point at the old instance's mesh.
             object_.mesh = &mesh_;
         }
 
@@ -139,6 +145,7 @@ namespace locus::graphics
             return;
         }
 
+        // Normalize only after rejecting zero-length directions to avoid NaNs.
         const glm::vec3 end = origin + glm::normalize(direction) * length;
         add_line(origin, end, color);
     }

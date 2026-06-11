@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/mesh/MeshRenderCache.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -26,6 +31,7 @@ namespace locus::graphics
         const std::size_t ownerHash = std::hash<u64>{}(key.ownerId);
         const std::size_t revisionHash = std::hash<u64>{}(key.revision);
 
+        // Boost-style hash combine keeps owner and revision changes visible in one key.
         return ownerHash ^ (revisionHash + 0x9e3779b97f4a7c15ull + (ownerHash << 6) + (ownerHash >> 2));
     }
 
@@ -108,6 +114,7 @@ namespace locus::graphics
         auto it = records_.find(key);
         if (it != records_.end())
         {
+            // Replace in-place so external lookup semantics stay tied to the same cache key.
             it->second.mesh.destroy();
             it->second.mesh = meshResult.move_value();
             it->second.lastUsedFrame = currentFrame_;

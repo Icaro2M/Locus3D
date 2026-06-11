@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/overlay/renderers/BoundingBoxRenderer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -39,6 +44,7 @@ namespace locus::graphics
 
         if (mesh_.is_valid())
         {
+            // Restore the self-reference after moving the owned GPU mesh.
             object_.mesh = &mesh_;
         }
 
@@ -112,6 +118,7 @@ namespace locus::graphics
     )
     {
         BoundingBoxDrawItem item;
+        // Normalize inverted bounds so callers can pass drag-selection corners directly.
         item.minPoint = glm::min(minPoint, maxPoint);
         item.maxPoint = glm::max(minPoint, maxPoint);
         item.color = color;
