@@ -33,7 +33,8 @@ target_sources(Locus3D PRIVATE
  "graphics/picking/PickingRenderer.cpp"
  "graphics/gpu/RenderState.cpp"
  "graphics/gpu/UniformBuffer.cpp"
- "graphics/debug/DebugDraw.cpp")
+ "graphics/debug/DebugDraw.cpp" 
+ "graphics/overlay/renderers/BoundingBoxRenderer.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

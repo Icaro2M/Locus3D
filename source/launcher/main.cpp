@@ -1,17 +1,12 @@
-/*
- * SPDX-FileCopyrightText: 2026 Icaro2M
- * SPDX-License-Identifier: Apache-2.0
- */
-
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
-#include "graphics/debug/DebugDraw.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/overlay/renderers/AxisRenderer.h"
+#include "graphics/overlay/renderers/BoundingBoxRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
@@ -96,15 +91,15 @@ int main()
         return 1;
     }
 
-    auto debugShaderResult = shaderManager.load(
-        "debug/draw",
-        "debug/debug_vert.glsl",
-        "debug/debug_frag.glsl"
+    auto boundingBoxShaderResult = shaderManager.load(
+        "viewport/bounding_box",
+        "viewport/bounding_box_vert.glsl",
+        "viewport/bounding_box_frag.glsl"
     );
 
-    if (!debugShaderResult)
+    if (!boundingBoxShaderResult)
     {
-        std::cerr << debugShaderResult.error().message << '\n';
+        std::cerr << boundingBoxShaderResult.error().message << '\n';
         shaderManager.clear();
         context.shutdown();
         window.destroy();
@@ -288,11 +283,11 @@ void main()
         return 1;
     }
 
-    locus::graphics::DebugDraw debugDraw;
-    auto debugDrawResult = debugDraw.create(shaderManager);
-    if (!debugDrawResult)
+    locus::graphics::BoundingBoxRenderer boundingBoxRenderer;
+    auto boundingBoxResult = boundingBoxRenderer.create(shaderManager);
+    if (!boundingBoxResult)
     {
-        std::cerr << debugDrawResult.error().message << '\n';
+        std::cerr << boundingBoxResult.error().message << '\n';
         axisRenderer.destroy();
         gridRenderer.destroy();
         triangleMesh.destroy();
@@ -344,31 +339,24 @@ void main()
         renderer.set_view_matrix(viewport.camera().view_matrix());
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
-        debugDraw.clear();
+        boundingBoxRenderer.clear();
 
-        debugDraw.add_line(
-            { -2.0f, 1.0f, 0.0f },
-            { 2.0f, 1.0f, 0.0f },
-            { 1.0f, 0.85f, 0.15f, 1.0f }
-        );
-
-        debugDraw.add_ray(
-            { 0.0f, 0.25f, 0.0f },
-            { 0.0f, 1.0f, 0.0f },
-            2.5f,
-            { 0.2f, 1.0f, 0.35f, 1.0f }
-        );
-
-        debugDraw.add_box(
-            { -1.0f, 0.0f, -1.0f },
-            { 1.0f, 2.0f, 1.0f },
+        boundingBoxRenderer.add_box(
+            { -0.65f, 0.0f, -0.65f },
+            { 0.65f, 0.25f, 0.65f },
             { 0.2f, 0.85f, 1.0f, 1.0f }
         );
 
-        auto debugUploadResult = debugDraw.upload(meshUploader);
-        if (!debugUploadResult)
+        boundingBoxRenderer.add_box(
+            { -1.25f, 0.0f, -1.25f },
+            { 1.25f, 1.5f, 1.25f },
+            { 1.0f, 0.85f, 0.15f, 1.0f }
+        );
+
+        auto boundingBoxUploadResult = boundingBoxRenderer.upload(meshUploader);
+        if (!boundingBoxUploadResult)
         {
-            std::cerr << debugUploadResult.error().message << '\n';
+            std::cerr << boundingBoxUploadResult.error().message << '\n';
             break;
         }
 
@@ -378,7 +366,7 @@ void main()
         scene.add_object(gridRenderer.render_object());
         scene.add_object(triangleObject);
         scene.add_object(axisRenderer.render_object());
-        debugDraw.submit(scene);
+        boundingBoxRenderer.submit(scene);
 
         viewport.begin_frame();
 
@@ -387,7 +375,7 @@ void main()
         context.swap_buffers();
     }
 
-    debugDraw.destroy();
+    boundingBoxRenderer.destroy();
     axisRenderer.destroy();
     gridRenderer.destroy();
     triangleMesh.destroy();
