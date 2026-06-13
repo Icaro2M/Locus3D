@@ -40,7 +40,8 @@ target_sources(Locus3D PRIVATE
  "graphics/renderer/RenderPipeline.cpp"
  "graphics/passes/GeometryPass.cpp"
  "graphics/debug/GpuProfiler.cpp"
- "graphics/overlay/renderers/NormalRenderer.cpp")
+ "graphics/overlay/renderers/NormalRenderer.cpp"
+ "graphics/overlay/renderers/MeasurementRenderer.cpp")
 
 target_sources(Locus3D PRIVATE
     ${GLAD_DIR}/src/glad.c

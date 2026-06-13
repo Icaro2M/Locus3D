@@ -9,6 +9,7 @@
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/BoundingBoxRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/overlay/renderers/MeasurementRenderer.h"
 #include "graphics/overlay/renderers/NormalRenderer.h"
 #include "graphics/renderer/RenderPipeline.h"
 #include "graphics/renderer/Renderer.h"
@@ -350,6 +351,25 @@ void main()
         return 1;
     }
 
+    locus::graphics::MeasurementRenderer measurementRenderer;
+    auto measurementRendererResult = measurementRenderer.create(shaderManager);
+
+    if (!measurementRendererResult)
+    {
+        std::cerr << measurementRendererResult.error().message << '\n';
+        normalRenderer.destroy();
+        debugDraw.destroy();
+        boundingBoxRenderer.destroy();
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
@@ -464,8 +484,32 @@ void main()
             break;
         }
 
+        measurementRenderer.clear();
+        measurementRenderer.add_measurement(
+            { -0.5f, 0.08f, -0.5f },
+            { 0.5f, 0.08f, -0.5f },
+            { 1.0f, 0.85f, 0.15f, 1.0f }
+        );
+        measurementRenderer.add_measurement(
+            { 0.5f, 0.08f, -0.5f },
+            { 0.0f, 0.08f, 0.5f },
+            { 1.0f, 0.85f, 0.15f, 1.0f }
+        );
+        measurementRenderer.add_measurement(
+            { -1.25f, 1.55f, -1.25f },
+            { 1.25f, 1.55f, -1.25f },
+            { 0.2f, 1.0f, 0.35f, 1.0f }
+        );
+
+        auto measurementUploadResult = measurementRenderer.upload(meshUploader);
+        if (!measurementUploadResult)
+        {
+            std::cerr << measurementUploadResult.error().message << '\n';
+            break;
+        }
+
         pipeline.begin_frame();
-        pipeline.reserve(6);
+        pipeline.reserve(7);
 
         pipeline.submit(gridRenderer.render_object());
         pipeline.submit(triangleObject);
@@ -473,6 +517,7 @@ void main()
         pipeline.submit(boundingBoxRenderer.render_object());
         pipeline.submit(debugDraw.render_object());
         pipeline.submit(normalRenderer.render_object());
+        pipeline.submit(measurementRenderer.render_object());
 
         viewport.begin_frame();
         pipeline.render(renderer);
@@ -480,6 +525,7 @@ void main()
         context.swap_buffers();
     }
 
+    measurementRenderer.destroy();
     normalRenderer.destroy();
     debugDraw.destroy();
     boundingBoxRenderer.destroy();
