@@ -187,12 +187,10 @@ void main()
 
     vec3 normal = normalize(v_Normal);
     vec3 lightDirection = normalize(-u_LightDirection);
-
     float diffuse = max(dot(normal, lightDirection), 0.0);
 
     vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
     vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
-
     vec3 finalColor = baseColor.rgb * (ambient + light);
 
     FragColor = vec4(finalColor, baseColor.a);
@@ -234,6 +232,7 @@ void main()
             { 0.9f, 0.9f, 0.2f, 1.0f }
         }
     };
+
     triangleData.topology = locus::graphics::PrimitiveTopology::Triangles;
     triangleData.usage = locus::graphics::BufferUsage::Static;
 
@@ -301,6 +300,7 @@ void main()
 
     locus::graphics::BoundingBoxRenderer boundingBoxRenderer;
     auto boundingBoxResult = boundingBoxRenderer.create(shaderManager);
+
     if (!boundingBoxResult)
     {
         std::cerr << boundingBoxResult.error().message << '\n';
@@ -316,6 +316,7 @@ void main()
 
     locus::graphics::DebugDraw debugDraw;
     auto debugDrawResult = debugDraw.create(shaderManager);
+
     if (!debugDrawResult)
     {
         std::cerr << debugDrawResult.error().message << '\n';
@@ -339,7 +340,6 @@ void main()
 
     locus::graphics::Viewport viewport;
     viewport.set_clear_color(graphicsConfig.defaultClearColor);
-
     viewport.camera().projection().set_perspective(
         0.78539816339f,
         16.0f / 9.0f,
@@ -374,13 +374,11 @@ void main()
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
         boundingBoxRenderer.clear();
-
         boundingBoxRenderer.add_box(
             { -0.65f, 0.0f, -0.65f },
             { 0.65f, 0.25f, 0.65f },
             { 0.2f, 0.85f, 1.0f, 1.0f }
         );
-
         boundingBoxRenderer.add_box(
             { -1.25f, 0.0f, -1.25f },
             { 1.25f, 1.5f, 1.25f },
@@ -395,13 +393,11 @@ void main()
         }
 
         debugDraw.clear();
-
         debugDraw.add_line(
             { -2.0f, 1.0f, 0.0f },
             { 2.0f, 1.0f, 0.0f },
             { 1.0f, 0.85f, 0.15f, 1.0f }
         );
-
         debugDraw.add_ray(
             { 0.0f, 0.25f, 0.0f },
             { 0.0f, 1.0f, 0.0f },
@@ -426,7 +422,6 @@ void main()
         pipeline.submit(debugDraw.render_object());
 
         viewport.begin_frame();
-
         pipeline.render(renderer);
 
         context.swap_buffers();
@@ -436,9 +431,12 @@ void main()
     boundingBoxRenderer.destroy();
     axisRenderer.destroy();
     gridRenderer.destroy();
+
     triangleMesh.destroy();
     shader.destroy();
+
     shaderManager.clear();
+
     context.shutdown();
     window.destroy();
 
