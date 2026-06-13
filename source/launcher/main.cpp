@@ -9,6 +9,7 @@
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/BoundingBoxRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/overlay/renderers/NormalRenderer.h"
 #include "graphics/renderer/RenderPipeline.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
@@ -331,6 +332,24 @@ void main()
         return 1;
     }
 
+    locus::graphics::NormalRenderer normalRenderer;
+    auto normalRendererResult = normalRenderer.create(shaderManager);
+
+    if (!normalRendererResult)
+    {
+        std::cerr << normalRendererResult.error().message << '\n';
+        debugDraw.destroy();
+        boundingBoxRenderer.destroy();
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
@@ -412,14 +431,48 @@ void main()
             break;
         }
 
+        normalRenderer.clear();
+        normalRenderer.add_normal(
+            { -0.5f, 0.05f, -0.5f },
+            { 0.0f, 1.0f, 0.0f },
+            0.8f,
+            { 0.35f, 0.75f, 1.0f, 1.0f }
+        );
+        normalRenderer.add_normal(
+            { 0.5f, 0.05f, -0.5f },
+            { 0.0f, 1.0f, 0.0f },
+            0.8f,
+            { 0.35f, 0.75f, 1.0f, 1.0f }
+        );
+        normalRenderer.add_normal(
+            { 0.0f, 0.05f, 0.5f },
+            { 0.0f, 1.0f, 0.0f },
+            0.8f,
+            { 0.35f, 0.75f, 1.0f, 1.0f }
+        );
+        normalRenderer.add_normal(
+            { 0.0f, 0.05f, 0.0f },
+            { 0.0f, 1.0f, 0.0f },
+            1.2f,
+            { 1.0f, 0.35f, 0.85f, 1.0f }
+        );
+
+        auto normalUploadResult = normalRenderer.upload(meshUploader);
+        if (!normalUploadResult)
+        {
+            std::cerr << normalUploadResult.error().message << '\n';
+            break;
+        }
+
         pipeline.begin_frame();
-        pipeline.reserve(5);
+        pipeline.reserve(6);
 
         pipeline.submit(gridRenderer.render_object());
         pipeline.submit(triangleObject);
         pipeline.submit(axisRenderer.render_object());
         pipeline.submit(boundingBoxRenderer.render_object());
         pipeline.submit(debugDraw.render_object());
+        pipeline.submit(normalRenderer.render_object());
 
         viewport.begin_frame();
         pipeline.render(renderer);
@@ -427,6 +480,7 @@ void main()
         context.swap_buffers();
     }
 
+    normalRenderer.destroy();
     debugDraw.destroy();
     boundingBoxRenderer.destroy();
     axisRenderer.destroy();
