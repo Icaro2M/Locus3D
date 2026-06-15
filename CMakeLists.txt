@@ -43,3 +43,16 @@ endif()
 # Subdirectories
 
 add_subdirectory(source)
+
+# Documentation
+
+find_package(Doxygen QUIET)
+
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${LOCUS3D_ROOT_DIR}/Doxyfile
+        WORKING_DIRECTORY ${LOCUS3D_ROOT_DIR}
+        COMMENT "Generating Locus3D API documentation"
+        VERBATIM
+    )
+endif()

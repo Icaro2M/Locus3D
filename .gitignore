@@ -17,3 +17,7 @@ CMakeCache.txt
 *.exe
 *.pdb
 *.ilk
+
+# Documentacao gerada
+docs/generated/
+docs/doxygen-warnings.log
