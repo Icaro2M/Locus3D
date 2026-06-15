@@ -2,6 +2,7 @@
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/debug/DebugDraw.h"
+#include "graphics/debug/GpuProfiler.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/lighting/LightEnvironment.h"
@@ -370,6 +371,26 @@ void main()
         return 1;
     }
 
+    locus::graphics::GpuProfiler gpuProfiler;
+    auto profilerResult = gpuProfiler.create();
+
+    if (!profilerResult)
+    {
+        std::cerr << profilerResult.error().message << '\n';
+        measurementRenderer.destroy();
+        normalRenderer.destroy();
+        debugDraw.destroy();
+        boundingBoxRenderer.destroy();
+        axisRenderer.destroy();
+        gridRenderer.destroy();
+        triangleMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
     locus::graphics::RenderObject triangleObject;
     triangleObject.id = 1;
     triangleObject.name = "Triangle";
@@ -399,6 +420,10 @@ void main()
     renderer.set_light_environment(&lightEnvironment);
 
     locus::graphics::RenderPipeline pipeline;
+
+    bool shouldProfileFrame = true;
+    bool profilerResultPending = false;
+    bool profilerPrinted = false;
 
     while (!window.should_close())
     {
@@ -520,10 +545,54 @@ void main()
         pipeline.submit(measurementRenderer.render_object());
 
         viewport.begin_frame();
+
+        if (shouldProfileFrame)
+        {
+            auto beginProfileResult = gpuProfiler.begin();
+
+            if (!beginProfileResult)
+            {
+                std::cerr << beginProfileResult.error().message << '\n';
+                break;
+            }
+        }
+
         pipeline.render(renderer);
+
+        if (shouldProfileFrame)
+        {
+            auto endProfileResult = gpuProfiler.end();
+
+            if (!endProfileResult)
+            {
+                std::cerr << endProfileResult.error().message << '\n';
+                break;
+            }
+
+            shouldProfileFrame = false;
+            profilerResultPending = true;
+        }
+
+        if (profilerResultPending && !profilerPrinted && gpuProfiler.is_result_available())
+        {
+            auto gpuTimeResult = gpuProfiler.result_milliseconds();
+
+            if (!gpuTimeResult)
+            {
+                std::cerr << gpuTimeResult.error().message << '\n';
+                break;
+            }
+
+            std::cout << "GPU frame time: " << gpuTimeResult.value() << " ms\n";
+
+            profilerPrinted = true;
+            profilerResultPending = false;
+        }
 
         context.swap_buffers();
     }
+
+    gpuProfiler.destroy();
 
     measurementRenderer.destroy();
     normalRenderer.destroy();
