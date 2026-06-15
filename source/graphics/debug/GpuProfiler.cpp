@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/debug/GpuProfiler.h"
 
 #include <glad/glad.h>
@@ -59,6 +64,7 @@ namespace locus::graphics
 
         if (running_)
         {
+            // Close an active query before deletion to keep OpenGL state balanced.
             glEndQuery(GL_TIME_ELAPSED);
             running_ = false;
         }

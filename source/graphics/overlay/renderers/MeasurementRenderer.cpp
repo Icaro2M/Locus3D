@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/overlay/renderers/MeasurementRenderer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -41,6 +46,7 @@ namespace locus::graphics
 
         if (mesh_.is_valid())
         {
+            // Restore the self-reference after moving the owned GPU mesh.
             object_.mesh = &mesh_;
         }
 
@@ -254,6 +260,7 @@ namespace locus::graphics
 
         if (glm::abs(glm::dot(direction, reference)) > 0.9f)
         {
+            // Use a different reference when the measurement is almost vertical.
             reference = { 1.0f, 0.0f, 0.0f };
         }
 

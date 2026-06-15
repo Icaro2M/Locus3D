@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/passes/GeometryPass.h"
 
 #include "graphics/renderer/Renderer.h"
@@ -39,6 +44,7 @@ namespace locus::graphics
             queue_.add_object(object);
         }
 
+        // Keep pass-local queue ordering aligned with the renderer's command policy.
         queue_.sort();
 
         context.renderer->render(queue_);

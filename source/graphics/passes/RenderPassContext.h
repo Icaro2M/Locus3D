@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "graphics/camera/Camera.h"
@@ -8,6 +13,16 @@
 
 namespace locus::graphics
 {
+    /**
+     * @brief Shared state passed to render passes during execution.
+     *
+     * RenderPassContext keeps pass implementations decoupled from the owning
+     * render loop while still exposing the active renderer, scene, viewport,
+     * camera, and pipeline objects.
+     *
+     * @note Pointers are non-owning and may be null when a pass does not require
+     * a specific subsystem.
+     */
     struct RenderPassContext
     {
         Renderer* renderer = nullptr;

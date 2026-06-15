@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "graphics/overlay/renderers/NormalRenderer.h"
 
 #include "graphics/common/GraphicsError.h"
@@ -40,6 +45,7 @@ namespace locus::graphics
 
         if (mesh_.is_valid())
         {
+            // Restore the self-reference after moving the owned GPU mesh.
             object_.mesh = &mesh_;
         }
 
