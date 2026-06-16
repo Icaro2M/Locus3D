@@ -39,9 +39,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is valid.
          */
-        [[nodiscard]] constexpr bool isValid() const
+        [[nodiscard]] constexpr bool is_valid() const
         {
-            return id.isValid();
+            return id.is_valid();
         }
 
         /**
@@ -49,9 +49,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is invalid.
          */
-        [[nodiscard]] constexpr bool isInvalid() const
+        [[nodiscard]] constexpr bool is_invalid() const
         {
-            return id.isInvalid();
+            return id.is_invalid();
         }
 
         /**
@@ -109,9 +109,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is valid.
          */
-        [[nodiscard]] constexpr bool isValid() const
+        [[nodiscard]] constexpr bool is_valid() const
         {
-            return id.isValid();
+            return id.is_valid();
         }
 
         /**
@@ -119,9 +119,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is invalid.
          */
-        [[nodiscard]] constexpr bool isInvalid() const
+        [[nodiscard]] constexpr bool is_invalid() const
         {
-            return id.isInvalid();
+            return id.is_invalid();
         }
 
         /**
@@ -179,9 +179,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is valid.
          */
-        [[nodiscard]] constexpr bool isValid() const
+        [[nodiscard]] constexpr bool is_valid() const
         {
-            return id.isValid();
+            return id.is_valid();
         }
 
         /**
@@ -189,9 +189,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is invalid.
          */
-        [[nodiscard]] constexpr bool isInvalid() const
+        [[nodiscard]] constexpr bool is_invalid() const
         {
-            return id.isInvalid();
+            return id.is_invalid();
         }
 
         /**
@@ -249,9 +249,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is valid.
          */
-        [[nodiscard]] constexpr bool isValid() const
+        [[nodiscard]] constexpr bool is_valid() const
         {
-            return id.isValid();
+            return id.is_valid();
         }
 
         /**
@@ -259,9 +259,9 @@ namespace locus::kernel::geometry
          *
          * @return True when the underlying identifier is invalid.
          */
-        [[nodiscard]] constexpr bool isInvalid() const
+        [[nodiscard]] constexpr bool is_invalid() const
         {
-            return id.isInvalid();
+            return id.is_invalid();
         }
 
         /**

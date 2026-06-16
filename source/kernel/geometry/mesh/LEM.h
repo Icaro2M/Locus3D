@@ -34,7 +34,7 @@ namespace locus::kernel::geometry
          * @param position Vertex position in object space.
          * @return Handle referencing the created vertex.
          */
-        VertexHandle addVertex(const glm::vec3& position);
+        VertexHandle add_vertex(const glm::vec3& position);
 
         /**
          * @brief Finds an existing non-directional edge between two vertices.
@@ -43,7 +43,7 @@ namespace locus::kernel::geometry
          * @param vertexB Second endpoint vertex.
          * @return Handle referencing the edge, or an invalid handle when none exists.
          */
-        [[nodiscard]] EdgeHandle findEdge(VertexHandle vertexA, VertexHandle vertexB) const;
+        [[nodiscard]] EdgeHandle find_edge(VertexHandle vertexA, VertexHandle vertexB) const;
 
         /**
          * @brief Finds or creates a non-directional edge between two vertices.
@@ -52,7 +52,7 @@ namespace locus::kernel::geometry
          * @param vertexB Second endpoint vertex.
          * @return Handle referencing the existing or newly created edge.
          */
-        EdgeHandle findOrCreateEdge(VertexHandle vertexA, VertexHandle vertexB);
+        EdgeHandle find_or_create_edge(VertexHandle vertexA, VertexHandle vertexB);
 
         /**
          * @brief Adds a polygonal face bounded by the given vertices.
@@ -64,7 +64,7 @@ namespace locus::kernel::geometry
          * @return Handle referencing the created face.
          * @note The vertex order defines the face winding and normal direction.
          */
-        FaceHandle addFace(const std::vector<VertexHandle>& vertices);
+        FaceHandle add_face(const std::vector<VertexHandle>& vertices);
 
         /**
          * @brief Returns mutable access to a vertex.
@@ -136,7 +136,7 @@ namespace locus::kernel::geometry
          * @param handle Vertex handle.
          * @return True when the handle references an active vertex.
          */
-        [[nodiscard]] bool isValid(VertexHandle handle) const;
+        [[nodiscard]] bool is_valid(VertexHandle handle) const;
 
         /**
          * @brief Checks whether an edge handle references an active edge.
@@ -144,7 +144,7 @@ namespace locus::kernel::geometry
          * @param handle Edge handle.
          * @return True when the handle references an active edge.
          */
-        [[nodiscard]] bool isValid(EdgeHandle handle) const;
+        [[nodiscard]] bool is_valid(EdgeHandle handle) const;
 
         /**
          * @brief Checks whether a loop handle references an active loop.
@@ -152,7 +152,7 @@ namespace locus::kernel::geometry
          * @param handle Loop handle.
          * @return True when the handle references an active loop.
          */
-        [[nodiscard]] bool isValid(LoopHandle handle) const;
+        [[nodiscard]] bool is_valid(LoopHandle handle) const;
 
         /**
          * @brief Checks whether a face handle references an active face.
@@ -160,7 +160,7 @@ namespace locus::kernel::geometry
          * @param handle Face handle.
          * @return True when the handle references an active face.
          */
-        [[nodiscard]] bool isValid(FaceHandle handle) const;
+        [[nodiscard]] bool is_valid(FaceHandle handle) const;
 
         /**
          * @brief Returns the loops that form a face boundary.
@@ -168,35 +168,35 @@ namespace locus::kernel::geometry
          * @param handle Face handle.
          * @return Ordered loop handles around the face.
          */
-        [[nodiscard]] std::vector<LoopHandle> faceLoops(FaceHandle handle) const;
+        [[nodiscard]] std::vector<LoopHandle> face_loops(FaceHandle handle) const;
 
         /**
          * @brief Returns the number of vertex slots.
          *
          * @return Number of stored vertices.
          */
-        [[nodiscard]] std::size_t vertexCount() const;
+        [[nodiscard]] std::size_t vertex_count() const;
 
         /**
          * @brief Returns the number of edge slots.
          *
          * @return Number of stored edges.
          */
-        [[nodiscard]] std::size_t edgeCount() const;
+        [[nodiscard]] std::size_t edge_count() const;
 
         /**
          * @brief Returns the number of loop slots.
          *
          * @return Number of stored loops.
          */
-        [[nodiscard]] std::size_t loopCount() const;
+        [[nodiscard]] std::size_t loop_count() const;
 
         /**
          * @brief Returns the number of face slots.
          *
          * @return Number of stored faces.
          */
-        [[nodiscard]] std::size_t faceCount() const;
+        [[nodiscard]] std::size_t face_count() const;
 
         /**
          * @brief Checks whether the mesh contains no elements.

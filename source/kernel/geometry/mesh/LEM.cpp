@@ -15,13 +15,13 @@ namespace locus::kernel::geometry
 {
     namespace
     {
-        [[nodiscard]] bool matchesEdge(const Edge& edge, VertexHandle vertexA, VertexHandle vertexB)
+        [[nodiscard]] bool matches_edge(const Edge& edge, VertexHandle vertexA, VertexHandle vertexB)
         {
             return (edge.vertexA == vertexA && edge.vertexB == vertexB)
                 || (edge.vertexA == vertexB && edge.vertexB == vertexA);
         }
 
-        [[nodiscard]] bool containsVertex(
+        [[nodiscard]] bool contains_vertex(
             const std::vector<VertexHandle>& vertices,
             VertexHandle target,
             std::size_t end)
@@ -37,7 +37,7 @@ namespace locus::kernel::geometry
             return false;
         }
 
-        [[nodiscard]] bool containsEdgePair(
+        [[nodiscard]] bool contains_edge_pair(
             const std::vector<VertexHandle>& vertices,
             VertexHandle vertexA,
             VertexHandle vertexB,
@@ -62,7 +62,7 @@ namespace locus::kernel::geometry
          * Rejects boundaries that would create degenerate local topology.
          * This validation is intentionally conservative for the initial LEM version.
          */
-        [[nodiscard]] bool hasValidFaceBoundary(
+        [[nodiscard]] bool has_valid_face_boundary(
             const LEM& mesh,
             const std::vector<VertexHandle>& vertices)
         {
@@ -76,17 +76,17 @@ namespace locus::kernel::geometry
                 const VertexHandle current = vertices[i];
                 const VertexHandle next = vertices[(i + 1) % vertices.size()];
 
-                if (!mesh.isValid(current) || current == next)
+                if (!mesh.is_valid(current) || current == next)
                 {
                     return false;
                 }
 
-                if (containsVertex(vertices, current, i))
+                if (contains_vertex(vertices, current, i))
                 {
                     return false;
                 }
 
-                if (containsEdgePair(vertices, current, next, i))
+                if (contains_edge_pair(vertices, current, next, i))
                 {
                     return false;
                 }
@@ -99,7 +99,7 @@ namespace locus::kernel::geometry
          * Computes a polygon normal using Newell's method.
          * The returned normal is only a geometric helper for the current face state.
          */
-        [[nodiscard]] glm::vec3 computeFaceNormal(
+        [[nodiscard]] glm::vec3 compute_face_normal(
             const std::vector<Vertex>& meshVertices,
             const std::vector<VertexHandle>& faceVertices)
         {
@@ -128,7 +128,7 @@ namespace locus::kernel::geometry
         }
     }
 
-    VertexHandle LEM::addVertex(const glm::vec3& position)
+    VertexHandle LEM::add_vertex(const glm::vec3& position)
     {
         const auto index = static_cast<IdValue>(vertices_.size());
 
@@ -140,9 +140,9 @@ namespace locus::kernel::geometry
         return VertexHandle(index);
     }
 
-    EdgeHandle LEM::findEdge(VertexHandle vertexA, VertexHandle vertexB) const
+    EdgeHandle LEM::find_edge(VertexHandle vertexA, VertexHandle vertexB) const
     {
-        if (!isValid(vertexA) || !isValid(vertexB))
+        if (!is_valid(vertexA) || !is_valid(vertexB))
         {
             return EdgeHandle{};
         }
@@ -151,7 +151,7 @@ namespace locus::kernel::geometry
         {
             const Edge& edge = edges_[index];
 
-            if (!edge.deleted && matchesEdge(edge, vertexA, vertexB))
+            if (!edge.deleted && matches_edge(edge, vertexA, vertexB))
             {
                 return EdgeHandle(static_cast<IdValue>(index));
             }
@@ -164,15 +164,15 @@ namespace locus::kernel::geometry
      * Edges are non-directional in LEM. Reuse an existing edge when the same
      * vertex pair is already connected.
      */
-    EdgeHandle LEM::findOrCreateEdge(VertexHandle vertexA, VertexHandle vertexB)
+    EdgeHandle LEM::find_or_create_edge(VertexHandle vertexA, VertexHandle vertexB)
     {
-        if (!isValid(vertexA) || !isValid(vertexB) || vertexA == vertexB)
+        if (!is_valid(vertexA) || !is_valid(vertexB) || vertexA == vertexB)
         {
             return EdgeHandle{};
         }
 
-        const EdgeHandle existingEdge = findEdge(vertexA, vertexB);
-        if (existingEdge.isValid())
+        const EdgeHandle existingEdge = find_edge(vertexA, vertexB);
+        if (existingEdge.is_valid())
         {
             return existingEdge;
         }
@@ -186,12 +186,12 @@ namespace locus::kernel::geometry
 
         edges_.push_back(edge);
 
-        if (vertices_[vertexA.id.value].edge.isInvalid())
+        if (vertices_[vertexA.id.value].edge.is_invalid())
         {
             vertices_[vertexA.id.value].edge = edgeHandle;
         }
 
-        if (vertices_[vertexB.id.value].edge.isInvalid())
+        if (vertices_[vertexB.id.value].edge.is_invalid())
         {
             vertices_[vertexB.id.value].edge = edgeHandle;
         }
@@ -203,9 +203,9 @@ namespace locus::kernel::geometry
      * Creates one loop per boundary vertex, links the face cycle, and inserts
      * each loop into the radial cycle of its edge.
      */
-    FaceHandle LEM::addFace(const std::vector<VertexHandle>& vertices)
+    FaceHandle LEM::add_face(const std::vector<VertexHandle>& vertices)
     {
-        if (!hasValidFaceBoundary(*this, vertices))
+        if (!has_valid_face_boundary(*this, vertices))
         {
             return FaceHandle{};
         }
@@ -218,8 +218,8 @@ namespace locus::kernel::geometry
             const VertexHandle vertexA = vertices[i];
             const VertexHandle vertexB = vertices[(i + 1) % vertices.size()];
 
-            const EdgeHandle edgeHandle = findOrCreateEdge(vertexA, vertexB);
-            if (edgeHandle.isInvalid())
+            const EdgeHandle edgeHandle = find_or_create_edge(vertexA, vertexB);
+            if (edgeHandle.is_invalid())
             {
                 return FaceHandle{};
             }
@@ -231,7 +231,7 @@ namespace locus::kernel::geometry
         const FaceHandle faceHandle(faceIndex);
 
         Face face{};
-        face.normal = computeFaceNormal(vertices_, vertices);
+        face.normal = compute_face_normal(vertices_, vertices);
 
         faces_.push_back(face);
 
@@ -253,7 +253,7 @@ namespace locus::kernel::geometry
 
             Edge& edge = edges_[faceEdges[i].id.value];
 
-            if (edge.loop.isInvalid())
+            if (edge.loop.is_invalid())
             {
                 edge.loop = loopHandle;
                 loops_[loopIndex].radialNext = loopHandle;
@@ -266,10 +266,10 @@ namespace locus::kernel::geometry
              * circular doubly-linked radial cycle around the edge.
              */
             const LoopHandle entry = edge.loop;
-            assert(isValid(entry));
+            assert(is_valid(entry));
 
             const LoopHandle previous = loops_[entry.id.value].radialPrevious;
-            assert(isValid(previous));
+            assert(is_valid(previous));
 
             loops_[loopIndex].radialNext = entry;
             loops_[loopIndex].radialPrevious = previous;
@@ -295,88 +295,88 @@ namespace locus::kernel::geometry
 
     Vertex& LEM::vertex(VertexHandle handle)
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return vertices_[handle.id.value];
     }
 
     const Vertex& LEM::vertex(VertexHandle handle) const
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return vertices_[handle.id.value];
     }
 
     Edge& LEM::edge(EdgeHandle handle)
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return edges_[handle.id.value];
     }
 
     const Edge& LEM::edge(EdgeHandle handle) const
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return edges_[handle.id.value];
     }
 
     Loop& LEM::loop(LoopHandle handle)
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return loops_[handle.id.value];
     }
 
     const Loop& LEM::loop(LoopHandle handle) const
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return loops_[handle.id.value];
     }
 
     Face& LEM::face(FaceHandle handle)
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return faces_[handle.id.value];
     }
 
     const Face& LEM::face(FaceHandle handle) const
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
         return faces_[handle.id.value];
     }
 
-    bool LEM::isValid(VertexHandle handle) const
+    bool LEM::is_valid(VertexHandle handle) const
     {
-        return handle.isValid()
+        return handle.is_valid()
             && handle.id.value < vertices_.size()
             && !vertices_[handle.id.value].deleted;
     }
 
-    bool LEM::isValid(EdgeHandle handle) const
+    bool LEM::is_valid(EdgeHandle handle) const
     {
-        return handle.isValid()
+        return handle.is_valid()
             && handle.id.value < edges_.size()
             && !edges_[handle.id.value].deleted;
     }
 
-    bool LEM::isValid(LoopHandle handle) const
+    bool LEM::is_valid(LoopHandle handle) const
     {
-        return handle.isValid()
+        return handle.is_valid()
             && handle.id.value < loops_.size()
             && !loops_[handle.id.value].deleted;
     }
 
-    bool LEM::isValid(FaceHandle handle) const
+    bool LEM::is_valid(FaceHandle handle) const
     {
-        return handle.isValid()
+        return handle.is_valid()
             && handle.id.value < faces_.size()
             && !faces_[handle.id.value].deleted;
     }
 
-    std::vector<LoopHandle> LEM::faceLoops(FaceHandle handle) const
+    std::vector<LoopHandle> LEM::face_loops(FaceHandle handle) const
     {
-        assert(isValid(handle));
+        assert(is_valid(handle));
 
         std::vector<LoopHandle> result;
 
         const LoopHandle firstLoop = faces_[handle.id.value].loop;
-        if (firstLoop.isInvalid())
+        if (firstLoop.is_invalid())
         {
             return result;
         }
@@ -385,9 +385,9 @@ namespace locus::kernel::geometry
 
         do
         {
-            assert(isValid(current));
+            assert(is_valid(current));
 
-            if (!isValid(current))
+            if (!is_valid(current))
             {
                 return result;
             }
@@ -399,22 +399,22 @@ namespace locus::kernel::geometry
         return result;
     }
 
-    std::size_t LEM::vertexCount() const
+    std::size_t LEM::vertex_count() const
     {
         return vertices_.size();
     }
 
-    std::size_t LEM::edgeCount() const
+    std::size_t LEM::edge_count() const
     {
         return edges_.size();
     }
 
-    std::size_t LEM::loopCount() const
+    std::size_t LEM::loop_count() const
     {
         return loops_.size();
     }
 
-    std::size_t LEM::faceCount() const
+    std::size_t LEM::face_count() const
     {
         return faces_.size();
     }

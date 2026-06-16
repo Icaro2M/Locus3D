@@ -53,7 +53,7 @@ namespace locus::kernel
          *
          * @return True when the stored value is not the invalid sentinel.
          */
-        [[nodiscard]] constexpr bool isValid() const
+        [[nodiscard]] constexpr bool is_valid() const
         {
             return value != InvalidIdValue;
         }
@@ -63,9 +63,9 @@ namespace locus::kernel
          *
          * @return True when the stored value is the invalid sentinel.
          */
-        [[nodiscard]] constexpr bool isInvalid() const
+        [[nodiscard]] constexpr bool is_invalid() const
         {
-            return !isValid();
+            return !is_valid();
         }
 
         /**
