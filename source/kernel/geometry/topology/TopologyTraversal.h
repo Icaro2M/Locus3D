@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -9,9 +14,18 @@
 
 namespace locus::kernel::geometry
 {
+    /**
+     * @brief Utility class for querying LEM topology relationships.
+     */
     class TopologyTraversal
     {
     public:
+        /**
+         * @brief Returns all active vertices in the mesh.
+         *
+         * @param mesh Mesh to inspect.
+         * @return Handles for active vertices.
+         */
         [[nodiscard]] static std::vector<VertexHandle> vertices(const LEM& mesh)
         {
             std::vector<VertexHandle> result;
@@ -29,6 +43,12 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns all active edges in the mesh.
+         *
+         * @param mesh Mesh to inspect.
+         * @return Handles for active edges.
+         */
         [[nodiscard]] static std::vector<EdgeHandle> edges(const LEM& mesh)
         {
             std::vector<EdgeHandle> result;
@@ -46,6 +66,12 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns all active loops in the mesh.
+         *
+         * @param mesh Mesh to inspect.
+         * @return Handles for active loops.
+         */
         [[nodiscard]] static std::vector<LoopHandle> loops(const LEM& mesh)
         {
             std::vector<LoopHandle> result;
@@ -63,6 +89,12 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns all active faces in the mesh.
+         *
+         * @param mesh Mesh to inspect.
+         * @return Handles for active faces.
+         */
         [[nodiscard]] static std::vector<FaceHandle> faces(const LEM& mesh)
         {
             std::vector<FaceHandle> result;
@@ -80,6 +112,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns the boundary loops of a face.
+         *
+         * @param mesh Mesh to inspect.
+         * @param face Face handle.
+         * @return Ordered loop handles around the face, or empty when invalid.
+         */
         [[nodiscard]] static std::vector<LoopHandle> face_loops(const LEM& mesh, FaceHandle face)
         {
             if (!mesh.is_valid(face))
@@ -90,6 +129,13 @@ namespace locus::kernel::geometry
             return mesh.face_loops(face);
         }
 
+        /**
+         * @brief Returns the vertices used by a face boundary.
+         *
+         * @param mesh Mesh to inspect.
+         * @param face Face handle.
+         * @return Ordered vertex handles around the face.
+         */
         [[nodiscard]] static std::vector<VertexHandle> face_vertices(const LEM& mesh, FaceHandle face)
         {
             std::vector<VertexHandle> result;
@@ -106,6 +152,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns the unique edges used by a face boundary.
+         *
+         * @param mesh Mesh to inspect.
+         * @param face Face handle.
+         * @return Edge handles used by the face.
+         */
         [[nodiscard]] static std::vector<EdgeHandle> face_edges(const LEM& mesh, FaceHandle face)
         {
             std::vector<EdgeHandle> result;
@@ -122,6 +175,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns the endpoint vertices of an edge.
+         *
+         * @param mesh Mesh to inspect.
+         * @param edge Edge handle.
+         * @return Pair of vertex handles, or invalid handles when the edge is invalid.
+         */
         [[nodiscard]] static std::array<VertexHandle, 2> edge_vertices(const LEM& mesh, EdgeHandle edge)
         {
             if (!mesh.is_valid(edge))
@@ -133,6 +193,14 @@ namespace locus::kernel::geometry
             return { edgeElement.vertexA, edgeElement.vertexB };
         }
 
+        /**
+         * @brief Returns all loops in the radial cycle of an edge.
+         *
+         * @param mesh Mesh to inspect.
+         * @param edge Edge handle.
+         * @return Loop handles around the edge.
+         * @note Traversal stops early if the radial cycle is broken or repeats unexpectedly.
+         */
         [[nodiscard]] static std::vector<LoopHandle> edge_loops(const LEM& mesh, EdgeHandle edge)
         {
             if (!mesh.is_valid(edge))
@@ -166,6 +234,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns the unique faces adjacent to an edge.
+         *
+         * @param mesh Mesh to inspect.
+         * @param edge Edge handle.
+         * @return Face handles attached to the edge radial cycle.
+         */
         [[nodiscard]] static std::vector<FaceHandle> edge_faces(const LEM& mesh, EdgeHandle edge)
         {
             std::vector<FaceHandle> result;
@@ -182,6 +257,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns all edges incident to a vertex.
+         *
+         * @param mesh Mesh to inspect.
+         * @param vertex Vertex handle.
+         * @return Incident edge handles.
+         */
         [[nodiscard]] static std::vector<EdgeHandle> vertex_edges(const LEM& mesh, VertexHandle vertex)
         {
             if (!mesh.is_valid(vertex))
@@ -209,6 +291,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns all loops that reference a vertex.
+         *
+         * @param mesh Mesh to inspect.
+         * @param vertex Vertex handle.
+         * @return Loop handles using the vertex.
+         */
         [[nodiscard]] static std::vector<LoopHandle> vertex_loops(const LEM& mesh, VertexHandle vertex)
         {
             if (!mesh.is_valid(vertex))
@@ -236,6 +325,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns the unique faces adjacent to a vertex.
+         *
+         * @param mesh Mesh to inspect.
+         * @param vertex Vertex handle.
+         * @return Face handles using the vertex.
+         */
         [[nodiscard]] static std::vector<FaceHandle> vertex_faces(const LEM& mesh, VertexHandle vertex)
         {
             std::vector<FaceHandle> result;
@@ -252,6 +348,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Returns vertices connected to a vertex by an edge.
+         *
+         * @param mesh Mesh to inspect.
+         * @param vertex Vertex handle.
+         * @return Unique adjacent vertex handles.
+         */
         [[nodiscard]] static std::vector<VertexHandle> adjacent_vertices(const LEM& mesh, VertexHandle vertex)
         {
             std::vector<VertexHandle> result;
@@ -270,6 +373,13 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Checks whether an edge has fewer than two radial loops.
+         *
+         * @param mesh Mesh to inspect.
+         * @param edge Edge handle.
+         * @return True when the edge is valid and lies on a boundary.
+         */
         [[nodiscard]] static bool is_boundary_edge(const LEM& mesh, EdgeHandle edge)
         {
             if (!mesh.is_valid(edge))
@@ -280,6 +390,13 @@ namespace locus::kernel::geometry
             return edge_loops(mesh, edge).size() < 2;
         }
 
+        /**
+         * @brief Checks whether an edge is used by at most two loops.
+         *
+         * @param mesh Mesh to inspect.
+         * @param edge Edge handle.
+         * @return True when the edge is valid and manifold.
+         */
         [[nodiscard]] static bool is_manifold_edge(const LEM& mesh, EdgeHandle edge)
         {
             if (!mesh.is_valid(edge))

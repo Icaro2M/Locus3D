@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/math/Bounds.h"
@@ -12,13 +17,40 @@
 
 namespace locus::kernel::math {
 
+/**
+ * @brief Result of a ray intersection query.
+ */
 struct RayHit {
+    /**
+     * @brief True when an intersection was found.
+     */
     bool hit = false;
+
+    /**
+     * @brief Distance along the ray direction to the hit point.
+     */
     float distance = 0.0f;
+
+    /**
+     * @brief Hit position.
+     */
     glm::vec3 position{ 0.0f, 0.0f, 0.0f };
+
+    /**
+     * @brief Surface normal at the hit position.
+     */
     glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
 };
 
+/**
+ * @brief Intersects a ray against an infinite plane.
+ *
+ * @param ray Ray to test.
+ * @param planePoint Any point on the plane.
+ * @param planeNormal Plane normal.
+ * @param epsilon Parallelism tolerance.
+ * @return Hit information, or a miss result when the ray does not hit the plane forward.
+ */
 [[nodiscard]] inline RayHit intersect_ray_plane(
     const Ray& ray,
     const glm::vec3& planePoint,
@@ -38,6 +70,18 @@ struct RayHit {
     return RayHit{ true, distance, ray.at(distance), safe_normalize(planeNormal, glm::vec3{ 0.0f, 1.0f, 0.0f }) };
 }
 
+/**
+ * @brief Intersects a ray against a triangle.
+ *
+ * Uses the Moller-Trumbore ray-triangle intersection test.
+ *
+ * @param ray Ray to test.
+ * @param a First triangle vertex.
+ * @param b Second triangle vertex.
+ * @param c Third triangle vertex.
+ * @param epsilon Degeneracy and parallelism tolerance.
+ * @return Hit information, or a miss result when no forward hit exists.
+ */
 [[nodiscard]] inline RayHit intersect_ray_triangle(
     const Ray& ray,
     const glm::vec3& a,
@@ -77,6 +121,14 @@ struct RayHit {
     return RayHit{ true, distance, ray.at(distance), triangle_normal(a, b, c) };
 }
 
+/**
+ * @brief Intersects a ray against an axis-aligned bounding box.
+ *
+ * @param ray Ray to test.
+ * @param bounds Bounds to test.
+ * @param epsilon Tolerance used for near-parallel slab checks.
+ * @return Hit information, or a miss result when the bounds is invalid or not hit.
+ */
 [[nodiscard]] inline RayHit intersect_ray_bounds(
     const Ray& ray,
     const Bounds& bounds,
@@ -136,6 +188,13 @@ struct RayHit {
     return RayHit{ true, tMin, position, normal };
 }
 
+/**
+ * @brief Checks whether two axis-aligned bounds overlap.
+ *
+ * @param a First bounds.
+ * @param b Second bounds.
+ * @return True when both bounds are valid and overlap on all axes.
+ */
 [[nodiscard]] inline bool intersects(const Bounds& a, const Bounds& b)
 {
     if (!a.is_valid() || !b.is_valid()) {

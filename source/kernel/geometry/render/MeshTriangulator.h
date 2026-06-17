@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -13,9 +18,18 @@
 
 namespace locus::kernel::geometry
 {
+    /**
+     * @brief Converts editable polygon faces into triangle render primitives.
+     */
     class MeshTriangulator
     {
     public:
+        /**
+         * @brief Triangulates all active faces of a mesh into a new render mesh.
+         *
+         * @param mesh Source editable mesh.
+         * @return Render mesh containing generated triangles.
+         */
         [[nodiscard]] static RenderMesh triangulate(const LEM& mesh)
         {
             RenderMesh result;
@@ -23,6 +37,12 @@ namespace locus::kernel::geometry
             return result;
         }
 
+        /**
+         * @brief Triangulates all active faces of a mesh into an existing output mesh.
+         *
+         * @param mesh Source editable mesh.
+         * @param output Render mesh that receives generated triangles.
+         */
         static void triangulate_into(const LEM& mesh, RenderMesh& output)
         {
             output.clear();
@@ -33,6 +53,14 @@ namespace locus::kernel::geometry
             }
         }
 
+        /**
+         * @brief Triangulates a single face into an existing output mesh.
+         *
+         * @param mesh Source editable mesh.
+         * @param faceHandle Face to triangulate.
+         * @param output Render mesh that receives generated triangles.
+         * @note Invalid or degenerate faces are skipped when detected before emission.
+         */
         static void triangulate_face_into(const LEM& mesh, FaceHandle faceHandle, RenderMesh& output)
         {
             if (!mesh.is_valid(faceHandle))
@@ -87,11 +115,29 @@ namespace locus::kernel::geometry
         }
 
     private:
+        /**
+         * @brief Temporary polygon vertex used by the triangulation algorithm.
+         */
         struct PolygonVertex
         {
+            /**
+             * @brief Source loop for this polygon corner.
+             */
             LoopHandle loop{};
+
+            /**
+             * @brief Original 3D position.
+             */
             glm::vec3 position{ 0.0f, 0.0f, 0.0f };
+
+            /**
+             * @brief 2D projection used for ear clipping.
+             */
             glm::vec2 projected{ 0.0f, 0.0f };
+
+            /**
+             * @brief Render vertex index emitted for this polygon corner.
+             */
             RenderIndex renderIndex = 0;
         };
 

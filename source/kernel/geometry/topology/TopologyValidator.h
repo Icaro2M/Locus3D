@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -10,42 +15,139 @@
 
 namespace locus::kernel::geometry
 {
+    /**
+     * @brief Severity assigned to a topology validation issue.
+     */
     enum class TopologyIssueSeverity
     {
+        /**
+         * @brief Informational issue that does not affect validity.
+         */
         Info,
+
+        /**
+         * @brief Suspicious topology that may still be usable.
+         */
         Warning,
+
+        /**
+         * @brief Invalid topology that should be fixed before processing.
+         */
         Error
     };
 
+    /**
+     * @brief Machine-readable topology validation issue category.
+     */
     enum class TopologyIssueCode
     {
+        /**
+         * @brief Element references an invalid vertex.
+         */
         InvalidVertexReference,
+
+        /**
+         * @brief Element references an invalid edge.
+         */
         InvalidEdgeReference,
+
+        /**
+         * @brief Element references an invalid loop.
+         */
         InvalidLoopReference,
+
+        /**
+         * @brief Element references an invalid face.
+         */
         InvalidFaceReference,
+
+        /**
+         * @brief Edge references the same vertex twice.
+         */
         DegenerateEdge,
+
+        /**
+         * @brief Face loop next or previous links are inconsistent.
+         */
         BrokenFaceCycle,
+
+        /**
+         * @brief Edge radial next or previous links are inconsistent.
+         */
         BrokenRadialCycle,
+
+        /**
+         * @brief Face has fewer than three boundary loops.
+         */
         FaceTooSmall,
+
+        /**
+         * @brief Loop does not reference the face that owns its cycle.
+         */
         LoopFaceMismatch,
+
+        /**
+         * @brief Loop does not reference the edge that owns its radial cycle.
+         */
         LoopEdgeMismatch,
+
+        /**
+         * @brief Loop vertex is not one of its edge endpoints.
+         */
         EdgeEndpointMismatch,
+
+        /**
+         * @brief Edge is referenced by more than two radial loops.
+         */
         NonManifoldEdge
     };
 
+    /**
+     * @brief Single topology validation diagnostic.
+     */
     struct TopologyIssue
     {
+        /**
+         * @brief Diagnostic severity.
+         */
         TopologyIssueSeverity severity = TopologyIssueSeverity::Error;
+
+        /**
+         * @brief Diagnostic category.
+         */
         TopologyIssueCode code = TopologyIssueCode::InvalidVertexReference;
+
+        /**
+         * @brief Type of element where the issue was found.
+         */
         LEMElementType elementType = LEMElementType::Vertex;
+
+        /**
+         * @brief Identifier of the element where the issue was found.
+         */
         Id id{};
+
+        /**
+         * @brief Human-readable diagnostic message.
+         */
         std::string message{};
     };
 
+    /**
+     * @brief Collection of topology validation issues.
+     */
     struct TopologyValidationReport
     {
+        /**
+         * @brief Issues found during validation.
+         */
         std::vector<TopologyIssue> issues{};
 
+        /**
+         * @brief Checks whether the report contains no errors.
+         *
+         * @return True when no issue has Error severity.
+         */
         [[nodiscard]] bool valid() const
         {
             for (const TopologyIssue& issue : issues)
@@ -59,11 +161,21 @@ namespace locus::kernel::geometry
             return true;
         }
 
+        /**
+         * @brief Checks whether any diagnostic was reported.
+         *
+         * @return True when the issue list is not empty.
+         */
         [[nodiscard]] bool has_issues() const
         {
             return !issues.empty();
         }
 
+        /**
+         * @brief Counts reported errors.
+         *
+         * @return Number of issues with Error severity.
+         */
         [[nodiscard]] std::size_t error_count() const
         {
             std::size_t count = 0;
@@ -79,6 +191,11 @@ namespace locus::kernel::geometry
             return count;
         }
 
+        /**
+         * @brief Counts reported warnings.
+         *
+         * @return Number of issues with Warning severity.
+         */
         [[nodiscard]] std::size_t warning_count() const
         {
             std::size_t count = 0;
@@ -95,9 +212,18 @@ namespace locus::kernel::geometry
         }
     };
 
+    /**
+     * @brief Validates structural consistency of LEM topology links.
+     */
     class TopologyValidator
     {
     public:
+        /**
+         * @brief Validates a mesh and returns all topology diagnostics.
+         *
+         * @param mesh Mesh to validate.
+         * @return Validation report containing warnings and errors.
+         */
         [[nodiscard]] static TopologyValidationReport validate(const LEM& mesh)
         {
             TopologyValidationReport report{};
