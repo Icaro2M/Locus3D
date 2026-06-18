@@ -84,8 +84,8 @@ source\kernel
 |   |   |   LEM.h
 |   |   |   LEM.cpp
 |   |   |   LEMStorage.h [!]
-|   |   |   LEMEditor.h [!]
-|   |   |   LEMDiff.h [!]
+|   |   |   LEMEditor.h
+|   |   |   LEMDiff.h
 |   |   |
 |   |   \---elements
 |   |           Vertex.h
@@ -114,8 +114,8 @@ source\kernel
 |   |
 |   +---primitives
 |   |       IPrimitiveBuilder.h [!]
-|   |       PrimitiveParameters.h [!]
-|   |       BoxBuilder.h [!]
+|   |       PrimitiveParameters.h
+|   |       BoxBuilder.h
 |   |       CylinderBuilder.h [!]
 |   |       SphereBuilder.h [!]
 |   |       ConeBuilder.h [!]
@@ -131,9 +131,9 @@ source\kernel
 |
 +---modeling
 |   +---core
-|   |       IOperation.h [!]
-|   |       OperationContext.h [!]
-|   |       OperationResult.h [!]
+|   |       IOperation.h
+|   |       OperationContext.h
+|   |       OperationResult.h
 |   |
 |   +---operations
 |   |   +---face
@@ -141,7 +141,8 @@ source\kernel
 |   |   |       ExtrudeFaceOp.cpp [!]
 |   |   |       InsetFaceOp.h [!]
 |   |   |       InsetFaceOp.cpp [!]
-|   |   |       FlipFaceOp.h [!]
+|   |   |       FlipFaceOp.h
+|   |   |       FlipFaceOp.cpp
 |   |   |       SolidifyOp.h [!]
 |   |   |
 |   |   +---edge
@@ -160,8 +161,8 @@ source\kernel
 |   |   |       FillHoleOp.h [!]
 |   |   |
 |   |   \---transform
-|   |           TransformOp.h [!]
-|   |           TransformOp.cpp [!]
+|   |           TransformOp.h
+|   |           TransformOp.cpp
 |   |           ShrinkFattenOp.h [!]
 |   |           RandomizeOp.h [!]
 |   |
@@ -214,8 +215,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `math/Mat.h`
 - [!] `math/Quaternion.h`
 - [!] `geometry/mesh/LEMStorage.h`
-- [!] `geometry/mesh/LEMEditor.h`
-- [!] `geometry/mesh/LEMDiff.h`
 - [!] `geometry/topology/TopologyBuilder.h`
 - [!] `geometry/spatial/SpatialIndex.h`
 - [!] `geometry/spatial/BVH.h`
@@ -224,8 +223,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `geometry/spatial/BVHQuery.h`
 - [!] `geometry/render/RenderMesh.cpp`
 - [!] `geometry/primitives/IPrimitiveBuilder.h`
-- [!] `geometry/primitives/PrimitiveParameters.h`
-- [!] `geometry/primitives/BoxBuilder.h`
 - [!] `geometry/primitives/CylinderBuilder.h`
 - [!] `geometry/primitives/SphereBuilder.h`
 - [!] `geometry/primitives/ConeBuilder.h`
@@ -236,14 +233,10 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `geometry/queries/SelectionQuery.h`
 - [!] `geometry/queries/SelectionHit.h`
 - [!] `geometry/queries/ProximityQuery.h`
-- [!] `modeling/core/IOperation.h`
-- [!] `modeling/core/OperationContext.h`
-- [!] `modeling/core/OperationResult.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
 - [!] `modeling/operations/face/InsetFaceOp.h`
 - [!] `modeling/operations/face/InsetFaceOp.cpp`
-- [!] `modeling/operations/face/FlipFaceOp.h`
 - [!] `modeling/operations/face/SolidifyOp.h`
 - [!] `modeling/operations/edge/BevelOp.h`
 - [!] `modeling/operations/edge/BevelOp.cpp`
@@ -256,8 +249,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/operations/topology/MergeVerticesOp.h`
 - [!] `modeling/operations/topology/BridgeEdgeOp.h`
 - [!] `modeling/operations/topology/FillHoleOp.h`
-- [!] `modeling/operations/transform/TransformOp.h`
-- [!] `modeling/operations/transform/TransformOp.cpp`
 - [!] `modeling/operations/transform/ShrinkFattenOp.h`
 - [!] `modeling/operations/transform/RandomizeOp.h`
 - [!] `modeling/preview/IPreviewStrategy.h`
@@ -294,10 +285,12 @@ The existing kernel code already provides:
 - typed kernel/common utilities through `Id.h`, `Error.h`, `Result.h`, and `Types.h`;
 - basic geometry math through `Ray.h`, `Bounds.h`, `Transform.h`, `Intersections.h`, and `GeometryMath.h`;
 - the core LEM mesh class with vertices, edges, loops, faces, typed handles, and element records;
+- LEM editing helpers and mesh diffs for tracking geometry mutations;
 - topology traversal and validation helpers for checking LEM structural consistency;
 - render-derived mesh helpers for triangulation, normal construction, and wireframe generation.
+- initial primitive and modeling operation boundaries through box creation, operation contexts/results, transform operations, and face flipping.
 
-The next stable boundary is likely the editing/modeling API: reusable mesh mutation helpers should come before higher-level operations such as extrude, bevel, loop cut, and subdivision.
+The next stable boundary is likely broader modeling coverage: reusable mesh mutation helpers are in place, so higher-level operations such as extrude, bevel, loop cut, and subdivision can build on them as their invariants become clear.
 
 ---
 

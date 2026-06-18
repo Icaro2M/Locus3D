@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "kernel/modeling/operations/face/FlipFaceOp.h"
 
 #include "kernel/geometry/render/NormalBuilder.h"

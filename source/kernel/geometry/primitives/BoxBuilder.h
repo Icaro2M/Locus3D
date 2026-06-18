@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -12,8 +17,17 @@
 
 namespace locus::kernel::geometry {
 
+/**
+ * @brief Builds an axis-aligned box as editable LEM topology.
+ */
 class BoxBuilder {
 public:
+    /**
+     * @brief Creates a new mesh containing a box primitive.
+     *
+     * @param parameters Box creation parameters.
+     * @return Mesh containing the created box, or an empty mesh for invalid parameters.
+     */
     [[nodiscard]] static LEM build(const BoxParameters& parameters = {})
     {
         LEM mesh;
@@ -21,6 +35,13 @@ public:
         return mesh;
     }
 
+    /**
+     * @brief Appends a box primitive to an existing mesh.
+     *
+     * @param mesh Mesh that receives the new topology.
+     * @param parameters Box creation parameters.
+     * @return Created element handles, recorded diff, and success state.
+     */
     [[nodiscard]] static PrimitiveBuildResult build_into(LEM& mesh, const BoxParameters& parameters = {})
     {
         PrimitiveBuildResult result;

@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "kernel/modeling/operations/transform/TransformOp.h"
 
 #include "kernel/geometry/mesh/LEMEditor.h"

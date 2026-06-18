@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/common/Error.h"
@@ -8,12 +13,29 @@
 
 namespace locus::kernel::modeling {
 
+/**
+ * @brief Base interface for mesh modeling operations.
+ */
 class IOperation {
 public:
+    /**
+     * @brief Destroys the operation interface.
+     */
     virtual ~IOperation() = default;
 
+    /**
+     * @brief Returns the stable operation name used by diagnostics and tooling.
+     *
+     * @return Operation name.
+     */
     [[nodiscard]] virtual std::string_view name() const = 0;
 
+    /**
+     * @brief Executes the operation with shared context validation.
+     *
+     * @param context Operation execution context.
+     * @return Operation result with optional diff and validation report.
+     */
     [[nodiscard]] OperationResult execute(OperationContext& context)
     {
         if (!context.has_mesh()) {
@@ -39,6 +61,12 @@ public:
     }
 
 private:
+    /**
+     * @brief Executes operation-specific mutation logic.
+     *
+     * @param context Operation execution context.
+     * @return Operation-specific result before shared post-validation.
+     */
     [[nodiscard]] virtual OperationResult execute_impl(OperationContext& context) = 0;
 };
 
