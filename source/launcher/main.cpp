@@ -1,89 +1,59 @@
+#include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/common/GraphicsConfig.h"
-#include "graphics/gpu/RenderState.h"
+#include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
-#include "graphics/mesh/GpuMesh.h"
-#include "graphics/mesh/MeshUploadData.h"
+#include "graphics/gpu/ShaderManager.h"
+#include "graphics/lighting/LightEnvironment.h"
 #include "graphics/mesh/MeshUploader.h"
+#include "graphics/overlay/renderers/AxisRenderer.h"
+#include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/renderer/RenderPipeline.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
-#include "graphics/scene/RenderScene.h"
+#include "graphics/viewport/Viewport.h"
 #include "graphics/window/Window.h"
-#include "graphics/context/OpenGLContext.h"
 
 #include "kernel/geometry/mesh/LEM.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/render/MeshTriangulator.h"
 #include "kernel/geometry/render/NormalBuilder.h"
-
-#include <glad/glad.h>
+#include "kernel/geometry/render/RenderMesh.h"
+#include "kernel/geometry/topology/TopologyValidator.h"
+#include "kernel/modeling/core/OperationContext.h"
+#include "kernel/modeling/operations/transform/TransformOp.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <iostream>
-#include <string>
 #include <vector>
 
-namespace
-{
-    locus::kernel::geometry::LEM build_cube()
-    {
-        using namespace locus::kernel::geometry;
+namespace {
 
-        LEM mesh;
-
-        const VertexHandle v0 = mesh.add_vertex(glm::vec3{ -1.0f, -1.0f, -1.0f });
-        const VertexHandle v1 = mesh.add_vertex(glm::vec3{ 1.0f, -1.0f, -1.0f });
-        const VertexHandle v2 = mesh.add_vertex(glm::vec3{ 1.0f, 1.0f, -1.0f });
-        const VertexHandle v3 = mesh.add_vertex(glm::vec3{ -1.0f, 1.0f, -1.0f });
-
-        const VertexHandle v4 = mesh.add_vertex(glm::vec3{ -1.0f, -1.0f, 1.0f });
-        const VertexHandle v5 = mesh.add_vertex(glm::vec3{ 1.0f, -1.0f, 1.0f });
-        const VertexHandle v6 = mesh.add_vertex(glm::vec3{ 1.0f, 1.0f, 1.0f });
-        const VertexHandle v7 = mesh.add_vertex(glm::vec3{ -1.0f, 1.0f, 1.0f });
-
-        mesh.add_face(std::vector<VertexHandle>{ v0, v1, v2, v3 });
-        mesh.add_face(std::vector<VertexHandle>{ v4, v7, v6, v5 });
-        mesh.add_face(std::vector<VertexHandle>{ v0, v4, v5, v1 });
-        mesh.add_face(std::vector<VertexHandle>{ v1, v5, v6, v2 });
-        mesh.add_face(std::vector<VertexHandle>{ v2, v6, v7, v3 });
-        mesh.add_face(std::vector<VertexHandle>{ v3, v7, v4, v0 });
-
-        NormalBuilder::rebuild_face_normals(mesh);
-
-        return mesh;
-    }
-
-    locus::graphics::MeshUploadData to_mesh_upload_data(const locus::kernel::geometry::RenderMesh& renderMesh)
+    locus::graphics::MeshUploadData to_upload_data(const locus::kernel::geometry::RenderMesh& renderMesh)
     {
         locus::graphics::MeshUploadData uploadData;
         uploadData.topology = locus::graphics::PrimitiveTopology::Triangles;
         uploadData.usage = locus::graphics::BufferUsage::Static;
-
         uploadData.vertices.reserve(renderMesh.vertices.size());
         uploadData.indices.reserve(renderMesh.triangles.size() * 3);
 
-        for (const locus::kernel::geometry::RenderVertex& renderVertex : renderMesh.vertices)
-        {
-            locus::graphics::MeshVertex vertex{};
-
-            vertex.position[0] = renderVertex.position.x;
-            vertex.position[1] = renderVertex.position.y;
-            vertex.position[2] = renderVertex.position.z;
-
-            vertex.normal[0] = renderVertex.normal.x;
-            vertex.normal[1] = renderVertex.normal.y;
-            vertex.normal[2] = renderVertex.normal.z;
-
-            vertex.color[0] = 0.25f;
-            vertex.color[1] = 0.72f;
-            vertex.color[2] = 1.0f;
-            vertex.color[3] = 1.0f;
-
-            uploadData.vertices.push_back(vertex);
+        for (const locus::kernel::geometry::RenderVertex& vertex : renderMesh.vertices) {
+            locus::graphics::MeshVertex meshVertex{};
+            meshVertex.position[0] = vertex.position.x;
+            meshVertex.position[1] = vertex.position.y;
+            meshVertex.position[2] = vertex.position.z;
+            meshVertex.normal[0] = vertex.normal.x;
+            meshVertex.normal[1] = vertex.normal.y;
+            meshVertex.normal[2] = vertex.normal.z;
+            meshVertex.color[0] = 0.2f;
+            meshVertex.color[1] = 0.75f;
+            meshVertex.color[2] = 1.0f;
+            meshVertex.color[3] = 1.0f;
+            uploadData.vertices.push_back(meshVertex);
         }
 
-        for (const locus::kernel::geometry::RenderTriangle& triangle : renderMesh.triangles)
-        {
+        for (const locus::kernel::geometry::RenderTriangle& triangle : renderMesh.triangles) {
             uploadData.indices.push_back(triangle.a);
             uploadData.indices.push_back(triangle.b);
             uploadData.indices.push_back(triangle.c);
@@ -92,14 +62,133 @@ namespace
         return uploadData;
     }
 
-    std::string vertex_shader_source()
+    locus::kernel::geometry::LEM build_test_mesh()
     {
-        return R"(
+        using namespace locus::kernel::geometry;
+        using namespace locus::kernel::modeling;
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        const VertexHandle v0 = editor.add_vertex({ -1.0f, 0.0f, -1.0f });
+        const VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, -1.0f });
+        const VertexHandle v2 = editor.add_vertex({ 1.0f, 0.0f, 1.0f });
+        const VertexHandle v3 = editor.add_vertex({ -1.0f, 0.0f, 1.0f });
+
+        editor.add_face({ v0, v1, v2, v3 });
+
+        editor.set_selected(v2, true);
+        editor.set_selected(v3, true);
+
+        glm::mat4 transform{ 1.0f };
+        transform = glm::translate(transform, glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        TransformOp transformOp(transform);
+        transformOp.set_target(TransformTarget::SelectedVertices);
+
+        OperationContext context;
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+        context.allowNonManifold = true;
+
+        OperationResult result = transformOp.execute(context);
+
+        std::cout << "operation success: " << (result.is_success() ? "yes" : "no") << '\n';
+        std::cout << "operation changed: " << (result.changed() ? "yes" : "no") << '\n';
+        std::cout << "diff changes: " << result.diff().size() << '\n';
+
+        const TopologyValidationReport report = TopologyValidator::validate(mesh);
+
+        std::cout << "topology valid: " << (report.valid() ? "yes" : "no") << '\n';
+        std::cout << "errors: " << report.error_count() << '\n';
+        std::cout << "warnings: " << report.warning_count() << '\n';
+
+        return mesh;
+    }
+
+}
+
+int main()
+{
+    locus::graphics::GraphicsConfig graphicsConfig;
+    graphicsConfig.requestedMajorVersion = 4;
+    graphicsConfig.requestedMinorVersion = 5;
+    graphicsConfig.enableDebugOutput = true;
+    graphicsConfig.enableVSync = true;
+
+    locus::graphics::WindowCreateInfo windowInfo;
+    windowInfo.width = 1280;
+    windowInfo.height = 720;
+    windowInfo.title = "Locus3D - Geometry Visual Test";
+    windowInfo.openglMajorVersion = graphicsConfig.requestedMajorVersion;
+    windowInfo.openglMinorVersion = graphicsConfig.requestedMinorVersion;
+    windowInfo.openglDebugContext = graphicsConfig.enableDebugOutput;
+    windowInfo.openglCoreProfile = graphicsConfig.coreProfile;
+    windowInfo.openglForwardCompatible = graphicsConfig.forwardCompatible;
+
+    locus::graphics::Window window;
+
+    auto windowResult = window.create(windowInfo);
+
+    if (!windowResult) {
+        std::cerr << windowResult.error().message << '\n';
+        return 1;
+    }
+
+    locus::graphics::OpenGLContext context;
+
+    auto contextResult = context.initialize(window, graphicsConfig);
+
+    if (!contextResult) {
+        std::cerr << contextResult.error().message << '\n';
+        window.destroy();
+        return 1;
+    }
+
+    const auto& capabilities = context.capabilities();
+
+    std::cout << "OpenGL Vendor: " << capabilities.vendor << '\n';
+    std::cout << "OpenGL Renderer: " << capabilities.renderer << '\n';
+    std::cout << "OpenGL Version: " << capabilities.version << '\n';
+    std::cout << "GLSL Version: " << capabilities.shadingLanguageVersion << '\n';
+
+    locus::graphics::ShaderManager shaderManager;
+    shaderManager.set_shader_root("assets/shaders");
+
+    auto gridShaderResult = shaderManager.load(
+        "viewport/grid",
+        "viewport/grid_vert.glsl",
+        "viewport/grid_frag.glsl"
+    );
+
+    if (!gridShaderResult) {
+        std::cerr << gridShaderResult.error().message << '\n';
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    auto axisShaderResult = shaderManager.load(
+        "viewport/axis",
+        "viewport/axis_vert.glsl",
+        "viewport/axis_frag.glsl"
+    );
+
+    if (!axisShaderResult) {
+        std::cerr << axisShaderResult.error().message << '\n';
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    const std::string vertexShaderSource = R"(
 #version 450 core
 
-layout(location = 0) in vec3 a_Position;
-layout(location = 1) in vec3 a_Normal;
-layout(location = 2) in vec4 a_Color;
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec4 a_Color;
 
 uniform mat4 u_Model;
 uniform mat4 u_MVP;
@@ -114,11 +203,8 @@ void main()
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
-    }
 
-    std::string fragment_shader_source()
-    {
-        return R"(
+    const std::string fragmentShaderSource = R"(
 #version 450 core
 
 in vec3 v_Normal;
@@ -126,146 +212,198 @@ in vec4 v_Color;
 
 uniform vec4 u_BaseColor;
 uniform int u_UseVertexColor;
+uniform int u_ShadingMode;
+uniform vec4 u_AmbientColor;
+uniform float u_AmbientIntensity;
 uniform vec3 u_LightDirection;
+uniform vec4 u_LightColor;
+uniform float u_LightIntensity;
 
 out vec4 FragColor;
 
 void main()
 {
+    vec4 baseColor = u_BaseColor;
+
+    if (u_UseVertexColor == 1) {
+        baseColor = v_Color;
+    }
+
+    if (u_ShadingMode == 0) {
+        FragColor = baseColor;
+        return;
+    }
+
+    if (u_ShadingMode == 2) {
+        vec3 normalColor = normalize(v_Normal) * 0.5 + 0.5;
+        FragColor = vec4(normalColor, baseColor.a);
+        return;
+    }
+
     vec3 normal = normalize(v_Normal);
     vec3 lightDirection = normalize(-u_LightDirection);
     float diffuse = max(dot(normal, lightDirection), 0.0);
-    float lighting = 0.35 + diffuse * 0.65;
+    vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
+    vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
+    vec3 finalColor = baseColor.rgb * (ambient + light);
 
-    vec4 baseColor = u_UseVertexColor == 1 ? v_Color : u_BaseColor;
-    FragColor = vec4(baseColor.rgb * lighting, baseColor.a);
+    FragColor = vec4(finalColor, baseColor.a);
 }
 )";
-    }
-}
 
-int main()
-{
-    using namespace locus::graphics;
-    using namespace locus::kernel::geometry;
+    locus::graphics::Shader shader;
 
-    WindowCreateInfo windowInfo{};
-    windowInfo.width = 1280;
-    windowInfo.height = 720;
-    windowInfo.title = "Locus3D Kernel Render Test";
-    windowInfo.resizable = true;
-    windowInfo.visible = true;
-    windowInfo.decorated = true;
-    windowInfo.requestOpenGLContext = true;
-    windowInfo.openglMajorVersion = 4;
-    windowInfo.openglMinorVersion = 5;
-    windowInfo.openglCoreProfile = true;
-    windowInfo.openglForwardCompatible = true;
-    windowInfo.openglDebugContext = true;
+    auto shaderResult = shader.create_from_source(
+        vertexShaderSource,
+        fragmentShaderSource
+    );
 
-    Window window;
-    auto windowResult = window.create(windowInfo);
-    if (!windowResult)
-    {
-        std::cerr << "Window error: " << windowResult.error().message << "\n";
+    if (!shaderResult) {
+        std::cerr << shaderResult.error().message << '\n';
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
-    GraphicsConfig graphicsConfig{};
-    graphicsConfig.requestedMajorVersion = 4;
-    graphicsConfig.requestedMinorVersion = 5;
-    graphicsConfig.enableDebugOutput = true;
-    graphicsConfig.enableVSync = true;
+    locus::kernel::geometry::LEM mesh = build_test_mesh();
 
-    OpenGLContext context;
-    auto contextResult = context.initialize(window, graphicsConfig);
-    if (!contextResult)
-    {
-        std::cerr << "Context error: " << contextResult.error().message << "\n";
+    locus::kernel::geometry::NormalBuilder::rebuild_face_normals(mesh);
+
+    locus::kernel::geometry::RenderMesh renderMesh =
+        locus::kernel::geometry::MeshTriangulator::triangulate(mesh);
+
+    locus::kernel::geometry::NormalBuilder::rebuild_normals(
+        renderMesh,
+        locus::kernel::geometry::NormalBuildMode::Flat
+    );
+
+    locus::graphics::MeshUploadData uploadData = to_upload_data(renderMesh);
+
+    locus::graphics::MeshUploader meshUploader;
+
+    auto gpuMeshResult = meshUploader.upload(uploadData);
+
+    if (!gpuMeshResult) {
+        std::cerr << gpuMeshResult.error().message << '\n';
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
-    context.set_vsync(true);
+    locus::graphics::GpuMesh gpuMesh = gpuMeshResult.move_value();
 
-    Shader shader;
-    auto shaderResult = shader.create_from_source(vertex_shader_source(), fragment_shader_source());
-    if (!shaderResult)
-    {
-        std::cerr << "Shader error: " << shaderResult.error().message << "\n";
+    locus::graphics::GridRendererConfig gridConfig;
+    gridConfig.halfExtent = 500.0f;
+    gridConfig.minorSpacing = 1.0f;
+    gridConfig.majorSpacing = 5.0f;
+    gridConfig.fadeStart = 80.0f;
+    gridConfig.fadeEnd = 280.0f;
+
+    locus::graphics::GridRenderer gridRenderer;
+
+    auto gridResult = gridRenderer.create(
+        meshUploader,
+        shaderManager,
+        gridConfig
+    );
+
+    if (!gridResult) {
+        std::cerr << gridResult.error().message << '\n';
+        gpuMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
-    LEM lem = build_cube();
+    locus::graphics::AxisRendererConfig axisConfig;
+    axisConfig.extent = 500.0f;
+    axisConfig.verticalExtent = 40.0f;
+    axisConfig.planeOffset = 0.004f;
 
-    RenderMesh renderMesh = MeshTriangulator::triangulate(lem);
-    NormalBuilder::rebuild_normals(renderMesh, NormalBuildMode::Flat);
+    locus::graphics::AxisRenderer axisRenderer;
 
-    MeshUploadData uploadData = to_mesh_upload_data(renderMesh);
+    auto axisResult = axisRenderer.create(
+        meshUploader,
+        shaderManager,
+        axisConfig
+    );
 
-    MeshUploader uploader;
-    auto uploadResult = uploader.upload(uploadData);
-    if (!uploadResult)
-    {
-        std::cerr << "Mesh upload error: " << uploadResult.error().message << "\n";
+    if (!axisResult) {
+        std::cerr << axisResult.error().message << '\n';
+        gridRenderer.destroy();
+        gpuMesh.destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
         return 1;
     }
 
-    GpuMesh gpuMesh = uploadResult.move_value();
+    locus::graphics::RenderObject meshObject;
+    meshObject.id = 1;
+    meshObject.name = "Transformed LEM Quad";
+    meshObject.mesh = &gpuMesh;
+    meshObject.shader = &shader;
+    meshObject.layer = locus::graphics::RenderLayer::Default;
 
-    RenderObject object{};
-    object.id = 1;
-    object.name = "LEM Cube";
-    object.mesh = &gpuMesh;
-    object.shader = &shader;
-    object.layer = RenderLayer::Default;
-    object.transform.position = glm::vec3{ 0.0f, 0.0f, 0.0f };
-    object.transform.scale = glm::vec3{ 1.0f, 1.0f, 1.0f };
+    locus::graphics::Viewport viewport;
+    viewport.set_clear_color(graphicsConfig.defaultClearColor);
+    viewport.camera().projection().set_perspective(
+        0.78539816339f,
+        16.0f / 9.0f,
+        0.01f,
+        1000.0f
+    );
 
-    RenderScene scene;
-    scene.add_object(object);
+    locus::graphics::OrbitCameraRig orbitRig;
+    orbitRig.set_target({ 0.0f, 0.45f, 0.0f });
+    orbitRig.set_distance(6.0f);
+    orbitRig.set_angles(0.75f, 0.75f);
+    orbitRig.apply(viewport.camera());
 
-    Renderer renderer;
+    locus::graphics::LightEnvironment lightEnvironment;
+    lightEnvironment.reset_default_viewport_lighting();
 
-    RenderState::reset_default();
-    RenderState::set_depth_test(true);
-    RenderState::set_cull_face(false);
+    locus::graphics::Renderer renderer;
+    renderer.set_light_environment(&lightEnvironment);
 
-    while (!window.should_close())
-    {
+    locus::graphics::RenderPipeline pipeline;
+
+    while (!window.should_close()) {
         window.poll_events();
 
-        const int framebufferWidth = window.framebuffer_width();
-        const int framebufferHeight = window.framebuffer_height();
+        viewport.sync_with_window(window);
+        orbitRig.apply(viewport.camera());
 
-        RenderState::set_viewport(0, 0, framebufferWidth, framebufferHeight);
+        gridRenderer.update(viewport.camera());
 
-        glClearColor(0.08f, 0.08f, 0.09f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        renderer.set_view_matrix(viewport.camera().view_matrix());
+        renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
-        const float aspect = framebufferHeight > 0
-            ? static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight)
-            : 1.0f;
+        pipeline.begin_frame();
+        pipeline.reserve(3);
+        pipeline.submit(gridRenderer.render_object());
+        pipeline.submit(meshObject);
+        pipeline.submit(axisRenderer.render_object());
 
-        const glm::mat4 view = glm::lookAt(
-            glm::vec3{ 3.0f, 2.4f, 4.0f },
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.0f, 1.0f, 0.0f }
-        );
+        viewport.begin_frame();
+        pipeline.render(renderer);
 
-        const glm::mat4 projection = glm::perspective(
-            glm::radians(45.0f),
-            aspect,
-            0.1f,
-            100.0f
-        );
-
-        renderer.set_view_matrix(view);
-        renderer.set_projection_matrix(projection);
-        renderer.render(scene);
-
-        window.swap_buffers();
+        context.swap_buffers();
     }
 
+    axisRenderer.destroy();
+    gridRenderer.destroy();
+    gpuMesh.destroy();
+    shader.destroy();
+    shaderManager.clear();
     context.shutdown();
+    window.destroy();
+
     return 0;
 }
