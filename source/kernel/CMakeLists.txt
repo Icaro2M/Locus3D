@@ -7,7 +7,8 @@ add_library(Locus3D::Geometry ALIAS locus3d_geometry)
 
 target_sources(locus3d_geometry PRIVATE
     "geometry/mesh/LEM.cpp"
-    "modeling/operations/transform/TransformOp.cpp")
+    "modeling/operations/transform/TransformOp.cpp"
+    "modeling/operations/face/FlipFaceOp.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

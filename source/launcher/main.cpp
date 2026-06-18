@@ -20,17 +20,19 @@
 #include "kernel/geometry/render/RenderMesh.h"
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
+#include "kernel/modeling/operations/face/FlipFaceOp.h"
 #include "kernel/modeling/operations/transform/TransformOp.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <iostream>
-#include <vector>
 
 namespace {
 
-    locus::graphics::MeshUploadData to_upload_data(const locus::kernel::geometry::RenderMesh& renderMesh)
+    locus::graphics::MeshUploadData to_upload_data(
+        const locus::kernel::geometry::RenderMesh& renderMesh,
+        const glm::vec4& color)
     {
         locus::graphics::MeshUploadData uploadData;
         uploadData.topology = locus::graphics::PrimitiveTopology::Triangles;
@@ -46,10 +48,10 @@ namespace {
             meshVertex.normal[0] = vertex.normal.x;
             meshVertex.normal[1] = vertex.normal.y;
             meshVertex.normal[2] = vertex.normal.z;
-            meshVertex.color[0] = 0.2f;
-            meshVertex.color[1] = 0.75f;
-            meshVertex.color[2] = 1.0f;
-            meshVertex.color[3] = 1.0f;
+            meshVertex.color[0] = color.r;
+            meshVertex.color[1] = color.g;
+            meshVertex.color[2] = color.b;
+            meshVertex.color[3] = color.a;
             uploadData.vertices.push_back(meshVertex);
         }
 
@@ -62,7 +64,7 @@ namespace {
         return uploadData;
     }
 
-    locus::kernel::geometry::LEM build_test_mesh()
+    locus::kernel::geometry::LEM build_ramp_mesh()
     {
         using namespace locus::kernel::geometry;
         using namespace locus::kernel::modeling;
@@ -94,23 +96,78 @@ namespace {
 
         OperationResult result = transformOp.execute(context);
 
-        std::cout << "operation success: " << (result.is_success() ? "yes" : "no") << '\n';
-        std::cout << "operation changed: " << (result.changed() ? "yes" : "no") << '\n';
-        std::cout << "diff changes: " << result.diff().size() << '\n';
+        std::cout << "transform success: " << (result.is_success() ? "yes" : "no") << '\n';
+
+        return mesh;
+    }
+
+    void print_mesh_info(const char* label, const locus::kernel::geometry::LEM& mesh)
+    {
+        using namespace locus::kernel::geometry;
 
         const TopologyValidationReport report = TopologyValidator::validate(mesh);
 
+        std::cout << label << '\n';
         std::cout << "topology valid: " << (report.valid() ? "yes" : "no") << '\n';
         std::cout << "errors: " << report.error_count() << '\n';
         std::cout << "warnings: " << report.warning_count() << '\n';
 
-        return mesh;
+        if (mesh.face_count() > 0 && mesh.is_valid(FaceHandle(0))) {
+            const glm::vec3& normal = mesh.face(FaceHandle(0)).normal;
+
+            std::cout
+                << "face normal: ("
+                << normal.x << ", "
+                << normal.y << ", "
+                << normal.z << ")\n";
+        }
+
+        std::cout << '\n';
+    }
+
+    locus::kernel::geometry::RenderMesh build_render_mesh(locus::kernel::geometry::LEM& mesh)
+    {
+        locus::kernel::geometry::NormalBuilder::rebuild_face_normals(mesh);
+
+        locus::kernel::geometry::RenderMesh renderMesh =
+            locus::kernel::geometry::MeshTriangulator::triangulate(mesh);
+
+        locus::kernel::geometry::NormalBuilder::rebuild_normals(
+            renderMesh,
+            locus::kernel::geometry::NormalBuildMode::Flat
+        );
+
+        return renderMesh;
     }
 
 }
 
 int main()
 {
+    using namespace locus::kernel::geometry;
+    using namespace locus::kernel::modeling;
+
+    LEM originalMesh = build_ramp_mesh();
+    LEM flippedMesh = originalMesh;
+
+    print_mesh_info("original before flip", originalMesh);
+
+    FlipFaceOp flipFaceOp({ FaceHandle(0) });
+
+    OperationContext flipContext;
+    flipContext.mesh = &flippedMesh;
+    flipContext.validateAfterExecute = true;
+    flipContext.rebuildNormals = true;
+    flipContext.allowNonManifold = true;
+
+    OperationResult flipResult = flipFaceOp.execute(flipContext);
+
+    std::cout << "flip success: " << (flipResult.is_success() ? "yes" : "no") << '\n';
+    std::cout << "flip changed: " << (flipResult.changed() ? "yes" : "no") << '\n';
+    std::cout << "flip diff changes: " << flipResult.diff().size() << "\n\n";
+
+    print_mesh_info("flipped after flip", flippedMesh);
+
     locus::graphics::GraphicsConfig graphicsConfig;
     graphicsConfig.requestedMajorVersion = 4;
     graphicsConfig.requestedMinorVersion = 5;
@@ -120,7 +177,7 @@ int main()
     locus::graphics::WindowCreateInfo windowInfo;
     windowInfo.width = 1280;
     windowInfo.height = 720;
-    windowInfo.title = "Locus3D - Geometry Visual Test";
+    windowInfo.title = "Locus3D - FlipFaceOp Visual Test";
     windowInfo.openglMajorVersion = graphicsConfig.requestedMajorVersion;
     windowInfo.openglMinorVersion = graphicsConfig.requestedMinorVersion;
     windowInfo.openglDebugContext = graphicsConfig.enableDebugOutput;
@@ -223,22 +280,7 @@ out vec4 FragColor;
 
 void main()
 {
-    vec4 baseColor = u_BaseColor;
-
-    if (u_UseVertexColor == 1) {
-        baseColor = v_Color;
-    }
-
-    if (u_ShadingMode == 0) {
-        FragColor = baseColor;
-        return;
-    }
-
-    if (u_ShadingMode == 2) {
-        vec3 normalColor = normalize(v_Normal) * 0.5 + 0.5;
-        FragColor = vec4(normalColor, baseColor.a);
-        return;
-    }
+    vec4 baseColor = v_Color;
 
     vec3 normal = normalize(v_Normal);
     vec3 lightDirection = normalize(-u_LightDirection);
@@ -266,26 +308,21 @@ void main()
         return 1;
     }
 
-    locus::kernel::geometry::LEM mesh = build_test_mesh();
+    RenderMesh originalRenderMesh = build_render_mesh(originalMesh);
+    RenderMesh flippedRenderMesh = build_render_mesh(flippedMesh);
 
-    locus::kernel::geometry::NormalBuilder::rebuild_face_normals(mesh);
+    locus::graphics::MeshUploadData originalUploadData =
+        to_upload_data(originalRenderMesh, { 0.2f, 0.75f, 1.0f, 1.0f });
 
-    locus::kernel::geometry::RenderMesh renderMesh =
-        locus::kernel::geometry::MeshTriangulator::triangulate(mesh);
-
-    locus::kernel::geometry::NormalBuilder::rebuild_normals(
-        renderMesh,
-        locus::kernel::geometry::NormalBuildMode::Flat
-    );
-
-    locus::graphics::MeshUploadData uploadData = to_upload_data(renderMesh);
+    locus::graphics::MeshUploadData flippedUploadData =
+        to_upload_data(flippedRenderMesh, { 1.0f, 0.45f, 0.15f, 1.0f });
 
     locus::graphics::MeshUploader meshUploader;
 
-    auto gpuMeshResult = meshUploader.upload(uploadData);
+    auto originalGpuMeshResult = meshUploader.upload(originalUploadData);
 
-    if (!gpuMeshResult) {
-        std::cerr << gpuMeshResult.error().message << '\n';
+    if (!originalGpuMeshResult) {
+        std::cerr << originalGpuMeshResult.error().message << '\n';
         shader.destroy();
         shaderManager.clear();
         context.shutdown();
@@ -293,7 +330,20 @@ void main()
         return 1;
     }
 
-    locus::graphics::GpuMesh gpuMesh = gpuMeshResult.move_value();
+    auto flippedGpuMeshResult = meshUploader.upload(flippedUploadData);
+
+    if (!flippedGpuMeshResult) {
+        std::cerr << flippedGpuMeshResult.error().message << '\n';
+        originalGpuMeshResult.value().destroy();
+        shader.destroy();
+        shaderManager.clear();
+        context.shutdown();
+        window.destroy();
+        return 1;
+    }
+
+    locus::graphics::GpuMesh originalGpuMesh = originalGpuMeshResult.move_value();
+    locus::graphics::GpuMesh flippedGpuMesh = flippedGpuMeshResult.move_value();
 
     locus::graphics::GridRendererConfig gridConfig;
     gridConfig.halfExtent = 500.0f;
@@ -312,7 +362,8 @@ void main()
 
     if (!gridResult) {
         std::cerr << gridResult.error().message << '\n';
-        gpuMesh.destroy();
+        flippedGpuMesh.destroy();
+        originalGpuMesh.destroy();
         shader.destroy();
         shaderManager.clear();
         context.shutdown();
@@ -336,7 +387,8 @@ void main()
     if (!axisResult) {
         std::cerr << axisResult.error().message << '\n';
         gridRenderer.destroy();
-        gpuMesh.destroy();
+        flippedGpuMesh.destroy();
+        originalGpuMesh.destroy();
         shader.destroy();
         shaderManager.clear();
         context.shutdown();
@@ -344,12 +396,21 @@ void main()
         return 1;
     }
 
-    locus::graphics::RenderObject meshObject;
-    meshObject.id = 1;
-    meshObject.name = "Transformed LEM Quad";
-    meshObject.mesh = &gpuMesh;
-    meshObject.shader = &shader;
-    meshObject.layer = locus::graphics::RenderLayer::Default;
+    locus::graphics::RenderObject originalObject;
+    originalObject.id = 1;
+    originalObject.name = "Original Ramp";
+    originalObject.mesh = &originalGpuMesh;
+    originalObject.shader = &shader;
+    originalObject.layer = locus::graphics::RenderLayer::Default;
+    originalObject.transform.position = { -1.6f, 0.0f, 0.0f };
+
+    locus::graphics::RenderObject flippedObject;
+    flippedObject.id = 2;
+    flippedObject.name = "Flipped Ramp";
+    flippedObject.mesh = &flippedGpuMesh;
+    flippedObject.shader = &shader;
+    flippedObject.layer = locus::graphics::RenderLayer::Default;
+    flippedObject.transform.position = { 1.6f, 0.0f, 0.0f };
 
     locus::graphics::Viewport viewport;
     viewport.set_clear_color(graphicsConfig.defaultClearColor);
@@ -362,7 +423,7 @@ void main()
 
     locus::graphics::OrbitCameraRig orbitRig;
     orbitRig.set_target({ 0.0f, 0.45f, 0.0f });
-    orbitRig.set_distance(6.0f);
+    orbitRig.set_distance(7.0f);
     orbitRig.set_angles(0.75f, 0.75f);
     orbitRig.apply(viewport.camera());
 
@@ -386,9 +447,10 @@ void main()
         renderer.set_projection_matrix(viewport.camera().projection_matrix());
 
         pipeline.begin_frame();
-        pipeline.reserve(3);
+        pipeline.reserve(4);
         pipeline.submit(gridRenderer.render_object());
-        pipeline.submit(meshObject);
+        pipeline.submit(originalObject);
+        pipeline.submit(flippedObject);
         pipeline.submit(axisRenderer.render_object());
 
         viewport.begin_frame();
@@ -399,7 +461,8 @@ void main()
 
     axisRenderer.destroy();
     gridRenderer.destroy();
-    gpuMesh.destroy();
+    flippedGpuMesh.destroy();
+    originalGpuMesh.destroy();
     shader.destroy();
     shaderManager.clear();
     context.shutdown();
