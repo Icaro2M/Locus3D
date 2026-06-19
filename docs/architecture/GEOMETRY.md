@@ -65,7 +65,7 @@ source\kernel
 |       Error.h
 |       Types.h
 |       Handle.h
-|       Pool.h [!]
+|       Pool.h
 |
 +---math
 |       Vec.h [!]
@@ -94,7 +94,7 @@ source\kernel
 |   |           Face.h
 |   |
 |   +---topology
-|   |       TopologyBuilder.h [!]
+|   |       TopologyBuilder.h
 |   |       TopologyTraversal.h
 |   |       TopologyValidator.h
 |   |
@@ -123,10 +123,10 @@ source\kernel
 |   |
 |   \---queries
 |           RaycastQuery.h [!]
-|           AdjacencyQuery.h [!]
-|           BoundsQuery.h [!]
+|           AdjacencyQuery.h
+|           BoundsQuery.h
 |           SelectionQuery.h [!]
-|           SelectionHit.h [!]
+|           SelectionHit.h
 |           ProximityQuery.h [!]
 |
 +---modeling
@@ -209,12 +209,10 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `common/Pool.h`
 - [!] `math/Vec.h`
 - [!] `math/Mat.h`
 - [!] `math/Quaternion.h`
 - [!] `geometry/mesh/LEMStorage.h`
-- [!] `geometry/topology/TopologyBuilder.h`
 - [!] `geometry/spatial/SpatialIndex.h`
 - [!] `geometry/spatial/BVH.h`
 - [!] `geometry/spatial/BVH.cpp`
@@ -227,10 +225,7 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `geometry/primitives/ConeBuilder.h`
 - [!] `geometry/primitives/PrimitiveRegistry.h`
 - [!] `geometry/queries/RaycastQuery.h`
-- [!] `geometry/queries/AdjacencyQuery.h`
-- [!] `geometry/queries/BoundsQuery.h`
 - [!] `geometry/queries/SelectionQuery.h`
-- [!] `geometry/queries/SelectionHit.h`
 - [!] `geometry/queries/ProximityQuery.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
@@ -285,8 +280,9 @@ The existing kernel code already provides:
 - basic geometry math through `Ray.h`, `Bounds.h`, `Transform.h`, `Intersections.h`, and `GeometryMath.h`;
 - the core LEM mesh class with vertices, edges, loops, faces, typed handles, and element records;
 - LEM editing helpers and mesh diffs for tracking geometry mutations;
-- topology traversal and validation helpers for checking LEM structural consistency;
-- render-derived mesh helpers for triangulation, normal construction, and wireframe generation.
+- topology construction, traversal, and validation helpers for building and checking LEM structural consistency;
+- adjacency, bounds, and selection hit query helpers for mesh tooling;
+- render-derived mesh helpers for triangulation, normal construction, and wireframe generation;
 - initial primitive and modeling operation boundaries through box creation, operation contexts/results, transform operations, and face flipping.
 
 The next stable boundary is likely broader modeling coverage: reusable mesh mutation helpers are in place, so higher-level operations such as extrude, bevel, loop cut, and subdivision can build on them as their invariants become clear.

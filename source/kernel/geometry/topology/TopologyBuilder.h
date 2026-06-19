@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEMDiff.h"
@@ -12,26 +17,63 @@
 
 namespace locus::kernel::geometry {
 
+    /**
+     * @brief Mesh elements and diff produced by topology construction helpers.
+     */
     struct TopologyBuildResult {
+        /**
+         * @brief Vertices created by the build.
+         */
         std::vector<VertexHandle> vertices{};
+        /**
+         * @brief Edges created by the build.
+         */
         std::vector<EdgeHandle> edges{};
+        /**
+         * @brief Faces created by the build.
+         */
         std::vector<FaceHandle> faces{};
+        /**
+         * @brief Mesh changes recorded during the build.
+         */
         LEMDiff diff{};
+        /**
+         * @brief True when the requested topology was fully created.
+         */
         bool success = false;
 
+        /**
+         * @brief Converts the result to true when the build succeeded.
+         */
         [[nodiscard]] explicit operator bool() const
         {
             return success;
         }
 
+        /**
+         * @brief Checks whether the build produced no mesh elements.
+         *
+         * @return True when all created element lists are empty.
+         */
         [[nodiscard]] bool empty() const
         {
             return vertices.empty() && edges.empty() && faces.empty();
         }
     };
 
+    /**
+     * @brief Builds editable LEM topology from vertex positions and face indices.
+     */
     class TopologyBuilder {
     public:
+        /**
+         * @brief Appends indexed polygon topology to an existing mesh.
+         *
+         * @param mesh Mesh that receives the new topology.
+         * @param positions Vertex positions in object space.
+         * @param faces Face vertex indices into positions.
+         * @return Created element handles, recorded diff, and success state.
+         */
         [[nodiscard]] static TopologyBuildResult build_into(
             LEM& mesh,
             const std::vector<glm::vec3>& positions,
@@ -93,6 +135,13 @@ namespace locus::kernel::geometry {
             return result;
         }
 
+        /**
+         * @brief Creates a new mesh from indexed polygon topology.
+         *
+         * @param positions Vertex positions in object space.
+         * @param faces Face vertex indices into positions.
+         * @return Mesh containing the requested topology, or an empty mesh on invalid input.
+         */
         [[nodiscard]] static LEM build(
             const std::vector<glm::vec3>& positions,
             const std::vector<std::vector<std::size_t>>& faces
@@ -103,6 +152,17 @@ namespace locus::kernel::geometry {
             return mesh;
         }
 
+        /**
+         * @brief Appends one quad face to an existing mesh.
+         *
+         * @param mesh Mesh that receives the quad.
+         * @param a First quad vertex position.
+         * @param b Second quad vertex position.
+         * @param c Third quad vertex position.
+         * @param d Fourth quad vertex position.
+         * @return Created element handles, recorded diff, and success state.
+         * @note The input order defines the quad winding and normal direction.
+         */
         [[nodiscard]] static TopologyBuildResult build_quad_into(
             LEM& mesh,
             const glm::vec3& a,
@@ -118,6 +178,16 @@ namespace locus::kernel::geometry {
             );
         }
 
+        /**
+         * @brief Creates a new mesh containing one quad face.
+         *
+         * @param a First quad vertex position.
+         * @param b Second quad vertex position.
+         * @param c Third quad vertex position.
+         * @param d Fourth quad vertex position.
+         * @return Mesh containing the quad.
+         * @note The input order defines the quad winding and normal direction.
+         */
         [[nodiscard]] static LEM build_quad(
             const glm::vec3& a,
             const glm::vec3& b,
@@ -130,6 +200,14 @@ namespace locus::kernel::geometry {
             return mesh;
         }
 
+        /**
+         * @brief Appends an axis-aligned box to an existing mesh.
+         *
+         * @param mesh Mesh that receives the box.
+         * @param center Box center in object space.
+         * @param size Box dimensions along the local X, Y, and Z axes.
+         * @return Created element handles, recorded diff, and success state.
+         */
         [[nodiscard]] static TopologyBuildResult build_box_into(
             LEM& mesh,
             const glm::vec3& center = glm::vec3{ 0.0f, 0.0f, 0.0f },
@@ -167,6 +245,13 @@ namespace locus::kernel::geometry {
             );
         }
 
+        /**
+         * @brief Creates a new mesh containing an axis-aligned box.
+         *
+         * @param center Box center in object space.
+         * @param size Box dimensions along the local X, Y, and Z axes.
+         * @return Mesh containing the box, or an empty mesh for invalid dimensions.
+         */
         [[nodiscard]] static LEM build_box(
             const glm::vec3& center = glm::vec3{ 0.0f, 0.0f, 0.0f },
             const glm::vec3& size = glm::vec3{ 1.0f, 1.0f, 1.0f }
@@ -178,6 +263,13 @@ namespace locus::kernel::geometry {
         }
 
     private:
+        /**
+         * @brief Validates source vertices and polygon index lists.
+         *
+         * @param positions Vertex positions in object space.
+         * @param faces Face vertex indices into positions.
+         * @return True when every face can be built safely.
+         */
         [[nodiscard]] static bool has_valid_input(
             const std::vector<glm::vec3>& positions,
             const std::vector<std::vector<std::size_t>>& faces
@@ -196,6 +288,13 @@ namespace locus::kernel::geometry {
             return true;
         }
 
+        /**
+         * @brief Validates one polygon's index list.
+         *
+         * @param vertexCount Number of available source vertices.
+         * @param face Face index list.
+         * @return True when the face has at least three unique in-range indices.
+         */
         [[nodiscard]] static bool has_valid_face_indices(
             std::size_t vertexCount,
             const std::vector<std::size_t>& face
