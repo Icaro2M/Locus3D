@@ -64,7 +64,7 @@ source\kernel
 |       Result.h
 |       Error.h
 |       Types.h
-|       Handle.h [!]
+|       Handle.h
 |       Pool.h [!]
 |
 +---math
@@ -209,7 +209,6 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `common/Handle.h`
 - [!] `common/Pool.h`
 - [!] `math/Vec.h`
 - [!] `math/Mat.h`
