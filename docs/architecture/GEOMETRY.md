@@ -107,19 +107,19 @@ source\kernel
 |   |
 |   +---render
 |   |       RenderMesh.h
-|   |       RenderMesh.cpp [!]
 |   |       MeshTriangulator.h
 |   |       NormalBuilder.h
 |   |       WireframeBuilder.h
 |   |
 |   +---primitives
-|   |       IPrimitiveBuilder.h [!]
+|   |       IPrimitiveBuilder.h
 |   |       PrimitiveParameters.h
 |   |       BoxBuilder.h
-|   |       CylinderBuilder.h [!]
-|   |       SphereBuilder.h [!]
-|   |       ConeBuilder.h [!]
-|   |       PrimitiveRegistry.h [!]
+|   |       CylinderBuilder.h
+|   |       SphereBuilder.h
+|   |       ConeBuilder.h
+|   |       TorusBuilder.h
+|   |       PrimitiveRegistry.h
 |   |
 |   \---queries
 |           RaycastQuery.h
@@ -213,12 +213,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `math/Mat.h`
 - [!] `math/Quaternion.h`
 - [!] `geometry/mesh/LEMStorage.h`
-- [!] `geometry/render/RenderMesh.cpp`
-- [!] `geometry/primitives/IPrimitiveBuilder.h`
-- [!] `geometry/primitives/CylinderBuilder.h`
-- [!] `geometry/primitives/SphereBuilder.h`
-- [!] `geometry/primitives/ConeBuilder.h`
-- [!] `geometry/primitives/PrimitiveRegistry.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
 - [!] `modeling/operations/face/InsetFaceOp.h`
@@ -276,7 +270,8 @@ The existing kernel code already provides:
 - raycast, proximity, adjacency, bounds, and selection hit query helpers for mesh tooling;
 - BVH spatial acceleration for face raycasts and bounds overlap queries;
 - render-derived mesh helpers for triangulation, normal construction, and wireframe generation;
-- initial primitive and modeling operation boundaries through box creation, operation contexts/results, transform operations, and face flipping.
+- built-in primitive creation for boxes, cylinders, spheres, cones, and tori through a shared primitive registry;
+- initial modeling operation boundaries through operation contexts/results, transform operations, and face flipping.
 
 The next stable boundary is likely broader modeling coverage: reusable mesh mutation helpers are in place, so higher-level operations such as extrude, bevel, loop cut, and subdivision can build on them as their invariants become clear.
 
