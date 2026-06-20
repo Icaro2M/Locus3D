@@ -173,14 +173,14 @@ source\kernel
 |           GhostMeshBuilder.h [!]
 |
 +---io
-|       IExporter.h [!]
-|       IImporter.h [!]
-|       StlExporter.h [!]
+|       IExporter.h
+|       IImporter.h
+|       StlExporter.h
 |       StlImporter.h [!]
 |       ObjExporter.h [!]
 |       ObjImporter.h [!]
 |       ThreeMFExporter.h [!]
-|       FormatRegistry.h [!]
+|       FormatRegistry.h
 |
 \---validation
     +---pipeline
