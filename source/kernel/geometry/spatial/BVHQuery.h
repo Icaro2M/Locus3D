@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/queries/SelectionHit.h"
@@ -11,8 +16,19 @@
 
 namespace locus::kernel::geometry {
 
+	/**
+	 * @brief Query helpers for BVH-backed face acceleration.
+	 */
 	class BVHQuery {
 	public:
+		/**
+		 * @brief Raycasts BVH triangle faces and returns the nearest hit.
+		 *
+		 * @param bvh BVH to query.
+		 * @param ray Object-space ray.
+		 * @param maxDistance Maximum accepted hit distance.
+		 * @return Nearest face hit, or a miss when nothing is hit.
+		 */
 		[[nodiscard]] static SelectionHit raycast_faces(
 			const BVH& bvh,
 			const math::Ray& ray,
@@ -30,6 +46,13 @@ namespace locus::kernel::geometry {
 			return best;
 		}
 
+		/**
+		 * @brief Returns faces whose triangle bounds overlap query bounds.
+		 *
+		 * @param bvh BVH to query.
+		 * @param bounds Query bounds in object space.
+		 * @return Unique face handles overlapping the bounds.
+		 */
 		[[nodiscard]] static std::vector<FaceHandle> query_bounds(
 			const BVH& bvh,
 			const math::Bounds& bounds
@@ -45,6 +68,13 @@ namespace locus::kernel::geometry {
 			return result;
 		}
 
+		/**
+		 * @brief Checks whether any triangle bounds overlap query bounds.
+		 *
+		 * @param bvh BVH to query.
+		 * @param bounds Query bounds in object space.
+		 * @return True when any indexed triangle overlaps the bounds.
+		 */
 		[[nodiscard]] static bool intersects_bounds(
 			const BVH& bvh,
 			const math::Bounds& bounds
@@ -57,6 +87,15 @@ namespace locus::kernel::geometry {
 		}
 
 	private:
+		/**
+		 * @brief Traverses a node for nearest raycast hit.
+		 *
+		 * @param bvh BVH to query.
+		 * @param nodeIndex Current node index.
+		 * @param ray Object-space ray.
+		 * @param bestDistance Current nearest hit distance.
+		 * @param best Current nearest hit payload.
+		 */
 		static void raycast_node(
 			const BVH& bvh,
 			std::uint32_t nodeIndex,
@@ -104,6 +143,15 @@ namespace locus::kernel::geometry {
 			}
 		}
 
+		/**
+		 * @brief Tests every triangle stored by a leaf node.
+		 *
+		 * @param bvh BVH to query.
+		 * @param node Leaf node to test.
+		 * @param ray Object-space ray.
+		 * @param bestDistance Current nearest hit distance.
+		 * @param best Current nearest hit payload.
+		 */
 		static void raycast_leaf(
 			const BVH& bvh,
 			const BVHNode& node,
@@ -129,6 +177,14 @@ namespace locus::kernel::geometry {
 			}
 		}
 
+		/**
+		 * @brief Collects faces whose triangle bounds overlap query bounds.
+		 *
+		 * @param bvh BVH to query.
+		 * @param nodeIndex Current node index.
+		 * @param bounds Query bounds in object space.
+		 * @param result Unique face handles collected so far.
+		 */
 		static void query_bounds_node(
 			const BVH& bvh,
 			std::uint32_t nodeIndex,
@@ -159,6 +215,14 @@ namespace locus::kernel::geometry {
 			query_bounds_node(bvh, node.right, bounds, result);
 		}
 
+		/**
+		 * @brief Tests whether a node subtree overlaps query bounds.
+		 *
+		 * @param bvh BVH to query.
+		 * @param nodeIndex Current node index.
+		 * @param bounds Query bounds in object space.
+		 * @return True when any triangle in the subtree overlaps.
+		 */
 		[[nodiscard]] static bool intersects_bounds_node(
 			const BVH& bvh,
 			std::uint32_t nodeIndex,
@@ -186,6 +250,13 @@ namespace locus::kernel::geometry {
 				|| intersects_bounds_node(bvh, node.right, bounds);
 		}
 
+		/**
+		 * @brief Checks whether a face handle is already in a result list.
+		 *
+		 * @param handles Existing handle list.
+		 * @param handle Face handle to find.
+		 * @return True when the handle is present.
+		 */
 		[[nodiscard]] static bool contains(const std::vector<FaceHandle>& handles, FaceHandle handle) {
 			return std::find(handles.begin(), handles.end(), handle) != handles.end();
 		}

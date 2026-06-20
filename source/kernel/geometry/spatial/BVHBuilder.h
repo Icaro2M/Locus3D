@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -13,19 +18,45 @@
 
 namespace locus::kernel::geometry {
 
+	/**
+	 * @brief Settings used when constructing a BVH.
+	 */
 	struct BVHBuildSettings {
+		/**
+		 * @brief Maximum number of triangles stored in a leaf node.
+		 */
 		std::uint32_t maxLeafTriangles = 4;
+		/**
+		 * @brief Maximum recursive depth allowed during BVH construction.
+		 */
 		std::uint32_t maxDepth = 32;
 	};
 
+	/**
+	 * @brief Builds a BVH from visible LEM face triangles.
+	 */
 	class BVHBuilder {
 	public:
+		/**
+		 * @brief Creates a new BVH from a mesh.
+		 *
+		 * @param mesh Mesh whose visible faces are indexed.
+		 * @param settings BVH construction settings.
+		 * @return Built BVH, or an empty BVH when no triangles are available.
+		 */
 		[[nodiscard]] static BVH build(const LEM& mesh, const BVHBuildSettings& settings = {}) {
 			BVH bvh;
 			build_into(mesh, bvh, settings);
 			return bvh;
 		}
 
+		/**
+		 * @brief Rebuilds an output BVH from a mesh.
+		 *
+		 * @param mesh Mesh whose visible faces are indexed.
+		 * @param output BVH object that receives the built hierarchy.
+		 * @param settings BVH construction settings.
+		 */
 		static void build_into(const LEM& mesh, BVH& output, const BVHBuildSettings& settings = {}) {
 			output.clear();
 			collect_triangles(mesh, output.triangles_);
@@ -39,6 +70,12 @@ namespace locus::kernel::geometry {
 		}
 
 	private:
+		/**
+		 * @brief Ensures build settings use non-zero construction limits.
+		 *
+		 * @param settings Requested build settings.
+		 * @return Sanitized build settings.
+		 */
 		static BVHBuildSettings sanitize(BVHBuildSettings settings) {
 			if (settings.maxLeafTriangles == 0) {
 				settings.maxLeafTriangles = 1;
@@ -51,6 +88,15 @@ namespace locus::kernel::geometry {
 			return settings;
 		}
 
+		/**
+		 * @brief Collects non-degenerate visible face triangles from a mesh.
+		 *
+		 * Polygon faces are converted to triangle fans using the first face vertex
+		 * as the fan anchor.
+		 *
+		 * @param mesh Mesh whose faces are triangulated.
+		 * @param output Triangle list that receives collected primitives.
+		 */
 		static void collect_triangles(const LEM& mesh, std::vector<BVHTriangle>& output) {
 			for (FaceHandle faceHandle : TopologyTraversal::faces(mesh)) {
 				if (!mesh.is_valid(faceHandle)) {
@@ -93,6 +139,14 @@ namespace locus::kernel::geometry {
 			}
 		}
 
+		/**
+		 * @brief Computes bounds for one triangle.
+		 *
+		 * @param a First triangle vertex.
+		 * @param b Second triangle vertex.
+		 * @param c Third triangle vertex.
+		 * @return Bounds enclosing the triangle.
+		 */
 		[[nodiscard]] static math::Bounds triangle_bounds(
 			const glm::vec3& a,
 			const glm::vec3& b,
@@ -105,10 +159,24 @@ namespace locus::kernel::geometry {
 			return bounds;
 		}
 
+		/**
+		 * @brief Computes a triangle centroid.
+		 *
+		 * @param triangle Triangle primitive.
+		 * @return Object-space centroid.
+		 */
 		[[nodiscard]] static glm::vec3 triangle_centroid(const BVHTriangle& triangle) {
 			return (triangle.a + triangle.b + triangle.c) / 3.0f;
 		}
 
+		/**
+		 * @brief Computes bounds for a contiguous triangle range.
+		 *
+		 * @param triangles Triangle storage.
+		 * @param first First triangle index.
+		 * @param count Number of triangles in the range.
+		 * @return Bounds enclosing the triangle range.
+		 */
 		[[nodiscard]] static math::Bounds compute_bounds(
 			const std::vector<BVHTriangle>& triangles,
 			std::uint32_t first,
@@ -123,6 +191,14 @@ namespace locus::kernel::geometry {
 			return bounds;
 		}
 
+		/**
+		 * @brief Computes centroid bounds for a contiguous triangle range.
+		 *
+		 * @param triangles Triangle storage.
+		 * @param first First triangle index.
+		 * @param count Number of triangles in the range.
+		 * @return Bounds enclosing triangle centroids.
+		 */
 		[[nodiscard]] static math::Bounds compute_centroid_bounds(
 			const std::vector<BVHTriangle>& triangles,
 			std::uint32_t first,
@@ -137,6 +213,12 @@ namespace locus::kernel::geometry {
 			return bounds;
 		}
 
+		/**
+		 * @brief Selects the largest axis of a size vector.
+		 *
+		 * @param size Bounds size vector.
+		 * @return Axis index: 0 for X, 1 for Y, 2 for Z.
+		 */
 		[[nodiscard]] static int largest_axis(const glm::vec3& size) {
 			if (size.x >= size.y && size.x >= size.z) {
 				return 0;
@@ -149,6 +231,19 @@ namespace locus::kernel::geometry {
 			return 2;
 		}
 
+		/**
+		 * @brief Recursively builds a BVH node over a triangle range.
+		 *
+		 * Splits along the largest centroid-bounds axis using nth_element to
+		 * partition triangles around the median centroid.
+		 *
+		 * @param bvh BVH being built.
+		 * @param first First triangle index in the node range.
+		 * @param count Number of triangles in the node range.
+		 * @param depth Current recursive depth.
+		 * @param settings Sanitized build settings.
+		 * @return Index of the created node.
+		 */
 		[[nodiscard]] static std::uint32_t build_node(
 			BVH& bvh,
 			std::uint32_t first,

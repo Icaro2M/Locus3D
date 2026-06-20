@@ -99,11 +99,11 @@ source\kernel
 |   |       TopologyValidator.h
 |   |
 |   +---spatial
-|   |       SpatialIndex.h [!]
-|   |       BVH.h [!]
-|   |       BVH.cpp [!]
-|   |       BVHBuilder.h [!]
-|   |       BVHQuery.h [!]
+|   |       SpatialIndex.h
+|   |       BVH.h
+|   |       BVH.cpp
+|   |       BVHBuilder.h
+|   |       BVHQuery.h
 |   |
 |   +---render
 |   |       RenderMesh.h
@@ -213,11 +213,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `math/Mat.h`
 - [!] `math/Quaternion.h`
 - [!] `geometry/mesh/LEMStorage.h`
-- [!] `geometry/spatial/SpatialIndex.h`
-- [!] `geometry/spatial/BVH.h`
-- [!] `geometry/spatial/BVH.cpp`
-- [!] `geometry/spatial/BVHBuilder.h`
-- [!] `geometry/spatial/BVHQuery.h`
 - [!] `geometry/render/RenderMesh.cpp`
 - [!] `geometry/primitives/IPrimitiveBuilder.h`
 - [!] `geometry/primitives/CylinderBuilder.h`
@@ -279,6 +274,7 @@ The existing kernel code already provides:
 - LEM editing helpers and mesh diffs for tracking geometry mutations;
 - topology construction, traversal, and validation helpers for building and checking LEM structural consistency;
 - raycast, proximity, adjacency, bounds, and selection hit query helpers for mesh tooling;
+- BVH spatial acceleration for face raycasts and bounds overlap queries;
 - render-derived mesh helpers for triangulation, normal construction, and wireframe generation;
 - initial primitive and modeling operation boundaries through box creation, operation contexts/results, transform operations, and face flipping.
 
