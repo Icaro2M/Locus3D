@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -14,8 +19,22 @@
 
 namespace locus::kernel::geometry {
 
+    /**
+     * @brief Performs ray-based picking and intersection queries against LEM geometry.
+     */
     class RaycastQuery {
     public:
+        /**
+         * @brief Raycasts visible faces and returns the nearest face hit.
+         *
+         * Polygon faces are tested as a triangle fan using the first face vertex
+         * as the fan anchor.
+         *
+         * @param mesh Mesh to query.
+         * @param ray Object-space ray.
+         * @param maxDistance Maximum accepted hit distance.
+         * @return Nearest face hit, or a miss when no face is intersected.
+         */
         [[nodiscard]] static SelectionHit raycast_faces(
             const LEM& mesh,
             const locus::kernel::math::Ray& ray,
@@ -65,6 +84,15 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Raycasts visible vertices using a cylindrical pick radius.
+         *
+         * @param mesh Mesh to query.
+         * @param ray Object-space ray.
+         * @param radius Maximum perpendicular distance from the ray.
+         * @param maxDistance Maximum accepted distance along the ray.
+         * @return Nearest vertex hit, or a miss when no vertex is close enough.
+         */
         [[nodiscard]] static SelectionHit raycast_vertices(
             const LEM& mesh,
             const locus::kernel::math::Ray& ray,
@@ -109,6 +137,15 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Raycasts visible edges using a cylindrical pick radius.
+         *
+         * @param mesh Mesh to query.
+         * @param ray Object-space ray.
+         * @param radius Maximum distance between ray and edge segment.
+         * @param maxDistance Maximum accepted distance along the ray.
+         * @return Nearest edge hit, or a miss when no edge is close enough.
+         */
         [[nodiscard]] static SelectionHit raycast_edges(
             const LEM& mesh,
             const locus::kernel::math::Ray& ray,
@@ -151,6 +188,16 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Raycasts faces, edges, and vertices and returns the nearest selectable element.
+         *
+         * @param mesh Mesh to query.
+         * @param ray Object-space ray.
+         * @param vertexRadius Vertex pick radius.
+         * @param edgeRadius Edge pick radius.
+         * @param maxDistance Maximum accepted distance along the ray.
+         * @return Nearest element hit, or a miss when nothing is hit.
+         */
         [[nodiscard]] static SelectionHit raycast_element(
             const LEM& mesh,
             const locus::kernel::math::Ray& ray,
@@ -179,6 +226,13 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Intersects a ray with the visible mesh bounds.
+         *
+         * @param mesh Mesh whose visible bounds are tested.
+         * @param ray Object-space ray.
+         * @return Ray hit data for the mesh bounds.
+         */
         [[nodiscard]] static locus::kernel::math::RayHit raycast_mesh_bounds(
             const LEM& mesh,
             const locus::kernel::math::Ray& ray
@@ -191,14 +245,40 @@ namespace locus::kernel::geometry {
         }
 
     private:
+        /**
+         * @brief Closest-distance data between a segment and a ray.
+         */
         struct SegmentRayDistance {
+            /**
+             * @brief Shortest distance between the segment and the ray.
+             */
             float distance = std::numeric_limits<float>::max();
+            /**
+             * @brief Distance from ray origin to the closest ray point.
+             */
             float rayDistance = std::numeric_limits<float>::max();
+            /**
+             * @brief Normalized distance from segment start to the closest segment point.
+             */
             float segmentDistance = 0.0f;
+            /**
+             * @brief Closest point on the ray.
+             */
             glm::vec3 rayPoint{ 0.0f, 0.0f, 0.0f };
+            /**
+             * @brief Closest point on the segment.
+             */
             glm::vec3 segmentPoint{ 0.0f, 0.0f, 0.0f };
         };
 
+        /**
+         * @brief Computes perpendicular distance from a point to a ray.
+         *
+         * @param point Object-space point.
+         * @param ray Normalized object-space ray.
+         * @param distanceAlongRay Receives signed distance from the ray origin.
+         * @return Perpendicular distance from point to ray.
+         */
         [[nodiscard]] static float distance_point_to_ray(
             const glm::vec3& point,
             const locus::kernel::math::Ray& ray,
@@ -212,6 +292,14 @@ namespace locus::kernel::geometry {
             return glm::length(point - closestPoint);
         }
 
+        /**
+         * @brief Computes closest-distance data between a segment and a ray.
+         *
+         * @param a First segment endpoint.
+         * @param b Second segment endpoint.
+         * @param ray Normalized object-space ray.
+         * @return Closest-distance data for the segment and ray.
+         */
         [[nodiscard]] static SegmentRayDistance distance_segment_to_ray(
             const glm::vec3& a,
             const glm::vec3& b,

@@ -122,12 +122,12 @@ source\kernel
 |   |       PrimitiveRegistry.h [!]
 |   |
 |   \---queries
-|           RaycastQuery.h [!]
+|           RaycastQuery.h
 |           AdjacencyQuery.h
 |           BoundsQuery.h
-|           SelectionQuery.h [!]
+|           SelectionQuery.h
 |           SelectionHit.h
-|           ProximityQuery.h [!]
+|           ProximityQuery.h
 |
 +---modeling
 |   +---core
@@ -224,9 +224,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `geometry/primitives/SphereBuilder.h`
 - [!] `geometry/primitives/ConeBuilder.h`
 - [!] `geometry/primitives/PrimitiveRegistry.h`
-- [!] `geometry/queries/RaycastQuery.h`
-- [!] `geometry/queries/SelectionQuery.h`
-- [!] `geometry/queries/ProximityQuery.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
 - [!] `modeling/operations/face/InsetFaceOp.h`
@@ -281,7 +278,7 @@ The existing kernel code already provides:
 - the core LEM mesh class with vertices, edges, loops, faces, typed handles, and element records;
 - LEM editing helpers and mesh diffs for tracking geometry mutations;
 - topology construction, traversal, and validation helpers for building and checking LEM structural consistency;
-- adjacency, bounds, and selection hit query helpers for mesh tooling;
+- raycast, proximity, adjacency, bounds, and selection hit query helpers for mesh tooling;
 - render-derived mesh helpers for triangulation, normal construction, and wireframe generation;
 - initial primitive and modeling operation boundaries through box creation, operation contexts/results, transform operations, and face flipping.
 

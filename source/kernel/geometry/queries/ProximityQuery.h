@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #pragma once
 
 #include "kernel/geometry/mesh/LEM.h"
@@ -13,8 +18,19 @@
 
 namespace locus::kernel::geometry {
 
+    /**
+     * @brief Finds mesh elements closest to an object-space point.
+     */
     class ProximityQuery {
     public:
+        /**
+         * @brief Finds the closest visible vertex to a point.
+         *
+         * @param mesh Mesh to query.
+         * @param point Object-space query point.
+         * @param maxDistance Maximum accepted distance.
+         * @return Vertex hit, or a miss when no vertex is close enough.
+         */
         [[nodiscard]] static SelectionHit closest_vertex(
             const LEM& mesh,
             const glm::vec3& point,
@@ -48,6 +64,14 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Finds the closest visible edge to a point.
+         *
+         * @param mesh Mesh to query.
+         * @param point Object-space query point.
+         * @param maxDistance Maximum accepted distance.
+         * @return Edge hit, or a miss when no edge is close enough.
+         */
         [[nodiscard]] static SelectionHit closest_edge(
             const LEM& mesh,
             const glm::vec3& point,
@@ -84,6 +108,17 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Finds the closest visible face to a point.
+         *
+         * Polygon faces are tested as a triangle fan using the first face vertex
+         * as the fan anchor.
+         *
+         * @param mesh Mesh to query.
+         * @param point Object-space query point.
+         * @param maxDistance Maximum accepted distance.
+         * @return Face hit, or a miss when no face is close enough.
+         */
         [[nodiscard]] static SelectionHit closest_face(
             const LEM& mesh,
             const glm::vec3& point,
@@ -134,6 +169,14 @@ namespace locus::kernel::geometry {
             return best;
         }
 
+        /**
+         * @brief Finds the closest visible vertex, edge, or face to a point.
+         *
+         * @param mesh Mesh to query.
+         * @param point Object-space query point.
+         * @param maxDistance Maximum accepted distance.
+         * @return Closest element hit, or a miss when nothing is close enough.
+         */
         [[nodiscard]] static SelectionHit closest_element(
             const LEM& mesh,
             const glm::vec3& point,
@@ -163,6 +206,14 @@ namespace locus::kernel::geometry {
         }
 
     private:
+        /**
+         * @brief Computes the closest point on a finite segment.
+         *
+         * @param point Object-space query point.
+         * @param a First segment endpoint.
+         * @param b Second segment endpoint.
+         * @return Closest point on the segment.
+         */
         [[nodiscard]] static glm::vec3 closest_point_on_segment(
             const glm::vec3& point,
             const glm::vec3& a,
@@ -180,6 +231,18 @@ namespace locus::kernel::geometry {
             return a + ab * t;
         }
 
+        /**
+         * @brief Computes the closest point on a triangle.
+         *
+         * Uses the region tests from the closest-point triangle routine commonly
+         * described in real-time collision detection references.
+         *
+         * @param point Object-space query point.
+         * @param a First triangle vertex.
+         * @param b Second triangle vertex.
+         * @param c Third triangle vertex.
+         * @return Closest point on the triangle.
+         */
         [[nodiscard]] static glm::vec3 closest_point_on_triangle(
             const glm::vec3& point,
             const glm::vec3& a,
