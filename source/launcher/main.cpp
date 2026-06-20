@@ -3,24 +3,120 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "graphics/common/GraphicsConfig.h"
+#include "graphics/context/OpenGLContext.h"
+#include "graphics/gpu/Shader.h"
+#include "graphics/mesh/GpuMesh.h"
+#include "graphics/mesh/MeshUploadData.h"
+#include "graphics/renderer/Renderer.h"
+#include "graphics/scene/RenderObject.h"
+#include "graphics/scene/RenderScene.h"
+#include "graphics/window/Window.h"
+
+#include "kernel/common/Result.h"
+#include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/primitives/BoxBuilder.h"
 #include "kernel/geometry/primitives/PrimitiveParameters.h"
-#include "kernel/io/FormatRegistry.h"
+#include "kernel/geometry/render/MeshTriangulator.h"
+#include "kernel/geometry/render/NormalBuilder.h"
+#include "kernel/geometry/render/RenderMesh.h"
+#include "kernel/geometry/render/WireframeBuilder.h"
 #include "kernel/io/ObjExporter.h"
+#include "kernel/io/ObjImporter.h"
 
+#include <glad/glad.h>
+
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <string>
 
 namespace {
 
+	using namespace locus;
+	using namespace locus::graphics;
 	using namespace locus::kernel;
 	using namespace locus::kernel::geometry;
 	using namespace locus::kernel::io;
+
+	const char* VisualVertexShader = R"(
+#version 450 core
+
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec4 a_Color;
+
+uniform mat4 u_Model;
+uniform mat4 u_MVP;
+
+out vec3 v_Normal;
+out vec4 v_Color;
+
+void main()
+{
+    mat3 normalMatrix = transpose(inverse(mat3(u_Model)));
+    v_Normal = normalize(normalMatrix * a_Normal);
+    v_Color = a_Color;
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
+}
+)";
+
+	const char* VisualFragmentShader = R"(
+#version 450 core
+
+in vec3 v_Normal;
+in vec4 v_Color;
+
+uniform vec4 u_BaseColor;
+uniform int u_UseVertexColor;
+
+out vec4 FragColor;
+
+void main()
+{
+    vec3 normal = normalize(v_Normal);
+    vec3 lightDirection = normalize(vec3(-0.35, -0.65, -0.75));
+    float diffuse = max(dot(normal, -lightDirection), 0.0);
+    float lighting = 0.28 + diffuse * 0.72;
+
+    vec4 color = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
+    FragColor = vec4(color.rgb * lighting, color.a);
+}
+)";
+
+	const char* WireVertexShader = R"(
+#version 450 core
+
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec4 a_Color;
+
+uniform mat4 u_Model;
+uniform mat4 u_MVP;
+
+void main()
+{
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
+}
+)";
+
+	const char* WireFragmentShader = R"(
+#version 450 core
+
+uniform vec4 u_BaseColor;
+
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = u_BaseColor;
+}
+)";
 
 	bool expect(bool condition, const std::string& message)
 	{
@@ -33,160 +129,315 @@ namespace {
 		return false;
 	}
 
-	std::size_t count_lines_starting_with(const std::filesystem::path& path, const std::string& prefix)
+	void print_graphics_error(const std::string& label, const GraphicsError& error)
 	{
-		std::ifstream file(path);
-		if (!file) {
-			return 0;
-		}
-
-		std::size_t count = 0;
-		std::string line;
-
-		while (std::getline(file, line)) {
-			if (line.rfind(prefix, 0) == 0) {
-				++count;
-			}
-		}
-
-		return count;
+		std::cout << label << ": " << error.message << '\n';
 	}
 
-	bool file_contains_text(const std::filesystem::path& path, const std::string& text)
+	void print_kernel_error(const std::string& label, const Error& error)
 	{
-		std::ifstream file(path);
-		if (!file) {
-			return false;
-		}
-
-		std::string content(
-			(std::istreambuf_iterator<char>(file)),
-			std::istreambuf_iterator<char>()
-		);
-
-		return content.find(text) != std::string::npos;
+		std::cout << label << ": " << error.message << '\n';
 	}
 
-	void print_file_preview(const std::filesystem::path& path, std::size_t maxLines = 16)
+	MeshUploadData build_triangle_upload_data(const RenderMesh& renderMesh)
 	{
-		std::ifstream file(path);
-		if (!file) {
-			std::cout << "Nao foi possivel abrir preview do arquivo.\n";
-			return;
+		MeshUploadData uploadData;
+		uploadData.topology = PrimitiveTopology::Triangles;
+		uploadData.usage = BufferUsage::Static;
+		uploadData.vertices.reserve(renderMesh.vertices.size());
+		uploadData.indices.reserve(renderMesh.triangles.size() * 3);
+
+		for (const RenderVertex& renderVertex : renderMesh.vertices) {
+			MeshVertex vertex;
+
+			vertex.position[0] = renderVertex.position.x;
+			vertex.position[1] = renderVertex.position.y;
+			vertex.position[2] = renderVertex.position.z;
+
+			vertex.normal[0] = renderVertex.normal.x;
+			vertex.normal[1] = renderVertex.normal.y;
+			vertex.normal[2] = renderVertex.normal.z;
+
+			vertex.color[0] = 0.72f;
+			vertex.color[1] = 0.78f;
+			vertex.color[2] = 0.92f;
+			vertex.color[3] = 1.0f;
+
+			uploadData.vertices.push_back(vertex);
 		}
 
-		std::cout << "\n=== OBJ preview ===\n";
-
-		std::string line;
-		std::size_t lineCount = 0;
-
-		while (lineCount < maxLines && std::getline(file, line)) {
-			std::cout << line << '\n';
-			++lineCount;
+		for (const RenderTriangle& triangle : renderMesh.triangles) {
+			uploadData.indices.push_back(static_cast<u32>(triangle.a));
+			uploadData.indices.push_back(static_cast<u32>(triangle.b));
+			uploadData.indices.push_back(static_cast<u32>(triangle.c));
 		}
 
-		if (file.good()) {
-			std::cout << "...\n";
+		return uploadData;
+	}
+
+	MeshUploadData build_topology_wire_upload_data(const RenderMesh& wireRenderMesh)
+	{
+		MeshUploadData uploadData;
+		uploadData.topology = PrimitiveTopology::Lines;
+		uploadData.usage = BufferUsage::Static;
+		uploadData.vertices.reserve(wireRenderMesh.vertices.size());
+		uploadData.indices.reserve(wireRenderMesh.lines.size() * 2);
+
+		for (const RenderVertex& renderVertex : wireRenderMesh.vertices) {
+			MeshVertex vertex;
+
+			vertex.position[0] = renderVertex.position.x;
+			vertex.position[1] = renderVertex.position.y;
+			vertex.position[2] = renderVertex.position.z;
+
+			vertex.normal[0] = renderVertex.normal.x;
+			vertex.normal[1] = renderVertex.normal.y;
+			vertex.normal[2] = renderVertex.normal.z;
+
+			vertex.color[0] = 0.02f;
+			vertex.color[1] = 0.02f;
+			vertex.color[2] = 0.025f;
+			vertex.color[3] = 1.0f;
+
+			uploadData.vertices.push_back(vertex);
 		}
+
+		for (const RenderLine& line : wireRenderMesh.lines) {
+			uploadData.indices.push_back(static_cast<u32>(line.a));
+			uploadData.indices.push_back(static_cast<u32>(line.b));
+		}
+
+		return uploadData;
 	}
 
-	void print_mesh_summary(const LEM& mesh)
+	bool prepare_imported_mesh(LEM& importedMesh, RenderMesh& solidRenderMesh, RenderMesh& wireRenderMesh)
 	{
-		std::cout << "\n=== Mesh summary ===\n";
-		std::cout << "LEM vertices: " << mesh.vertex_count() << '\n';
-		std::cout << "LEM edges:    " << mesh.edge_count() << '\n';
-		std::cout << "LEM loops:    " << mesh.loop_count() << '\n';
-		std::cout << "LEM faces:    " << mesh.face_count() << '\n';
-	}
-
-	bool test_registry()
-	{
-		std::cout << "\n=== FormatRegistry test ===\n";
-
-		bool passed = true;
-
-		FormatRegistry registry;
-		auto exporter = std::make_shared<ObjExporter>();
-
-		passed &= expect(registry.empty(), "registry começa vazio");
-		passed &= expect(registry.register_exporter(exporter), "registrou ObjExporter");
-		passed &= expect(registry.exporter_count() == 1, "registry possui 1 exporter");
-		passed &= expect(registry.can_export(MeshFormat::Obj), "can_export(OBJ)");
-		passed &= expect(registry.can_export_path("model.obj"), "can_export_path(model.obj)");
-		passed &= expect(registry.can_export_path("MODEL.OBJ"), "can_export_path(MODEL.OBJ)");
-		passed &= expect(registry.find_exporter(MeshFormat::Obj) != nullptr, "find_exporter(OBJ)");
-		passed &= expect(registry.find_exporter_for_path("box.obj") != nullptr, "find_exporter_for_path(box.obj)");
-
-		return passed;
-	}
-
-	bool test_obj_export()
-	{
-		std::cout << "\n=== OBJ export test ===\n";
-
-		bool passed = true;
+		std::cout << "\n=== Geometry + IO setup ===\n";
 
 		BoxParameters parameters;
 		parameters.center = { 0.0f, 0.0f, 0.0f };
 		parameters.size = { 2.0f, 2.0f, 2.0f };
 
-		LEM mesh = BoxBuilder::build(parameters);
+		LEM sourceMesh = BoxBuilder::build(parameters);
 
-		print_mesh_summary(mesh);
+		bool passed = true;
+		passed &= expect(!sourceMesh.empty(), "BoxBuilder gerou a malha original");
+		passed &= expect(sourceMesh.vertex_count() == 8, "malha original possui 8 vertices");
+		passed &= expect(sourceMesh.edge_count() == 12, "malha original possui 12 edges");
+		passed &= expect(sourceMesh.loop_count() == 24, "malha original possui 24 loops");
+		passed &= expect(sourceMesh.face_count() == 6, "malha original possui 6 faces");
 
-		passed &= expect(!mesh.empty(), "BoxBuilder gerou uma LEM não vazia");
-		passed &= expect(mesh.vertex_count() == 8, "box possui 8 vertices na LEM");
-		passed &= expect(mesh.edge_count() == 12, "box possui 12 edges na LEM");
-		passed &= expect(mesh.loop_count() == 24, "box possui 24 loops na LEM");
-		passed &= expect(mesh.face_count() == 6, "box possui 6 faces na LEM");
-
-		const std::filesystem::path outputDirectory = "obj_test_output";
-		const std::filesystem::path objPath = outputDirectory / "locus_box.obj";
+		const std::filesystem::path outputDirectory = "visual_io_test_output";
+		const std::filesystem::path objPath = outputDirectory / "visual_box.obj";
 
 		std::error_code errorCode;
 		std::filesystem::create_directories(outputDirectory, errorCode);
-
 		passed &= expect(!errorCode, "diretorio de saida criado");
 
 		ObjExporter exporter;
 
-		MeshExportOptions options;
-		options.skipInactiveElements = true;
-		options.triangulateFaces = false;
-		options.writeNormals = false;
-		options.preferBinary = false;
+		MeshExportOptions exportOptions;
+		exportOptions.skipInactiveElements = true;
+		exportOptions.triangulateFaces = false;
+		exportOptions.writeNormals = false;
+		exportOptions.preferBinary = false;
 
-		const Result<void> exportResult = exporter.export_mesh(mesh, objPath, options);
-
+		const Result<void> exportResult = exporter.export_mesh(sourceMesh, objPath, exportOptions);
 		if (exportResult.is_error()) {
-			std::cout << "OBJ export error: " << exportResult.error().message << '\n';
+			print_kernel_error("OBJ export error", exportResult.error());
+			return false;
 		}
 
-		passed &= expect(exportResult.is_ok(), "exportou OBJ");
+		passed &= expect(exportResult.is_ok(), "exportou OBJ da malha original");
 		passed &= expect(std::filesystem::exists(objPath), "arquivo OBJ existe");
 
-		const std::uintmax_t objSize = std::filesystem::exists(objPath)
-			? std::filesystem::file_size(objPath)
-			: 0;
+		ObjImporter importer;
 
-		const std::size_t vertexLineCount = count_lines_starting_with(objPath, "v ");
-		const std::size_t faceLineCount = count_lines_starting_with(objPath, "f ");
+		MeshImportOptions importOptions;
+		importOptions.mergeDuplicateVertices = false;
+		importOptions.rebuildNormals = true;
+		importOptions.requireFaces = true;
 
-		std::cout << "\n=== File ===\n";
-		std::cout << "OBJ: " << objPath.string() << " (" << objSize << " bytes)\n";
-		std::cout << "Vertex lines: " << vertexLineCount << '\n';
-		std::cout << "Face lines:   " << faceLineCount << '\n';
+		Result<LEM> importResult = importer.import_mesh(objPath, importOptions);
+		if (importResult.is_error()) {
+			print_kernel_error("OBJ import error", importResult.error());
+			return false;
+		}
 
-		passed &= expect(objSize > 0, "arquivo OBJ nao esta vazio");
-		passed &= expect(vertexLineCount == 8, "OBJ possui 8 linhas de vertices");
-		passed &= expect(faceLineCount == 6, "OBJ possui 6 linhas de faces");
-		passed &= expect(file_contains_text(objPath, "# Locus3D OBJ export"), "OBJ contem cabecalho Locus3D");
-		passed &= expect(file_contains_text(objPath, "o locus_box"), "OBJ contem nome do objeto");
-		passed &= expect(file_contains_text(objPath, "f "), "OBJ contem faces");
+		importedMesh = std::move(importResult.value());
 
-		print_file_preview(objPath);
+		passed &= expect(!importedMesh.empty(), "importou OBJ de volta para LEM");
+		passed &= expect(importedMesh.vertex_count() == 8, "malha importada possui 8 vertices");
+		passed &= expect(importedMesh.edge_count() == 12, "malha importada possui 12 edges");
+		passed &= expect(importedMesh.loop_count() == 24, "malha importada possui 24 loops");
+		passed &= expect(importedMesh.face_count() == 6, "malha importada possui 6 faces quad");
+
+		solidRenderMesh = MeshTriangulator::triangulate(importedMesh);
+		NormalBuilder::rebuild_normals(solidRenderMesh, NormalBuildMode::Flat);
+
+		wireRenderMesh = WireframeBuilder::build(importedMesh);
+
+		passed &= expect(solidRenderMesh.vertex_count() == 24, "RenderMesh solido possui 24 vertices");
+		passed &= expect(solidRenderMesh.triangle_count() == 12, "RenderMesh solido possui 12 triangulos");
+		passed &= expect(wireRenderMesh.line_count() == 12, "Wireframe topologico possui 12 linhas reais da LEM");
+
+		std::cout << "\nOBJ gerado em: " << objPath.string() << '\n';
 
 		return passed;
+	}
+
+	bool initialize_graphics(Window& window, OpenGLContext& context)
+	{
+		std::cout << "\n=== Graphics setup ===\n";
+
+		WindowCreateInfo windowInfo;
+		windowInfo.width = 1280;
+		windowInfo.height = 720;
+		windowInfo.title = "Locus3D - Visual OBJ Import Topology Wire Test";
+		windowInfo.resizable = true;
+		windowInfo.visible = true;
+		windowInfo.requestOpenGLContext = true;
+		windowInfo.openglMajorVersion = 4;
+		windowInfo.openglMinorVersion = 5;
+		windowInfo.openglCoreProfile = true;
+		windowInfo.openglForwardCompatible = true;
+		windowInfo.openglDebugContext = true;
+
+		GraphicsResult windowResult = window.create(windowInfo);
+		if (!windowResult) {
+			print_graphics_error("Window error", windowResult.error());
+			return false;
+		}
+
+		GraphicsConfig config;
+		config.api = GraphicsApi::OpenGL;
+		config.enableDebugOutput = true;
+		config.enableVSync = true;
+		config.requestedMajorVersion = 4;
+		config.requestedMinorVersion = 5;
+		config.coreProfile = true;
+		config.forwardCompatible = true;
+
+		GraphicsResult contextResult = context.initialize(window, config);
+		if (!contextResult) {
+			print_graphics_error("OpenGL context error", contextResult.error());
+			return false;
+		}
+
+		context.make_current();
+		context.set_vsync(true);
+
+		glEnable(GL_DEPTH_TEST);
+		glDepthFunc(GL_LESS);
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+		glViewport(0, 0, window.framebuffer_width(), window.framebuffer_height());
+
+		std::cout << "[OK] janela e contexto OpenGL inicializados\n";
+		std::cout << "Framebuffer: " << window.framebuffer_width() << "x" << window.framebuffer_height() << '\n';
+
+		return true;
+	}
+
+	bool create_shader(Shader& shader, const char* vertexSource, const char* fragmentSource, const std::string& label)
+	{
+		GraphicsResult result = shader.create_from_source(vertexSource, fragmentSource);
+		if (!result) {
+			print_graphics_error(label, result.error());
+			return false;
+		}
+
+		std::cout << "[OK] " << label << '\n';
+		return true;
+	}
+
+	bool create_gpu_mesh(GpuMesh& mesh, const MeshUploadData& uploadData, const std::string& label)
+	{
+		GraphicsResult result = mesh.create(uploadData);
+		if (!result) {
+			print_graphics_error(label, result.error());
+			return false;
+		}
+
+		std::cout << "[OK] " << label << '\n';
+		return true;
+	}
+
+	void render_loop(
+		Window& window,
+		Renderer& renderer,
+		const GpuMesh& solidMesh,
+		const GpuMesh& wireMesh,
+		const Shader& solidShader,
+		const Shader& wireShader)
+	{
+		const auto start = std::chrono::steady_clock::now();
+
+		while (!window.should_close()) {
+			window.poll_events();
+
+			const int framebufferWidth = window.framebuffer_width();
+			const int framebufferHeight = window.framebuffer_height();
+
+			if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+				continue;
+			}
+
+			const auto now = std::chrono::steady_clock::now();
+			const float time = std::chrono::duration<float>(now - start).count();
+
+			glViewport(0, 0, framebufferWidth, framebufferHeight);
+			glClearColor(0.08f, 0.08f, 0.09f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			const float aspect = static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight);
+
+			const glm::mat4 projection = glm::perspective(
+				glm::radians(45.0f),
+				aspect,
+				0.1f,
+				100.0f
+			);
+
+			const glm::mat4 view = glm::lookAt(
+				glm::vec3{ 4.0f, 3.0f, 5.0f },
+				glm::vec3{ 0.0f, 0.0f, 0.0f },
+				glm::vec3{ 0.0f, 1.0f, 0.0f }
+			);
+
+			const glm::quat rotation =
+				glm::angleAxis(time * 0.55f, glm::vec3{ 0.0f, 1.0f, 0.0f })
+				* glm::angleAxis(glm::radians(18.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+			RenderObject solidObject;
+			solidObject.id = 1;
+			solidObject.name = "Imported OBJ Cube - Solid";
+			solidObject.mesh = &solidMesh;
+			solidObject.shader = &solidShader;
+			solidObject.transform.position = glm::vec3{ 0.0f, 0.0f, 0.0f };
+			solidObject.transform.rotation = rotation;
+			solidObject.transform.scale = glm::vec3{ 1.0f, 1.0f, 1.0f };
+			solidObject.layer = RenderLayer::Default;
+
+			RenderObject wireObject;
+			wireObject.id = 2;
+			wireObject.name = "Imported OBJ Cube - Topology Wire";
+			wireObject.mesh = &wireMesh;
+			wireObject.shader = &wireShader;
+			wireObject.transform = solidObject.transform;
+			wireObject.layer = RenderLayer::Overlay;
+
+			RenderScene scene;
+			scene.reserve(2);
+			scene.add_object(solidObject);
+			scene.add_object(wireObject);
+
+			renderer.set_view_matrix(view);
+			renderer.set_projection_matrix(projection);
+			renderer.render(scene);
+
+			window.swap_buffers();
+		}
 	}
 
 }
@@ -194,14 +445,62 @@ namespace {
 int main()
 {
 	std::cout << std::fixed << std::setprecision(3);
-	std::cout << "=== Locus3D OBJ Export Test ===\n";
+	std::cout << "=== Locus3D Visual OBJ Import Topology Wire Test ===\n";
 
-	bool passed = true;
+	LEM importedMesh;
+	RenderMesh solidRenderMesh;
+	RenderMesh wireRenderMesh;
 
-	passed &= test_registry();
-	passed &= test_obj_export();
+	if (!prepare_imported_mesh(importedMesh, solidRenderMesh, wireRenderMesh)) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
 
-	std::cout << "\nResultado final: " << (passed ? "PASS" : "FAIL") << '\n';
+	Window window;
+	OpenGLContext context;
 
-	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
+	if (!initialize_graphics(window, context)) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
+
+	Shader solidShader;
+	Shader wireShader;
+
+	if (!create_shader(solidShader, VisualVertexShader, VisualFragmentShader, "shader solido criado")) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
+
+	if (!create_shader(wireShader, WireVertexShader, WireFragmentShader, "shader wire topologico criado")) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
+
+	const MeshUploadData solidUploadData = build_triangle_upload_data(solidRenderMesh);
+	const MeshUploadData wireUploadData = build_topology_wire_upload_data(wireRenderMesh);
+
+	GpuMesh solidGpuMesh;
+	GpuMesh wireGpuMesh;
+
+	if (!create_gpu_mesh(solidGpuMesh, solidUploadData, "GpuMesh solido criado a partir do OBJ importado")) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
+
+	if (!create_gpu_mesh(wireGpuMesh, wireUploadData, "GpuMesh wire topologico criado a partir da LEM importada")) {
+		std::cout << "\nResultado final: FAIL\n";
+		return EXIT_FAILURE;
+	}
+
+	Renderer renderer;
+
+	std::cout << "\n=== Visual result ===\n";
+	std::cout << "Deve aparecer um cubo importado de OBJ, com solido triangulado internamente e wireframe topologico sem diagonais.\n";
+	std::cout << "Feche a janela para encerrar o teste.\n";
+
+	render_loop(window, renderer, solidGpuMesh, wireGpuMesh, solidShader, wireShader);
+
+	std::cout << "\nResultado final: PASS\n";
+	return EXIT_SUCCESS;
 }
