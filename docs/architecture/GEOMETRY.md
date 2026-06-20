@@ -68,12 +68,12 @@ source\kernel
 |       Pool.h
 |
 +---math
-|       Vec.h [!]
-|       Mat.h [!]
+|       Vec.h
+|       Mat.h
 |       Ray.h
 |       Bounds.h
 |       Transform.h
-|       Quaternion.h [!]
+|       Quaternion.h
 |       Intersections.h
 |       GeometryMath.h
 |
@@ -209,9 +209,6 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `math/Vec.h`
-- [!] `math/Mat.h`
-- [!] `math/Quaternion.h`
 - [!] `geometry/mesh/LEMStorage.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.h`
 - [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
