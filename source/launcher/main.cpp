@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#define NOMINMAX
+
 #include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
@@ -15,26 +17,33 @@
 
 #include "kernel/common/Result.h"
 #include "kernel/geometry/mesh/LEM.h"
-#include "kernel/geometry/primitives/BoxBuilder.h"
-#include "kernel/geometry/primitives/PrimitiveParameters.h"
 #include "kernel/geometry/render/MeshTriangulator.h"
 #include "kernel/geometry/render/NormalBuilder.h"
 #include "kernel/geometry/render/RenderMesh.h"
 #include "kernel/geometry/render/WireframeBuilder.h"
-#include "kernel/io/ObjExporter.h"
 #include "kernel/io/ObjImporter.h"
+#include "kernel/io/StlImporter.h"
 
 #include <glad/glad.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <windows.h>
+#include <commdlg.h>
+
+#pragma comment(lib, "Comdlg32.lib")
+
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -118,6 +127,11 @@ void main()
 }
 )";
 
+	struct MeshFit {
+		glm::vec3 center{ 0.0f, 0.0f, 0.0f };
+		float scale = 1.0f;
+	};
+
 	bool expect(bool condition, const std::string& message)
 	{
 		if (condition) {
@@ -139,7 +153,81 @@ void main()
 		std::cout << label << ": " << error.message << '\n';
 	}
 
-	MeshUploadData build_triangle_upload_data(const RenderMesh& renderMesh)
+	std::optional<std::filesystem::path> open_mesh_file_dialog()
+	{
+		wchar_t fileName[MAX_PATH] = L"";
+
+		OPENFILENAMEW openFileName{};
+		openFileName.lStructSize = sizeof(openFileName);
+		openFileName.hwndOwner = nullptr;
+		openFileName.lpstrFile = fileName;
+		openFileName.nMaxFile = MAX_PATH;
+		openFileName.lpstrFilter =
+			L"Mesh files (*.stl;*.obj)\0*.stl;*.obj\0"
+			L"STL files (*.stl)\0*.stl\0"
+			L"OBJ files (*.obj)\0*.obj\0"
+			L"All files (*.*)\0*.*\0";
+		openFileName.nFilterIndex = 1;
+		openFileName.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+		openFileName.lpstrTitle = L"Selecione um arquivo .stl ou .obj";
+
+		if (!GetOpenFileNameW(&openFileName)) {
+			return std::nullopt;
+		}
+
+		return std::filesystem::path(fileName);
+	}
+
+	std::string lowercase_extension(const std::filesystem::path& path)
+	{
+		std::string extension = path.extension().string();
+
+		std::transform(
+			extension.begin(),
+			extension.end(),
+			extension.begin(),
+			[](unsigned char character) {
+				return static_cast<char>(std::tolower(character));
+			}
+		);
+
+		return extension;
+	}
+
+	MeshFit compute_mesh_fit(const RenderMesh& renderMesh)
+	{
+		if (renderMesh.vertices.empty()) {
+			return {};
+		}
+
+		glm::vec3 minPoint{
+			std::numeric_limits<float>::max(),
+			std::numeric_limits<float>::max(),
+			std::numeric_limits<float>::max()
+		};
+
+		glm::vec3 maxPoint{
+			std::numeric_limits<float>::lowest(),
+			std::numeric_limits<float>::lowest(),
+			std::numeric_limits<float>::lowest()
+		};
+
+		for (const RenderVertex& vertex : renderMesh.vertices) {
+			minPoint = glm::min(minPoint, vertex.position);
+			maxPoint = glm::max(maxPoint, vertex.position);
+		}
+
+		const glm::vec3 size = maxPoint - minPoint;
+		const float maxDimension = std::max({ size.x, size.y, size.z });
+
+		MeshFit fit;
+		fit.center = (minPoint + maxPoint) * 0.5f;
+		fit.scale = maxDimension > 0.00001f ? 3.0f / maxDimension : 1.0f;
+
+		return fit;
+	}
+
+	MeshUploadData build_triangle_upload_data(const RenderMesh& renderMesh, const MeshFit& fit)
 	{
 		MeshUploadData uploadData;
 		uploadData.topology = PrimitiveTopology::Triangles;
@@ -148,11 +236,13 @@ void main()
 		uploadData.indices.reserve(renderMesh.triangles.size() * 3);
 
 		for (const RenderVertex& renderVertex : renderMesh.vertices) {
+			const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+
 			MeshVertex vertex;
 
-			vertex.position[0] = renderVertex.position.x;
-			vertex.position[1] = renderVertex.position.y;
-			vertex.position[2] = renderVertex.position.z;
+			vertex.position[0] = fittedPosition.x;
+			vertex.position[1] = fittedPosition.y;
+			vertex.position[2] = fittedPosition.z;
 
 			vertex.normal[0] = renderVertex.normal.x;
 			vertex.normal[1] = renderVertex.normal.y;
@@ -175,7 +265,7 @@ void main()
 		return uploadData;
 	}
 
-	MeshUploadData build_topology_wire_upload_data(const RenderMesh& wireRenderMesh)
+	MeshUploadData build_wire_upload_data(const RenderMesh& wireRenderMesh, const MeshFit& fit)
 	{
 		MeshUploadData uploadData;
 		uploadData.topology = PrimitiveTopology::Lines;
@@ -184,11 +274,13 @@ void main()
 		uploadData.indices.reserve(wireRenderMesh.lines.size() * 2);
 
 		for (const RenderVertex& renderVertex : wireRenderMesh.vertices) {
+			const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+
 			MeshVertex vertex;
 
-			vertex.position[0] = renderVertex.position.x;
-			vertex.position[1] = renderVertex.position.y;
-			vertex.position[2] = renderVertex.position.z;
+			vertex.position[0] = fittedPosition.x;
+			vertex.position[1] = fittedPosition.y;
+			vertex.position[2] = fittedPosition.z;
 
 			vertex.normal[0] = renderVertex.normal.x;
 			vertex.normal[1] = renderVertex.normal.y;
@@ -210,78 +302,77 @@ void main()
 		return uploadData;
 	}
 
-	bool prepare_imported_mesh(LEM& importedMesh, RenderMesh& solidRenderMesh, RenderMesh& wireRenderMesh)
+	Result<LEM> import_mesh_from_path(const std::filesystem::path& path)
 	{
-		std::cout << "\n=== Geometry + IO setup ===\n";
+		const std::string extension = lowercase_extension(path);
 
-		BoxParameters parameters;
-		parameters.center = { 0.0f, 0.0f, 0.0f };
-		parameters.size = { 2.0f, 2.0f, 2.0f };
+		MeshImportOptions options;
+		options.mergeDuplicateVertices = true;
+		options.mergeEpsilon = 1.0e-5f;
+		options.rebuildNormals = true;
+		options.requireFaces = true;
 
-		LEM sourceMesh = BoxBuilder::build(parameters);
-
-		bool passed = true;
-		passed &= expect(!sourceMesh.empty(), "BoxBuilder gerou a malha original");
-		passed &= expect(sourceMesh.vertex_count() == 8, "malha original possui 8 vertices");
-		passed &= expect(sourceMesh.edge_count() == 12, "malha original possui 12 edges");
-		passed &= expect(sourceMesh.loop_count() == 24, "malha original possui 24 loops");
-		passed &= expect(sourceMesh.face_count() == 6, "malha original possui 6 faces");
-
-		const std::filesystem::path outputDirectory = "visual_io_test_output";
-		const std::filesystem::path objPath = outputDirectory / "visual_box.obj";
-
-		std::error_code errorCode;
-		std::filesystem::create_directories(outputDirectory, errorCode);
-		passed &= expect(!errorCode, "diretorio de saida criado");
-
-		ObjExporter exporter;
-
-		MeshExportOptions exportOptions;
-		exportOptions.skipInactiveElements = true;
-		exportOptions.triangulateFaces = false;
-		exportOptions.writeNormals = false;
-		exportOptions.preferBinary = false;
-
-		const Result<void> exportResult = exporter.export_mesh(sourceMesh, objPath, exportOptions);
-		if (exportResult.is_error()) {
-			print_kernel_error("OBJ export error", exportResult.error());
-			return false;
+		if (extension == ".obj") {
+			ObjImporter importer;
+			return importer.import_mesh(path, options);
 		}
 
-		passed &= expect(exportResult.is_ok(), "exportou OBJ da malha original");
-		passed &= expect(std::filesystem::exists(objPath), "arquivo OBJ existe");
+		if (extension == ".stl") {
+			StlImporter importer;
+			return importer.import_mesh(path, options);
+		}
 
-		ObjImporter importer;
+		return Result<LEM>::fail(ErrorCode::UnsupportedOperation, "Formato não suportado. Selecione um arquivo .stl ou .obj.");
+	}
 
-		MeshImportOptions importOptions;
-		importOptions.mergeDuplicateVertices = false;
-		importOptions.rebuildNormals = true;
-		importOptions.requireFaces = true;
+	bool prepare_imported_mesh(
+		const std::filesystem::path& selectedPath,
+		LEM& importedMesh,
+		RenderMesh& solidRenderMesh,
+		RenderMesh& wireRenderMesh,
+		MeshFit& fit)
+	{
+		std::cout << "\n=== Mesh import setup ===\n";
+		std::cout << "Arquivo selecionado: " << selectedPath.string() << '\n';
+		std::cout << "Extensao detectada: " << lowercase_extension(selectedPath) << '\n';
 
-		Result<LEM> importResult = importer.import_mesh(objPath, importOptions);
+		Result<LEM> importResult = import_mesh_from_path(selectedPath);
 		if (importResult.is_error()) {
-			print_kernel_error("OBJ import error", importResult.error());
+			print_kernel_error("Import error", importResult.error());
 			return false;
 		}
 
 		importedMesh = std::move(importResult.value());
 
-		passed &= expect(!importedMesh.empty(), "importou OBJ de volta para LEM");
-		passed &= expect(importedMesh.vertex_count() == 8, "malha importada possui 8 vertices");
-		passed &= expect(importedMesh.edge_count() == 12, "malha importada possui 12 edges");
-		passed &= expect(importedMesh.loop_count() == 24, "malha importada possui 24 loops");
-		passed &= expect(importedMesh.face_count() == 6, "malha importada possui 6 faces quad");
+		bool passed = true;
+
+		passed &= expect(!importedMesh.empty(), "malha importada nao esta vazia");
+		passed &= expect(importedMesh.vertex_count() > 0, "malha importada possui vertices");
+		passed &= expect(importedMesh.face_count() > 0, "malha importada possui faces");
+
+		std::cout << "\n=== Imported LEM summary ===\n";
+		std::cout << "Vertices: " << importedMesh.vertex_count() << '\n';
+		std::cout << "Edges:    " << importedMesh.edge_count() << '\n';
+		std::cout << "Loops:    " << importedMesh.loop_count() << '\n';
+		std::cout << "Faces:    " << importedMesh.face_count() << '\n';
 
 		solidRenderMesh = MeshTriangulator::triangulate(importedMesh);
 		NormalBuilder::rebuild_normals(solidRenderMesh, NormalBuildMode::Flat);
 
 		wireRenderMesh = WireframeBuilder::build(importedMesh);
 
-		passed &= expect(solidRenderMesh.vertex_count() == 24, "RenderMesh solido possui 24 vertices");
-		passed &= expect(solidRenderMesh.triangle_count() == 12, "RenderMesh solido possui 12 triangulos");
-		passed &= expect(wireRenderMesh.line_count() == 12, "Wireframe topologico possui 12 linhas reais da LEM");
+		passed &= expect(solidRenderMesh.vertex_count() > 0, "RenderMesh solido possui vertices");
+		passed &= expect(solidRenderMesh.triangle_count() > 0, "RenderMesh solido possui triangulos");
+		passed &= expect(wireRenderMesh.line_count() > 0, "Wireframe topologico possui linhas");
 
-		std::cout << "\nOBJ gerado em: " << objPath.string() << '\n';
+		fit = compute_mesh_fit(solidRenderMesh);
+
+		std::cout << "\n=== Render summary ===\n";
+		std::cout << "Render vertices: " << solidRenderMesh.vertex_count() << '\n';
+		std::cout << "Render triangles: " << solidRenderMesh.triangle_count() << '\n';
+		std::cout << "Topology wire lines: " << wireRenderMesh.line_count() << '\n';
+		std::cout << "Fit center: (" << fit.center.x << ", " << fit.center.y << ", " << fit.center.z << ")\n";
+		std::cout << "Fit scale: " << fit.scale << '\n';
 
 		return passed;
 	}
@@ -293,7 +384,7 @@ void main()
 		WindowCreateInfo windowInfo;
 		windowInfo.width = 1280;
 		windowInfo.height = 720;
-		windowInfo.title = "Locus3D - Visual OBJ Import Topology Wire Test";
+		windowInfo.title = "Locus3D - External Mesh Import Viewer";
 		windowInfo.resizable = true;
 		windowInfo.visible = true;
 		windowInfo.requestOpenGLContext = true;
@@ -331,6 +422,7 @@ void main()
 		glDepthFunc(GL_LESS);
 		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
+		glLineWidth(1.5f);
 		glViewport(0, 0, window.framebuffer_width(), window.framebuffer_height());
 
 		std::cout << "[OK] janela e contexto OpenGL inicializados\n";
@@ -369,7 +461,8 @@ void main()
 		const GpuMesh& solidMesh,
 		const GpuMesh& wireMesh,
 		const Shader& solidShader,
-		const Shader& wireShader)
+		const Shader& wireShader,
+		const std::filesystem::path& selectedPath)
 	{
 		const auto start = std::chrono::steady_clock::now();
 
@@ -400,18 +493,18 @@ void main()
 			);
 
 			const glm::mat4 view = glm::lookAt(
-				glm::vec3{ 4.0f, 3.0f, 5.0f },
+				glm::vec3{ 4.5f, 3.2f, 5.5f },
 				glm::vec3{ 0.0f, 0.0f, 0.0f },
 				glm::vec3{ 0.0f, 1.0f, 0.0f }
 			);
 
 			const glm::quat rotation =
-				glm::angleAxis(time * 0.55f, glm::vec3{ 0.0f, 1.0f, 0.0f })
-				* glm::angleAxis(glm::radians(18.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
+				glm::angleAxis(time * 0.45f, glm::vec3{ 0.0f, 1.0f, 0.0f })
+				* glm::angleAxis(glm::radians(16.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
 
 			RenderObject solidObject;
 			solidObject.id = 1;
-			solidObject.name = "Imported OBJ Cube - Solid";
+			solidObject.name = "Imported Mesh - Solid";
 			solidObject.mesh = &solidMesh;
 			solidObject.shader = &solidShader;
 			solidObject.transform.position = glm::vec3{ 0.0f, 0.0f, 0.0f };
@@ -421,7 +514,7 @@ void main()
 
 			RenderObject wireObject;
 			wireObject.id = 2;
-			wireObject.name = "Imported OBJ Cube - Topology Wire";
+			wireObject.name = "Imported Mesh - Topology Wire";
 			wireObject.mesh = &wireMesh;
 			wireObject.shader = &wireShader;
 			wireObject.transform = solidObject.transform;
@@ -445,13 +538,20 @@ void main()
 int main()
 {
 	std::cout << std::fixed << std::setprecision(3);
-	std::cout << "=== Locus3D Visual OBJ Import Topology Wire Test ===\n";
+	std::cout << "=== Locus3D External STL/OBJ Import Viewer ===\n";
+
+	const std::optional<std::filesystem::path> selectedPath = open_mesh_file_dialog();
+	if (!selectedPath.has_value()) {
+		std::cout << "Nenhum arquivo selecionado.\n";
+		return EXIT_SUCCESS;
+	}
 
 	LEM importedMesh;
 	RenderMesh solidRenderMesh;
 	RenderMesh wireRenderMesh;
+	MeshFit fit;
 
-	if (!prepare_imported_mesh(importedMesh, solidRenderMesh, wireRenderMesh)) {
+	if (!prepare_imported_mesh(*selectedPath, importedMesh, solidRenderMesh, wireRenderMesh, fit)) {
 		std::cout << "\nResultado final: FAIL\n";
 		return EXIT_FAILURE;
 	}
@@ -477,18 +577,18 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-	const MeshUploadData solidUploadData = build_triangle_upload_data(solidRenderMesh);
-	const MeshUploadData wireUploadData = build_topology_wire_upload_data(wireRenderMesh);
+	const MeshUploadData solidUploadData = build_triangle_upload_data(solidRenderMesh, fit);
+	const MeshUploadData wireUploadData = build_wire_upload_data(wireRenderMesh, fit);
 
 	GpuMesh solidGpuMesh;
 	GpuMesh wireGpuMesh;
 
-	if (!create_gpu_mesh(solidGpuMesh, solidUploadData, "GpuMesh solido criado a partir do OBJ importado")) {
+	if (!create_gpu_mesh(solidGpuMesh, solidUploadData, "GpuMesh solido criado a partir do arquivo importado")) {
 		std::cout << "\nResultado final: FAIL\n";
 		return EXIT_FAILURE;
 	}
 
-	if (!create_gpu_mesh(wireGpuMesh, wireUploadData, "GpuMesh wire topologico criado a partir da LEM importada")) {
+	if (!create_gpu_mesh(wireGpuMesh, wireUploadData, "GpuMesh wire topologico criado a partir do arquivo importado")) {
 		std::cout << "\nResultado final: FAIL\n";
 		return EXIT_FAILURE;
 	}
@@ -496,10 +596,12 @@ int main()
 	Renderer renderer;
 
 	std::cout << "\n=== Visual result ===\n";
-	std::cout << "Deve aparecer um cubo importado de OBJ, com solido triangulado internamente e wireframe topologico sem diagonais.\n";
+	std::cout << "Arquivo: " << selectedPath->string() << '\n';
+	std::cout << "Deve aparecer a malha importada centralizada e normalizada na tela.\n";
+	std::cout << "STL tende a aparecer triangulado; OBJ pode preservar quads/ngons no wireframe topologico.\n";
 	std::cout << "Feche a janela para encerrar o teste.\n";
 
-	render_loop(window, renderer, solidGpuMesh, wireGpuMesh, solidShader, wireShader);
+	render_loop(window, renderer, solidGpuMesh, wireGpuMesh, solidShader, wireShader, *selectedPath);
 
 	std::cout << "\nResultado final: PASS\n";
 	return EXIT_SUCCESS;
