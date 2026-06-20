@@ -1,545 +1,322 @@
-#include "graphics/camera/OrbitCameraRig.h"
-#include "graphics/common/GraphicsConfig.h"
-#include "graphics/context/OpenGLContext.h"
-#include "graphics/gpu/Shader.h"
-#include "graphics/gpu/ShaderManager.h"
-#include "graphics/lighting/LightEnvironment.h"
-#include "graphics/mesh/MeshUploader.h"
-#include "graphics/overlay/renderers/AxisRenderer.h"
-#include "graphics/overlay/renderers/GridRenderer.h"
-#include "graphics/renderer/RenderPipeline.h"
-#include "graphics/renderer/Renderer.h"
-#include "graphics/scene/RenderObject.h"
-#include "graphics/viewport/Viewport.h"
-#include "graphics/window/Window.h"
 
-#include "kernel/geometry/mesh/LEM.h"
-#include "kernel/geometry/primitives/BoxBuilder.h"
-#include "kernel/geometry/primitives/ConeBuilder.h"
-#include "kernel/geometry/primitives/CylinderBuilder.h"
-#include "kernel/geometry/primitives/SphereBuilder.h"
-#include "kernel/geometry/primitives/TorusBuilder.h"
-#include "kernel/geometry/render/MeshTriangulator.h"
-#include "kernel/geometry/render/NormalBuilder.h"
-#include "kernel/geometry/render/RenderMesh.h"
-#include "kernel/geometry/topology/TopologyValidator.h"
+#include "kernel/math/Bounds.h"
+#include "kernel/math/GeometryMath.h"
+#include "kernel/math/Mat.h"
+#include "kernel/math/Quaternion.h"
+#include "kernel/math/Transform.h"
+#include "kernel/math/Vec.h"
 
-#include <glm/glm.hpp>
-
+#include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <string>
-#include <vector>
 
 namespace {
 
-    locus::graphics::MeshUploadData to_upload_data(
-        const locus::kernel::geometry::RenderMesh& renderMesh,
-        const glm::vec4& color) {
-        locus::graphics::MeshUploadData uploadData;
-        uploadData.topology = locus::graphics::PrimitiveTopology::Triangles;
-        uploadData.usage = locus::graphics::BufferUsage::Static;
+	using namespace locus::kernel;
+	using namespace locus::kernel::math;
 
-        uploadData.vertices.reserve(renderMesh.vertices.size());
-        uploadData.indices.reserve(renderMesh.triangles.size() * 3);
+	void print_vec2(const Vec2& value)
+	{
+		std::cout << "(" << value.x << ", " << value.y << ")";
+	}
 
-        for (const locus::kernel::geometry::RenderVertex& vertex : renderMesh.vertices) {
-            locus::graphics::MeshVertex meshVertex{};
+	void print_vec3(const Vec3& value)
+	{
+		std::cout << "(" << value.x << ", " << value.y << ", " << value.z << ")";
+	}
 
-            meshVertex.position[0] = vertex.position.x;
-            meshVertex.position[1] = vertex.position.y;
-            meshVertex.position[2] = vertex.position.z;
+	void print_quaternion(const Quaternion& value)
+	{
+		std::cout << "(w=" << value.w << ", x=" << value.x << ", y=" << value.y << ", z=" << value.z << ")";
+	}
 
-            meshVertex.normal[0] = vertex.normal.x;
-            meshVertex.normal[1] = vertex.normal.y;
-            meshVertex.normal[2] = vertex.normal.z;
+	bool expect(bool condition, const std::string& message)
+	{
+		if (condition) {
+			std::cout << "[OK] " << message << "\n";
+			return true;
+		}
 
-            meshVertex.color[0] = color.r;
-            meshVertex.color[1] = color.g;
-            meshVertex.color[2] = color.b;
-            meshVertex.color[3] = color.a;
+		std::cout << "[FAIL] " << message << "\n";
+		return false;
+	}
 
-            uploadData.vertices.push_back(meshVertex);
-        }
+	bool test_vec()
+	{
+		std::cout << "\n=== Vec.h ===\n";
 
-        for (const locus::kernel::geometry::RenderTriangle& triangle : renderMesh.triangles) {
-            uploadData.indices.push_back(triangle.a);
-            uploadData.indices.push_back(triangle.b);
-            uploadData.indices.push_back(triangle.c);
-        }
+		bool passed = true;
 
-        return uploadData;
-    }
+		const Vec3 xAxis = axis_vector(Axis::X);
+		const Vec3 negativeY = axis_vector(Axis::Y, Orientation::Negative);
+		const Vec3 zAxis = axis_vector(Axis::Z);
 
-    void print_report(
-        const char* label,
-        const locus::kernel::geometry::LEM& mesh) {
-        const locus::kernel::geometry::TopologyValidationReport report =
-            locus::kernel::geometry::TopologyValidator::validate(mesh);
+		std::cout << "xAxis: ";
+		print_vec3(xAxis);
+		std::cout << "\nnegativeY: ";
+		print_vec3(negativeY);
+		std::cout << "\nzAxis: ";
+		print_vec3(zAxis);
+		std::cout << "\n";
 
-        std::cout << label << '\n';
-        std::cout << "vertices: " << mesh.vertex_count() << '\n';
-        std::cout << "edges: " << mesh.edge_count() << '\n';
-        std::cout << "loops: " << mesh.loop_count() << '\n';
-        std::cout << "faces: " << mesh.face_count() << '\n';
-        std::cout << "topology valid: " << (report.valid() ? "yes" : "no") << '\n';
-        std::cout << "errors: " << report.error_count() << '\n';
-        std::cout << "warnings: " << report.warning_count() << "\n\n";
-    }
+		passed &= expect(nearly_equal(xAxis, Vec3{ 1.0f, 0.0f, 0.0f }), "axis_vector(Axis::X)");
+		passed &= expect(nearly_equal(negativeY, Vec3{ 0.0f, -1.0f, 0.0f }), "axis_vector(Axis::Y, Negative)");
+		passed &= expect(axis_index(Axis::Z) == 2, "axis_index(Axis::Z)");
 
-    locus::kernel::geometry::RenderMesh build_render_mesh(
-        locus::kernel::geometry::LEM& mesh,
-        locus::kernel::geometry::NormalBuildMode normalMode) {
-        locus::kernel::geometry::NormalBuilder::rebuild_face_normals(mesh);
+		Vec3 editable{ 1.0f, 2.0f, 3.0f };
+		set_component(editable, Axis::Y, 10.0f);
 
-        locus::kernel::geometry::RenderMesh renderMesh =
-            locus::kernel::geometry::MeshTriangulator::triangulate(mesh);
+		std::cout << "editable apos set_component Y: ";
+		print_vec3(editable);
+		std::cout << "\n";
 
-        locus::kernel::geometry::NormalBuilder::rebuild_normals(renderMesh, normalMode);
+		passed &= expect(nearly_equal(component(editable, Axis::Y), 10.0f), "component/set_component por eixo");
 
-        return renderMesh;
-    }
+		const Vec3 a{ 1.0f, 2.0f, 3.0f };
+		const Vec3 b{ 4.0f, 6.0f, 3.0f };
 
-    bool add_visual_primitive(
-        const std::string& name,
-        locus::kernel::geometry::LEM& mesh,
-        const glm::vec3& position,
-        const glm::vec4& color,
-        locus::kernel::geometry::NormalBuildMode normalMode,
-        locus::graphics::MeshUploader& meshUploader,
-        locus::graphics::Shader& shader,
-        std::vector<locus::graphics::GpuMesh>& gpuMeshes,
-        std::vector<locus::graphics::RenderObject>& renderObjects) {
-        print_report(name.c_str(), mesh);
+		std::cout << "distance_squared(a, b): " << distance_squared(a, b) << "\n";
 
-        locus::kernel::geometry::RenderMesh renderMesh = build_render_mesh(mesh, normalMode);
+		passed &= expect(nearly_equal(distance_squared(a, b), 25.0f), "distance_squared(Vec3)");
 
-        std::cout << name << " render mesh\n";
-        std::cout << "render vertices: " << renderMesh.vertex_count() << '\n';
-        std::cout << "render triangles: " << renderMesh.triangle_count() << "\n\n";
+		const Vec3 vector{ 2.0f, 2.0f, 0.0f };
+		const Vec3 direction{ 1.0f, 0.0f, 0.0f };
+		const Vec3 projected = project(vector, direction);
+		const Vec3 rejected = reject(vector, direction);
 
-        locus::graphics::MeshUploadData uploadData = to_upload_data(renderMesh, color);
+		std::cout << "project((2,2,0), X): ";
+		print_vec3(projected);
+		std::cout << "\nreject((2,2,0), X): ";
+		print_vec3(rejected);
+		std::cout << "\n";
 
-        auto gpuMeshResult = meshUploader.upload(uploadData);
+		passed &= expect(nearly_equal(projected, Vec3{ 2.0f, 0.0f, 0.0f }), "project(Vec3)");
+		passed &= expect(nearly_equal(rejected, Vec3{ 0.0f, 2.0f, 0.0f }), "reject(Vec3)");
 
-        if (!gpuMeshResult) {
-            std::cerr << gpuMeshResult.error().message << '\n';
-            return false;
-        }
+		const Axis dominant = dominant_axis(Vec3{ 1.0f, -5.0f, 2.0f });
+		passed &= expect(dominant == Axis::Y, "dominant_axis(Vec3)");
 
-        gpuMeshes.push_back(gpuMeshResult.move_value());
+		const Vec2 normalized = safe_normalize(Vec2{ 3.0f, 4.0f });
+		const Vec2 fallback = safe_normalize(Vec2{ 0.0f, 0.0f }, Vec2{ 1.0f, 0.0f });
 
-        locus::graphics::RenderObject object;
-        object.id = static_cast<locus::graphics::RenderObject::Id>(renderObjects.size() + 1);
-        object.name = name;
-        object.mesh = &gpuMeshes.back();
-        object.shader = &shader;
-        object.layer = locus::graphics::RenderLayer::Default;
-        object.transform.position = position;
+		std::cout << "safe_normalize((3,4)): ";
+		print_vec2(normalized);
+		std::cout << "\nsafe_normalize(zero, fallback): ";
+		print_vec2(fallback);
+		std::cout << "\n";
 
-        renderObjects.push_back(object);
+		passed &= expect(nearly_equal(normalized, Vec2{ 0.6f, 0.8f }), "safe_normalize(Vec2)");
+		passed &= expect(nearly_equal(fallback, Vec2{ 1.0f, 0.0f }), "safe_normalize(Vec2) fallback");
 
-        return true;
-    }
+		const Vec3 clamped = clamp01(Vec3{ -1.0f, 0.5f, 2.0f });
 
-    void destroy_gpu_meshes(std::vector<locus::graphics::GpuMesh>& gpuMeshes) {
-        for (locus::graphics::GpuMesh& mesh : gpuMeshes) {
-            mesh.destroy();
-        }
+		std::cout << "clamp01((-1, 0.5, 2)): ";
+		print_vec3(clamped);
+		std::cout << "\n";
 
-        gpuMeshes.clear();
-    }
+		passed &= expect(nearly_equal(clamped, Vec3{ 0.0f, 0.5f, 1.0f }), "clamp01(Vec3)");
+		passed &= expect(is_finite(Vec3{ 1.0f, 2.0f, 3.0f }), "is_finite(Vec3)");
+
+		return passed;
+	}
+
+	bool test_mat()
+	{
+		std::cout << "\n=== Mat.h ===\n";
+
+		bool passed = true;
+
+		const Mat4 identity = identity_mat4();
+		const Mat4 translation = translation_matrix(Vec3{ 1.0f, 2.0f, 3.0f });
+		const Mat4 scale = scale_matrix(Vec3{ 2.0f, 3.0f, 4.0f });
+
+		const Vec3 point{ 1.0f, 1.0f, 1.0f };
+		const Vec3 translatedPoint = transform_point(translation, point);
+		const Vec3 scaledVector = transform_vector(scale, Vec3{ 1.0f, 1.0f, 1.0f });
+
+		std::cout << "translatedPoint: ";
+		print_vec3(translatedPoint);
+		std::cout << "\nscaledVector: ";
+		print_vec3(scaledVector);
+		std::cout << "\n";
+
+		passed &= expect(is_finite(identity), "is_finite(Mat4)");
+		passed &= expect(nearly_equal(identity, identity_mat4()), "identity_mat4()");
+		passed &= expect(nearly_equal(translatedPoint, Vec3{ 2.0f, 3.0f, 4.0f }), "transform_point(translation)");
+		passed &= expect(nearly_equal(scaledVector, Vec3{ 2.0f, 3.0f, 4.0f }), "transform_vector(scale)");
+
+		const Quaternion rotation = quaternion_from_axis_angle(Vec3{ 0.0f, 0.0f, 1.0f }, HalfPi);
+		const Mat4 composed = compose_trs(Vec3{ 1.0f, 0.0f, 0.0f }, rotation, Vec3{ 2.0f, 2.0f, 2.0f });
+
+		const Vec3 composedPoint = transform_point(composed, Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "compose_trs point: ";
+		print_vec3(composedPoint);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(composedPoint, Vec3{ 1.0f, 2.0f, 0.0f }, 0.001f), "compose_trs translation/rotation/scale");
+
+		const Mat4 inverse = inverse_or_identity(translation);
+		const Vec3 restoredPoint = transform_point(inverse, translatedPoint);
+
+		std::cout << "restoredPoint: ";
+		print_vec3(restoredPoint);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(restoredPoint, point, 0.001f), "inverse_or_identity(Mat4)");
+
+		const Vec3 normal = transform_normal(scale, Vec3{ 0.0f, 1.0f, 0.0f });
+
+		std::cout << "transform_normal: ";
+		print_vec3(normal);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(normal, Vec3{ 0.0f, 1.0f, 0.0f }, 0.001f), "transform_normal(Mat4)");
+
+		const Mat4 perspective = perspective_matrix(radians(60.0f), 16.0f / 9.0f, 0.1f, 100.0f);
+		const Mat4 orthographic = orthographic_matrix(-1.0f, 1.0f, -1.0f, 1.0f, 0.1f, 100.0f);
+
+		passed &= expect(is_finite(perspective), "perspective_matrix()");
+		passed &= expect(is_finite(orthographic), "orthographic_matrix()");
+
+		return passed;
+	}
+
+	bool test_quaternion()
+	{
+		std::cout << "\n=== Quaternion.h ===\n";
+
+		bool passed = true;
+
+		const Quaternion identity = identity_quaternion();
+		const Quaternion zRotation = quaternion_from_axis_angle(Vec3{ 0.0f, 0.0f, 1.0f }, HalfPi);
+		const Vec3 rotated = rotate_vector(zRotation, Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "identity: ";
+		print_quaternion(identity);
+		std::cout << "\nzRotation 90 graus em Z: ";
+		print_quaternion(zRotation);
+		std::cout << "\nrotated X: ";
+		print_vec3(rotated);
+		std::cout << "\n";
+
+		passed &= expect(is_finite(identity), "is_finite(Quaternion)");
+		passed &= expect(nearly_equal(identity, Quaternion{ 1.0f, 0.0f, 0.0f, 0.0f }), "identity_quaternion()");
+		passed &= expect(nearly_equal(rotated, Vec3{ 0.0f, 1.0f, 0.0f }, 0.001f), "rotate_vector 90 graus em Z");
+
+		const Quaternion fromEuler = quaternion_from_euler_xyz(Vec3{ 0.0f, 0.0f, HalfPi });
+		const Vec3 eulerRotated = rotate_vector(fromEuler, Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "eulerRotated X: ";
+		print_vec3(eulerRotated);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(eulerRotated, Vec3{ 0.0f, 1.0f, 0.0f }, 0.001f), "quaternion_from_euler_xyz()");
+
+		const Quaternion between = quaternion_between_vectors(Vec3{ 1.0f, 0.0f, 0.0f }, Vec3{ 0.0f, 1.0f, 0.0f });
+		const Vec3 betweenRotated = rotate_vector(between, Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "betweenRotated X->Y: ";
+		print_vec3(betweenRotated);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(betweenRotated, Vec3{ 0.0f, 1.0f, 0.0f }, 0.001f), "quaternion_between_vectors X para Y");
+
+		const Quaternion inverse = inverse_rotation(zRotation);
+		const Vec3 restored = rotate_vector(inverse, rotated);
+
+		std::cout << "restored apos inverse_rotation: ";
+		print_vec3(restored);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(restored, Vec3{ 1.0f, 0.0f, 0.0f }, 0.001f), "inverse_rotation()");
+
+		const Quaternion halfRotation = slerp(identity, zRotation, 0.5f);
+		const Vec3 halfRotated = rotate_vector(halfRotation, Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "halfRotated: ";
+		print_vec3(halfRotated);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(glm::length(halfRotated), 1.0f, 0.001f), "slerp() manteve vetor unitario");
+
+		return passed;
+	}
+
+	bool test_existing_math_integration()
+	{
+		std::cout << "\n=== Integracao com math existente ===\n";
+
+		bool passed = true;
+
+		Transform transform;
+		transform.translation = Vec3{ 1.0f, 2.0f, 3.0f };
+		transform.rotation = quaternion_from_axis_angle(Vec3{ 0.0f, 0.0f, 1.0f }, HalfPi);
+		transform.scale = Vec3{ 2.0f, 2.0f, 2.0f };
+
+		const Vec3 transformedPoint = transform.transform_point(Vec3{ 1.0f, 0.0f, 0.0f });
+
+		std::cout << "Transform::transform_point: ";
+		print_vec3(transformedPoint);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(transformedPoint, Vec3{ 1.0f, 4.0f, 3.0f }, 0.001f), "Transform integrado com Quaternion/Vec");
+
+		Bounds bounds = Bounds::empty();
+		bounds.expand(Vec3{ -1.0f, -2.0f, -3.0f });
+		bounds.expand(Vec3{ 1.0f, 2.0f, 3.0f });
+
+		std::cout << "Bounds center: ";
+		print_vec3(bounds.center());
+		std::cout << "\nBounds size: ";
+		print_vec3(bounds.size());
+		std::cout << "\n";
+
+		passed &= expect(bounds.is_valid(), "Bounds valido apos expand");
+		passed &= expect(nearly_equal(bounds.center(), Vec3{ 0.0f, 0.0f, 0.0f }), "Bounds::center()");
+		passed &= expect(nearly_equal(bounds.size(), Vec3{ 2.0f, 4.0f, 6.0f }), "Bounds::size()");
+		passed &= expect(bounds.contains(Vec3{ 0.0f, 0.0f, 0.0f }), "Bounds::contains()");
+
+		const float area = triangle_area(
+			Vec3{ 0.0f, 0.0f, 0.0f },
+			Vec3{ 1.0f, 0.0f, 0.0f },
+			Vec3{ 0.0f, 1.0f, 0.0f }
+		);
+
+		const Vec3 normal = triangle_normal(
+			Vec3{ 0.0f, 0.0f, 0.0f },
+			Vec3{ 1.0f, 0.0f, 0.0f },
+			Vec3{ 0.0f, 1.0f, 0.0f }
+		);
+
+		std::cout << "triangle_area: " << area << "\n";
+		std::cout << "triangle_normal: ";
+		print_vec3(normal);
+		std::cout << "\n";
+
+		passed &= expect(nearly_equal(area, 0.5f), "triangle_area()");
+		passed &= expect(nearly_equal(normal, Vec3{ 0.0f, 0.0f, 1.0f }), "triangle_normal()");
+
+		return passed;
+	}
 
 }
 
-int main() {
-    using namespace locus::kernel::geometry;
+int main()
+{
+	std::cout << std::fixed << std::setprecision(3);
 
-    BoxParameters boxParameters;
-    boxParameters.center = { 0.0f, 0.5f, 0.0f };
-    boxParameters.size = { 1.2f, 1.0f, 1.2f };
+	std::cout << "=== Locus3D Kernel Math Test ===\n";
 
-    CylinderParameters cylinderParameters;
-    cylinderParameters.center = { 0.0f, 0.5f, 0.0f };
-    cylinderParameters.radius = 0.55f;
-    cylinderParameters.height = 1.2f;
-    cylinderParameters.segments = 32;
-    cylinderParameters.capTop = true;
-    cylinderParameters.capBottom = true;
+	bool passed = true;
 
-    SphereParameters sphereParameters;
-    sphereParameters.center = { 0.0f, 0.65f, 0.0f };
-    sphereParameters.radius = 0.65f;
-    sphereParameters.longitudeSegments = 32;
-    sphereParameters.latitudeSegments = 16;
+	passed &= test_vec();
+	passed &= test_mat();
+	passed &= test_quaternion();
+	passed &= test_existing_math_integration();
 
-    ConeParameters coneParameters;
-    coneParameters.center = { 0.0f, 0.6f, 0.0f };
-    coneParameters.radius = 0.6f;
-    coneParameters.height = 1.2f;
-    coneParameters.segments = 32;
-    coneParameters.capBottom = true;
+	std::cout << "\nResultado final: " << (passed ? "PASS" : "FAIL") << "\n";
 
-    TorusParameters torusParameters;
-    torusParameters.center = { 0.0f, 0.7f, 0.0f };
-    torusParameters.majorRadius = 0.55f;
-    torusParameters.minorRadius = 0.18f;
-    torusParameters.majorSegments = 48;
-    torusParameters.minorSegments = 16;
-
-    LEM boxMesh;
-    LEM cylinderMesh;
-    LEM sphereMesh;
-    LEM coneMesh;
-    LEM torusMesh;
-
-    PrimitiveBuildResult boxResult = BoxBuilder::build_into(boxMesh, boxParameters);
-    PrimitiveBuildResult cylinderResult = CylinderBuilder::build_into(cylinderMesh, cylinderParameters);
-    PrimitiveBuildResult sphereResult = SphereBuilder::build_into(sphereMesh, sphereParameters);
-    PrimitiveBuildResult coneResult = ConeBuilder::build_into(coneMesh, coneParameters);
-    PrimitiveBuildResult torusResult = TorusBuilder::build_into(torusMesh, torusParameters);
-
-    std::cout << "primitive build results\n";
-    std::cout << "box: " << (boxResult.success ? "yes" : "no") << '\n';
-    std::cout << "cylinder: " << (cylinderResult.success ? "yes" : "no") << '\n';
-    std::cout << "sphere: " << (sphereResult.success ? "yes" : "no") << '\n';
-    std::cout << "cone: " << (coneResult.success ? "yes" : "no") << '\n';
-    std::cout << "torus: " << (torusResult.success ? "yes" : "no") << "\n\n";
-
-    if (!boxResult.success || !cylinderResult.success || !sphereResult.success || !coneResult.success || !torusResult.success) {
-        return 1;
-    }
-
-    locus::graphics::GraphicsConfig graphicsConfig;
-    graphicsConfig.requestedMajorVersion = 4;
-    graphicsConfig.requestedMinorVersion = 5;
-    graphicsConfig.enableDebugOutput = true;
-    graphicsConfig.enableVSync = true;
-
-    locus::graphics::WindowCreateInfo windowInfo;
-    windowInfo.width = 1280;
-    windowInfo.height = 720;
-    windowInfo.title = "Locus3D - Primitive Builders Visual Test";
-    windowInfo.openglMajorVersion = graphicsConfig.requestedMajorVersion;
-    windowInfo.openglMinorVersion = graphicsConfig.requestedMinorVersion;
-    windowInfo.openglDebugContext = graphicsConfig.enableDebugOutput;
-    windowInfo.openglCoreProfile = graphicsConfig.coreProfile;
-    windowInfo.openglForwardCompatible = graphicsConfig.forwardCompatible;
-
-    locus::graphics::Window window;
-    auto windowResult = window.create(windowInfo);
-
-    if (!windowResult) {
-        std::cerr << windowResult.error().message << '\n';
-        return 1;
-    }
-
-    locus::graphics::OpenGLContext context;
-    auto contextResult = context.initialize(window, graphicsConfig);
-
-    if (!contextResult) {
-        std::cerr << contextResult.error().message << '\n';
-        window.destroy();
-        return 1;
-    }
-
-    const auto& capabilities = context.capabilities();
-
-    std::cout << "OpenGL Vendor: " << capabilities.vendor << '\n';
-    std::cout << "OpenGL Renderer: " << capabilities.renderer << '\n';
-    std::cout << "OpenGL Version: " << capabilities.version << '\n';
-    std::cout << "GLSL Version: " << capabilities.shadingLanguageVersion << "\n\n";
-
-    locus::graphics::ShaderManager shaderManager;
-    shaderManager.set_shader_root("assets/shaders");
-
-    auto gridShaderResult = shaderManager.load(
-        "viewport/grid",
-        "viewport/grid_vert.glsl",
-        "viewport/grid_frag.glsl"
-    );
-
-    if (!gridShaderResult) {
-        std::cerr << gridShaderResult.error().message << '\n';
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    auto axisShaderResult = shaderManager.load(
-        "viewport/axis",
-        "viewport/axis_vert.glsl",
-        "viewport/axis_frag.glsl"
-    );
-
-    if (!axisShaderResult) {
-        std::cerr << axisShaderResult.error().message << '\n';
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    const std::string vertexShaderSource = R"(
-#version 450 core
-
-layout (location = 0) in vec3 a_Position;
-layout (location = 1) in vec3 a_Normal;
-layout (location = 2) in vec4 a_Color;
-
-uniform mat4 u_Model;
-uniform mat4 u_MVP;
-
-out vec3 v_Normal;
-out vec4 v_Color;
-
-void main() {
-    v_Normal = mat3(transpose(inverse(u_Model))) * a_Normal;
-    v_Color = a_Color;
-    gl_Position = u_MVP * vec4(a_Position, 1.0);
-}
-)";
-
-    const std::string fragmentShaderSource = R"(
-#version 450 core
-
-in vec3 v_Normal;
-in vec4 v_Color;
-
-uniform vec4 u_BaseColor;
-uniform int u_UseVertexColor;
-uniform int u_ShadingMode;
-
-uniform vec4 u_AmbientColor;
-uniform float u_AmbientIntensity;
-uniform vec3 u_LightDirection;
-uniform vec4 u_LightColor;
-uniform float u_LightIntensity;
-
-out vec4 FragColor;
-
-void main() {
-    vec4 baseColor = v_Color;
-
-    vec3 normal = normalize(v_Normal);
-    vec3 lightDirection = normalize(-u_LightDirection);
-
-    float diffuse = max(dot(normal, lightDirection), 0.0);
-
-    vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
-    vec3 light = u_LightColor.rgb * diffuse * u_LightIntensity;
-
-    vec3 finalColor = baseColor.rgb * (ambient + light);
-
-    FragColor = vec4(finalColor, baseColor.a);
-}
-)";
-
-    locus::graphics::Shader primitiveShader;
-    auto shaderResult = primitiveShader.create_from_source(vertexShaderSource, fragmentShaderSource);
-
-    if (!shaderResult) {
-        std::cerr << shaderResult.error().message << '\n';
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    locus::graphics::MeshUploader meshUploader;
-
-    std::vector<locus::graphics::GpuMesh> gpuMeshes;
-    gpuMeshes.reserve(5);
-
-    std::vector<locus::graphics::RenderObject> primitiveObjects;
-    primitiveObjects.reserve(5);
-
-    if (!add_visual_primitive(
-        "Box",
-        boxMesh,
-        { -4.0f, 0.0f, 0.0f },
-        { 0.2f, 0.75f, 1.0f, 1.0f },
-        NormalBuildMode::Flat,
-        meshUploader,
-        primitiveShader,
-        gpuMeshes,
-        primitiveObjects)) {
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    if (!add_visual_primitive(
-        "Cylinder",
-        cylinderMesh,
-        { -2.0f, 0.0f, 0.0f },
-        { 0.35f, 0.95f, 0.45f, 1.0f },
-        NormalBuildMode::Smooth,
-        meshUploader,
-        primitiveShader,
-        gpuMeshes,
-        primitiveObjects)) {
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    if (!add_visual_primitive(
-        "Sphere",
-        sphereMesh,
-        { 0.0f, 0.0f, 0.0f },
-        { 1.0f, 0.78f, 0.25f, 1.0f },
-        NormalBuildMode::Smooth,
-        meshUploader,
-        primitiveShader,
-        gpuMeshes,
-        primitiveObjects)) {
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    if (!add_visual_primitive(
-        "Cone",
-        coneMesh,
-        { 2.0f, 0.0f, 0.0f },
-        { 1.0f, 0.45f, 0.25f, 1.0f },
-        NormalBuildMode::Smooth,
-        meshUploader,
-        primitiveShader,
-        gpuMeshes,
-        primitiveObjects)) {
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    if (!add_visual_primitive(
-        "Torus",
-        torusMesh,
-        { 4.0f, 0.0f, 0.0f },
-        { 0.75f, 0.45f, 1.0f, 1.0f },
-        NormalBuildMode::Smooth,
-        meshUploader,
-        primitiveShader,
-        gpuMeshes,
-        primitiveObjects)) {
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    locus::graphics::GridRendererConfig gridConfig;
-    gridConfig.halfExtent = 500.0f;
-    gridConfig.minorSpacing = 1.0f;
-    gridConfig.majorSpacing = 5.0f;
-    gridConfig.fadeStart = 80.0f;
-    gridConfig.fadeEnd = 280.0f;
-
-    locus::graphics::GridRenderer gridRenderer;
-    auto gridResult = gridRenderer.create(meshUploader, shaderManager, gridConfig);
-
-    if (!gridResult) {
-        std::cerr << gridResult.error().message << '\n';
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    locus::graphics::AxisRendererConfig axisConfig;
-    axisConfig.extent = 500.0f;
-    axisConfig.verticalExtent = 40.0f;
-    axisConfig.planeOffset = 0.004f;
-
-    locus::graphics::AxisRenderer axisRenderer;
-    auto axisResult = axisRenderer.create(meshUploader, shaderManager, axisConfig);
-
-    if (!axisResult) {
-        std::cerr << axisResult.error().message << '\n';
-        gridRenderer.destroy();
-        destroy_gpu_meshes(gpuMeshes);
-        primitiveShader.destroy();
-        shaderManager.clear();
-        context.shutdown();
-        window.destroy();
-        return 1;
-    }
-
-    locus::graphics::Viewport viewport;
-    viewport.set_clear_color(graphicsConfig.defaultClearColor);
-
-    viewport.camera().projection().set_perspective(
-        0.78539816339f,
-        16.0f / 9.0f,
-        0.01f,
-        1000.0f
-    );
-
-    locus::graphics::OrbitCameraRig orbitRig;
-    orbitRig.set_target({ 0.0f, 0.6f, 0.0f });
-    orbitRig.set_distance(9.0f);
-    orbitRig.set_angles(0.65f, 0.65f);
-    orbitRig.apply(viewport.camera());
-
-    locus::graphics::LightEnvironment lightEnvironment;
-    lightEnvironment.reset_default_viewport_lighting();
-
-    locus::graphics::Renderer renderer;
-    renderer.set_light_environment(&lightEnvironment);
-
-    locus::graphics::RenderPipeline pipeline;
-
-    while (!window.should_close()) {
-        window.poll_events();
-
-        viewport.sync_with_window(window);
-        orbitRig.apply(viewport.camera());
-
-        gridRenderer.update(viewport.camera());
-
-        renderer.set_view_matrix(viewport.camera().view_matrix());
-        renderer.set_projection_matrix(viewport.camera().projection_matrix());
-
-        pipeline.begin_frame();
-        pipeline.reserve(primitiveObjects.size() + 2);
-
-        pipeline.submit(gridRenderer.render_object());
-
-        for (const locus::graphics::RenderObject& object : primitiveObjects) {
-            pipeline.submit(object);
-        }
-
-        pipeline.submit(axisRenderer.render_object());
-
-        viewport.begin_frame();
-        pipeline.render(renderer);
-
-        context.swap_buffers();
-    }
-
-    axisRenderer.destroy();
-    gridRenderer.destroy();
-    destroy_gpu_meshes(gpuMeshes);
-    primitiveShader.destroy();
-    shaderManager.clear();
-    context.shutdown();
-    window.destroy();
-
-    return 0;
+	return passed ? EXIT_SUCCESS : EXIT_FAILURE;
 }
