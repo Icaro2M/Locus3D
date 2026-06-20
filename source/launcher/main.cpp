@@ -1,11 +1,13 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 #include "kernel/geometry/primitives/BoxBuilder.h"
 #include "kernel/geometry/primitives/PrimitiveParameters.h"
-#include "kernel/geometry/render/MeshTriangulator.h"
 #include "kernel/io/FormatRegistry.h"
-#include "kernel/io/StlExporter.h"
+#include "kernel/io/ObjExporter.h"
 
-#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -31,23 +33,23 @@ namespace {
 		return false;
 	}
 
-	std::uint32_t read_binary_stl_triangle_count(const std::filesystem::path& path)
+	std::size_t count_lines_starting_with(const std::filesystem::path& path, const std::string& prefix)
 	{
-		std::ifstream file(path, std::ios::binary);
+		std::ifstream file(path);
 		if (!file) {
 			return 0;
 		}
 
-		file.seekg(80, std::ios::beg);
+		std::size_t count = 0;
+		std::string line;
 
-		std::uint32_t triangleCount = 0;
-		file.read(reinterpret_cast<char*>(&triangleCount), sizeof(triangleCount));
-
-		if (!file) {
-			return 0;
+		while (std::getline(file, line)) {
+			if (line.rfind(prefix, 0) == 0) {
+				++count;
+			}
 		}
 
-		return triangleCount;
+		return count;
 	}
 
 	bool file_contains_text(const std::filesystem::path& path, const std::string& text)
@@ -65,15 +67,36 @@ namespace {
 		return content.find(text) != std::string::npos;
 	}
 
-	void print_mesh_summary(const LEM& mesh, const RenderMesh& renderMesh)
+	void print_file_preview(const std::filesystem::path& path, std::size_t maxLines = 16)
+	{
+		std::ifstream file(path);
+		if (!file) {
+			std::cout << "Nao foi possivel abrir preview do arquivo.\n";
+			return;
+		}
+
+		std::cout << "\n=== OBJ preview ===\n";
+
+		std::string line;
+		std::size_t lineCount = 0;
+
+		while (lineCount < maxLines && std::getline(file, line)) {
+			std::cout << line << '\n';
+			++lineCount;
+		}
+
+		if (file.good()) {
+			std::cout << "...\n";
+		}
+	}
+
+	void print_mesh_summary(const LEM& mesh)
 	{
 		std::cout << "\n=== Mesh summary ===\n";
-		std::cout << "LEM vertices:  " << mesh.vertex_count() << '\n';
-		std::cout << "LEM edges:     " << mesh.edge_count() << '\n';
-		std::cout << "LEM loops:     " << mesh.loop_count() << '\n';
-		std::cout << "LEM faces:     " << mesh.face_count() << '\n';
-		std::cout << "Render verts:  " << renderMesh.vertex_count() << '\n';
-		std::cout << "Triangles:     " << renderMesh.triangle_count() << '\n';
+		std::cout << "LEM vertices: " << mesh.vertex_count() << '\n';
+		std::cout << "LEM edges:    " << mesh.edge_count() << '\n';
+		std::cout << "LEM loops:    " << mesh.loop_count() << '\n';
+		std::cout << "LEM faces:    " << mesh.face_count() << '\n';
 	}
 
 	bool test_registry()
@@ -83,23 +106,23 @@ namespace {
 		bool passed = true;
 
 		FormatRegistry registry;
-		auto exporter = std::make_shared<StlExporter>();
+		auto exporter = std::make_shared<ObjExporter>();
 
 		passed &= expect(registry.empty(), "registry começa vazio");
-		passed &= expect(registry.register_exporter(exporter), "registrou StlExporter");
+		passed &= expect(registry.register_exporter(exporter), "registrou ObjExporter");
 		passed &= expect(registry.exporter_count() == 1, "registry possui 1 exporter");
-		passed &= expect(registry.can_export(MeshFormat::Stl), "can_export(STL)");
-		passed &= expect(registry.can_export_path("model.stl"), "can_export_path(model.stl)");
-		passed &= expect(registry.can_export_path("MODEL.STL"), "can_export_path(MODEL.STL)");
-		passed &= expect(registry.find_exporter(MeshFormat::Stl) != nullptr, "find_exporter(STL)");
-		passed &= expect(registry.find_exporter_for_path("box.stl") != nullptr, "find_exporter_for_path(box.stl)");
+		passed &= expect(registry.can_export(MeshFormat::Obj), "can_export(OBJ)");
+		passed &= expect(registry.can_export_path("model.obj"), "can_export_path(model.obj)");
+		passed &= expect(registry.can_export_path("MODEL.OBJ"), "can_export_path(MODEL.OBJ)");
+		passed &= expect(registry.find_exporter(MeshFormat::Obj) != nullptr, "find_exporter(OBJ)");
+		passed &= expect(registry.find_exporter_for_path("box.obj") != nullptr, "find_exporter_for_path(box.obj)");
 
 		return passed;
 	}
 
-	bool test_stl_export()
+	bool test_obj_export()
 	{
-		std::cout << "\n=== STL export test ===\n";
+		std::cout << "\n=== OBJ export test ===\n";
 
 		bool passed = true;
 
@@ -108,78 +131,60 @@ namespace {
 		parameters.size = { 2.0f, 2.0f, 2.0f };
 
 		LEM mesh = BoxBuilder::build(parameters);
-		RenderMesh renderMesh = MeshTriangulator::triangulate(mesh);
 
-		print_mesh_summary(mesh, renderMesh);
+		print_mesh_summary(mesh);
 
 		passed &= expect(!mesh.empty(), "BoxBuilder gerou uma LEM não vazia");
 		passed &= expect(mesh.vertex_count() == 8, "box possui 8 vertices na LEM");
 		passed &= expect(mesh.edge_count() == 12, "box possui 12 edges na LEM");
+		passed &= expect(mesh.loop_count() == 24, "box possui 24 loops na LEM");
 		passed &= expect(mesh.face_count() == 6, "box possui 6 faces na LEM");
-		passed &= expect(renderMesh.triangle_count() == 12, "box triangulada possui 12 triangulos");
 
-		const std::filesystem::path outputDirectory = "stl_test_output";
-		const std::filesystem::path asciiPath = outputDirectory / "locus_box_ascii.stl";
-		const std::filesystem::path binaryPath = outputDirectory / "locus_box_binary.stl";
+		const std::filesystem::path outputDirectory = "obj_test_output";
+		const std::filesystem::path objPath = outputDirectory / "locus_box.obj";
 
 		std::error_code errorCode;
 		std::filesystem::create_directories(outputDirectory, errorCode);
 
 		passed &= expect(!errorCode, "diretorio de saida criado");
 
-		StlExporter exporter;
+		ObjExporter exporter;
 
-		MeshExportOptions asciiOptions;
-		asciiOptions.preferBinary = false;
-		asciiOptions.triangulateFaces = true;
+		MeshExportOptions options;
+		options.skipInactiveElements = true;
+		options.triangulateFaces = false;
+		options.writeNormals = false;
+		options.preferBinary = false;
 
-		MeshExportOptions binaryOptions;
-		binaryOptions.preferBinary = true;
-		binaryOptions.triangulateFaces = true;
+		const Result<void> exportResult = exporter.export_mesh(mesh, objPath, options);
 
-		const Result<void> asciiResult = exporter.export_mesh(mesh, asciiPath, asciiOptions);
-		const Result<void> binaryResult = exporter.export_mesh(mesh, binaryPath, binaryOptions);
-
-		if (asciiResult.is_error()) {
-			std::cout << "ASCII STL error: " << asciiResult.error().message << '\n';
+		if (exportResult.is_error()) {
+			std::cout << "OBJ export error: " << exportResult.error().message << '\n';
 		}
 
-		if (binaryResult.is_error()) {
-			std::cout << "Binary STL error: " << binaryResult.error().message << '\n';
-		}
+		passed &= expect(exportResult.is_ok(), "exportou OBJ");
+		passed &= expect(std::filesystem::exists(objPath), "arquivo OBJ existe");
 
-		passed &= expect(asciiResult.is_ok(), "exportou STL ASCII");
-		passed &= expect(binaryResult.is_ok(), "exportou STL binario");
-
-		passed &= expect(std::filesystem::exists(asciiPath), "arquivo ASCII existe");
-		passed &= expect(std::filesystem::exists(binaryPath), "arquivo binario existe");
-
-		const std::uintmax_t asciiSize = std::filesystem::exists(asciiPath)
-			? std::filesystem::file_size(asciiPath)
+		const std::uintmax_t objSize = std::filesystem::exists(objPath)
+			? std::filesystem::file_size(objPath)
 			: 0;
 
-		const std::uintmax_t binarySize = std::filesystem::exists(binaryPath)
-			? std::filesystem::file_size(binaryPath)
-			: 0;
+		const std::size_t vertexLineCount = count_lines_starting_with(objPath, "v ");
+		const std::size_t faceLineCount = count_lines_starting_with(objPath, "f ");
 
-		const std::uintmax_t expectedBinarySize = 84 + renderMesh.triangle_count() * 50;
+		std::cout << "\n=== File ===\n";
+		std::cout << "OBJ: " << objPath.string() << " (" << objSize << " bytes)\n";
+		std::cout << "Vertex lines: " << vertexLineCount << '\n';
+		std::cout << "Face lines:   " << faceLineCount << '\n';
 
-		std::cout << "\n=== Files ===\n";
-		std::cout << "ASCII STL:  " << asciiPath.string() << " (" << asciiSize << " bytes)\n";
-		std::cout << "Binary STL: " << binaryPath.string() << " (" << binarySize << " bytes)\n";
-		std::cout << "Expected binary STL size: " << expectedBinarySize << " bytes\n";
+		passed &= expect(objSize > 0, "arquivo OBJ nao esta vazio");
+		passed &= expect(vertexLineCount == 8, "OBJ possui 8 linhas de vertices");
+		passed &= expect(faceLineCount == 6, "OBJ possui 6 linhas de faces");
+		passed &= expect(file_contains_text(objPath, "# Locus3D OBJ export"), "OBJ contem cabecalho Locus3D");
+		passed &= expect(file_contains_text(objPath, "o locus_box"), "OBJ contem nome do objeto");
+		passed &= expect(file_contains_text(objPath, "f "), "OBJ contem faces");
 
-		passed &= expect(asciiSize > 0, "arquivo ASCII nao esta vazio");
-		passed &= expect(binarySize == expectedBinarySize, "tamanho do STL binario bate com 84 + triangulos * 50");
-
-		const std::uint32_t binaryTriangleCount = read_binary_stl_triangle_count(binaryPath);
-
-		std::cout << "Binary triangle count read from file: " << binaryTriangleCount << '\n';
-
-		passed &= expect(binaryTriangleCount == renderMesh.triangle_count(), "contador de triangulos no STL binario esta correto");
-		passed &= expect(file_contains_text(asciiPath, "solid locus_box_ascii"), "ASCII STL contem solid name");
-		passed &= expect(file_contains_text(asciiPath, "facet normal"), "ASCII STL contem facets");
-		passed &= expect(file_contains_text(asciiPath, "vertex"), "ASCII STL contem vertices");
+		print_file_preview(objPath);
 
 		return passed;
 	}
@@ -189,12 +194,12 @@ namespace {
 int main()
 {
 	std::cout << std::fixed << std::setprecision(3);
-	std::cout << "=== Locus3D STL Export Test ===\n";
+	std::cout << "=== Locus3D OBJ Export Test ===\n";
 
 	bool passed = true;
 
 	passed &= test_registry();
-	passed &= test_stl_export();
+	passed &= test_obj_export();
 
 	std::cout << "\nResultado final: " << (passed ? "PASS" : "FAIL") << '\n';
 

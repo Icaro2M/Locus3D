@@ -177,7 +177,7 @@ source\kernel
 |       IImporter.h
 |       StlExporter.h
 |       StlImporter.h [!]
-|       ObjExporter.h [!]
+|       ObjExporter.h
 |       ObjImporter.h [!]
 |       ThreeMFExporter.h [!]
 |       FormatRegistry.h
@@ -232,14 +232,9 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/preview/OperationPreview.h`
 - [!] `modeling/preview/PreviewMesh.h`
 - [!] `modeling/preview/GhostMeshBuilder.h`
-- [!] `io/IExporter.h`
-- [!] `io/IImporter.h`
-- [!] `io/StlExporter.h`
 - [!] `io/StlImporter.h`
-- [!] `io/ObjExporter.h`
 - [!] `io/ObjImporter.h`
 - [!] `io/ThreeMFExporter.h`
-- [!] `io/FormatRegistry.h`
 - [!] `validation/pipeline/ValidationPipeline.h`
 - [!] `validation/pipeline/ValidationContext.h`
 - [!] `validation/pipeline/ValidationReport.h`
