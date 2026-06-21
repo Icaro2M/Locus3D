@@ -23,9 +23,7 @@ FILE_PATTERNS          = *.h \
                          *.cxx \
                          *.cc \
                          *.md
-EXCLUDE                = src \
-                         vendor \
-                         extern \
+EXCLUDE                = extern \
                          out \
                          build \
                          .git \
@@ -34,9 +32,7 @@ EXCLUDE_PATTERNS       = */.git/* \
                          */.vs/* \
                          */out/* \
                          */build/* \
-                         */extern/* \
-                         */vendor/* \
-                         */src/*
+                         */extern/*
 
 EXTRACT_ALL            = NO
 EXTRACT_PRIVATE        = NO

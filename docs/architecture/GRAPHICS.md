@@ -244,7 +244,7 @@ They should be added only when the higher-level state they depend on becomes cle
 When changing graphics code:
 
 - Prefer including the root aggregator that matches the subsystem boundary instead of reaching into many unrelated internal headers.
-- Keep `src/` and `vendor/` out of production changes; production code lives under `source/` and production dependencies under `extern/`.
+- Keep production changes under `source/` and production dependencies under `extern/`; the legacy MVP `src/` and `vendor/` trees have been removed.
 - Keep editor/application state above `source/graphics/`.
 - Treat render passes, picking, overlays, and debug helpers as graphics services that receive explicit state from higher layers.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

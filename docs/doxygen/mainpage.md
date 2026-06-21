@@ -2,7 +2,7 @@
 
 This documentation describes the production code under `source/`.
 
-The previous MVP code in `src/` and third-party code in `vendor/` are intentionally outside this documentation set. Production dependencies in `extern/` are also excluded so the generated pages stay focused on Locus3D's own API.
+The previous MVP code and vendored third-party tree have been removed from the production workspace. Production dependencies in `extern/` are excluded so the generated pages stay focused on Locus3D's own API.
 
 ## Current Focus
 
