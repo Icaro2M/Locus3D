@@ -190,6 +190,10 @@ source\kernel
 |       FormatRegistry.h
 |
 +---validation
+|   |       Validation.h
+|   |       ValidationChecks.h
+|   |       ValidationCore.h
+|   | 
 |   +---core
 |   |       ValidationContext.h
 |   |       ValidationReport.h

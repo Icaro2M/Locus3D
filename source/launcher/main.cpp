@@ -1,13 +1,6 @@
 #include "kernel/geometry/mesh/LEM.h"
-#include "kernel/validation/checks/geometry/DegenerateEditableFaceCheck.h"
-#include "kernel/validation/checks/geometry/InvalidPositionCheck.h"
-#include "kernel/validation/checks/lem/ElementReferenceCheck.h"
-#include "kernel/validation/checks/lem/FaceCycleCheck.h"
-#include "kernel/validation/checks/lem/HandleValidityCheck.h"
-#include "kernel/validation/checks/lem/RadialCycleCheck.h"
-#include "kernel/validation/checks/topology/ConnectivityConsistencyCheck.h"
-#include "kernel/validation/core/ValidationReport.h"
-#include "kernel/validation/pipeline/ValidationPipeline.h"
+#include "kernel/validation/validation.h"
+
 
 #include <cstdlib>
 #include <iomanip>
