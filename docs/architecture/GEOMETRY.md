@@ -191,18 +191,18 @@ source\kernel
 |
 +---validation
 |   +---core
-|   |       ValidationContext.h [!]
-|   |       ValidationReport.h [!]
-|   |       ValidationIssue.h [!]
-|   |       ValidationSeverity.h [!]
-|   |       IValidationCheck.h [!]
+|   |       ValidationContext.h
+|   |       ValidationReport.h
+|   |       ValidationIssue.h
+|   |       ValidationSeverity.h
+|   |       IValidationCheck.h
 |   |
 |   +---checks
 |   |   +---lem
-|   |   |       HandleValidityCheck.h [!]
-|   |   |       FaceCycleCheck.h [!]
-|   |   |       RadialCycleCheck.h [!]
-|   |   |       ElementReferenceCheck.h [!]
+|   |   |       HandleValidityCheck.h
+|   |   |       FaceCycleCheck.h
+|   |   |       RadialCycleCheck.h
+|   |   |       ElementReferenceCheck.h
 |   |   |
 |   |   +---topology
 |   |   |       TopologyCacheCheck.h [!]
@@ -213,8 +213,8 @@ source\kernel
 |   |           DegenerateEditableFaceCheck.h [!]
 |   |
 |   \---pipeline
-|           ValidationPipeline.h [!]
-|           ValidationMode.h [!]
+|           ValidationPipeline.h
+|           ValidationMode.h
 |
 \---manufacturing [!]
     +---core
@@ -298,21 +298,10 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/preview/PreviewMesh.h`
 - [!] `modeling/preview/GhostMeshBuilder.h`
 - [!] `io/ThreeMFExporter.h`
-- [!] `validation/core/ValidationContext.h`
-- [!] `validation/core/ValidationReport.h`
-- [!] `validation/core/ValidationIssue.h`
-- [!] `validation/core/ValidationSeverity.h`
-- [!] `validation/core/IValidationCheck.h`
-- [!] `validation/checks/lem/HandleValidityCheck.h`
-- [!] `validation/checks/lem/FaceCycleCheck.h`
-- [!] `validation/checks/lem/RadialCycleCheck.h`
-- [!] `validation/checks/lem/ElementReferenceCheck.h`
 - [!] `validation/checks/topology/TopologyCacheCheck.h`
 - [!] `validation/checks/topology/ConnectivityConsistencyCheck.h`
 - [!] `validation/checks/geometry/InvalidPositionCheck.h`
 - [!] `validation/checks/geometry/DegenerateEditableFaceCheck.h`
-- [!] `validation/pipeline/ValidationPipeline.h`
-- [!] `validation/pipeline/ValidationMode.h`
 - [!] `manufacturing/core/IAnalyzer.h`
 - [!] `manufacturing/core/AnalysisContext.h`
 - [!] `manufacturing/core/AnalysisReport.h`
