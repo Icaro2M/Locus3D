@@ -10,7 +10,7 @@ For the editable mesh design, see [`LEM.md`](LEM.md).
 
 ## Geometry Layer
 
-The geometry layer is the modeling kernel foundation. It owns editable mesh data structures, topology utilities, geometry math, spatial queries, modeling operations, import/export boundaries, and validation for printable geometry.
+The geometry layer is the modeling kernel foundation. It owns editable mesh data structures, topology utilities, geometry math, spatial queries, modeling operations, import/export boundaries, internal validation, and planned manufacturing analysis for printable geometry.
 
 It should not own high-level editor state. Systems such as tools, UI panels, command history, scene/object management, selection workflows, snapping state, and viewport interaction should live above this layer and call into it through explicit geometry/modeling APIs.
 
@@ -20,7 +20,7 @@ Conceptually:
 application/editor/tools
         |
         v
-source/kernel modeling and validation APIs
+source/kernel modeling, validation, and planned manufacturing APIs
         |
         v
 editable geometry, topology, queries, and derived render data
@@ -45,7 +45,14 @@ source/graphics render upload and viewport presentation
 - `modeling/operations/`: concrete mesh modeling operations grouped by face, edge, topology, and transform behavior.
 - `modeling/preview/`: non-destructive operation previews, ghost meshes, and preview strategy interfaces.
 - `io/`: import/export interfaces and format-specific mesh serialization.
-- `validation/`: validation pipeline, reports, and checks for topology, geometric consistency, and 3D-printability.
+- `validation/`: internal kernel validation pipeline, reports, and checks for LEM/topology/geometric consistency. This module protects editable-mesh invariants and supports modeling tools; it is not the user-facing printability analyzer.
+- `manufacturing/`: planned manufacturing and printability analysis module. This module will evaluate whether geometry is suitable for 3D printing under a print profile, including manifoldness, watertightness, thin walls, overhangs, islands, self-intersections, and similar fabrication concerns. It should be implemented after the geometry layer is stable.
+
+### Validation And Manufacturing Boundary
+
+`validation/` is an internal correctness module. It should answer whether the editable mesh and related kernel data are structurally coherent enough for tools, operations, derived data builders, import/export, and debugging.
+
+`manufacturing/` is a planned fabrication-analysis module. It should answer whether a mesh is suitable for 3D printing under an explicit print profile. This module is intentionally deferred until the core geometry layer has stable topology, triangulation, spatial queries, and modeling invariants.
 
 ---
 
@@ -182,25 +189,83 @@ source\kernel
 |       ThreeMFExporter.h [!]
 |       FormatRegistry.h
 |
-\---validation
-    +---pipeline
-    |       ValidationPipeline.h [!]
-    |       ValidationContext.h [!]
-    |       ValidationReport.h [!]
++---validation
+|   +---core
+|   |       ValidationContext.h [!]
+|   |       ValidationReport.h [!]
+|   |       ValidationIssue.h [!]
+|   |       ValidationSeverity.h [!]
+|   |       IValidationCheck.h [!]
+|   |
+|   +---checks
+|   |   +---lem
+|   |   |       HandleValidityCheck.h [!]
+|   |   |       FaceCycleCheck.h [!]
+|   |   |       RadialCycleCheck.h [!]
+|   |   |       ElementReferenceCheck.h [!]
+|   |   |
+|   |   +---topology
+|   |   |       TopologyCacheCheck.h [!]
+|   |   |       ConnectivityConsistencyCheck.h [!]
+|   |   |
+|   |   \---geometry
+|   |           InvalidPositionCheck.h [!]
+|   |           DegenerateEditableFaceCheck.h [!]
+|   |
+|   \---pipeline
+|           ValidationPipeline.h [!]
+|           ValidationMode.h [!]
+|
+\---manufacturing [!]
+    +---core
+    |       IAnalyzer.h [!]
+    |       AnalysisContext.h [!]
+    |       AnalysisReport.h [!]
+    |       PrintIssue.h [!]
+    |       PrintIssueType.h [!]
+    |       IssueSeverity.h [!]
     |
-    \---checks
-        +---topology
-        |       ManifoldCheck.h [!]
-        |       BoundaryCheck.h [!]
-        |
-        +---geometry
-        |       NormalConsistencyCheck.h [!]
-        |       DegenerateCheck.h [!]
-        |       IntersectionCheck.h [!]
-        |
-        \---printability
-                ThinWallCheck.h [!]
-                PrintabilityCheck.h [!]
+    +---profiles
+    |       PrintProfile.h [!]
+    |       PrintTechnology.h [!]
+    |       FDMProfile.h [!]
+    |       SLAProfile.h [!]
+    |       SLSProfile.h [!]
+    |       ProfileRegistry.h [!]
+    |
+    +---mesh
+    |       AnalysisMesh.h [!]
+    |       AnalysisMeshBuilder.h [!]
+    |       MeshHandleMapping.h [!]
+    |
+    +---analyzers
+    |   +---topology
+    |   |       ManifoldAnalyzer.h [!]
+    |   |       WatertightAnalyzer.h [!]
+    |   |       NormalConsistencyAnalyzer.h [!]
+    |   |       IslandAnalyzer.h [!]
+    |   |
+    |   +---geometry
+    |   |       DegenerateGeometryAnalyzer.h [!]
+    |   |       SelfIntersectionAnalyzer.h [!]
+    |   |
+    |   +---thinwall
+    |   |       IThinWallAnalyzer.h [!]
+    |   |       ThinWallQuality.h [!]
+    |   |       ThinWallAnalyzerFactory.h [!]
+    |   |       CurvatureApproxAnalyzer.h [!]
+    |   |       RaycastThinWallAnalyzer.h [!]
+    |   |       ComputeThinWallAnalyzer.h [!]
+    |   |
+    |   \---process
+    |           OverhangAnalyzer.h [!]
+    |           MinimumFeatureSizeAnalyzer.h [!]
+    |           SupportRequirementAnalyzer.h [!]
+    |           VolumeAnalyzer.h [!]
+    |
+    \---pipeline
+            AnalysisPipeline.h [!]
+            AnalysisScheduler.h [!]
 ```
 
 ---
@@ -233,18 +298,56 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/preview/PreviewMesh.h`
 - [!] `modeling/preview/GhostMeshBuilder.h`
 - [!] `io/ThreeMFExporter.h`
+- [!] `validation/core/ValidationContext.h`
+- [!] `validation/core/ValidationReport.h`
+- [!] `validation/core/ValidationIssue.h`
+- [!] `validation/core/ValidationSeverity.h`
+- [!] `validation/core/IValidationCheck.h`
+- [!] `validation/checks/lem/HandleValidityCheck.h`
+- [!] `validation/checks/lem/FaceCycleCheck.h`
+- [!] `validation/checks/lem/RadialCycleCheck.h`
+- [!] `validation/checks/lem/ElementReferenceCheck.h`
+- [!] `validation/checks/topology/TopologyCacheCheck.h`
+- [!] `validation/checks/topology/ConnectivityConsistencyCheck.h`
+- [!] `validation/checks/geometry/InvalidPositionCheck.h`
+- [!] `validation/checks/geometry/DegenerateEditableFaceCheck.h`
 - [!] `validation/pipeline/ValidationPipeline.h`
-- [!] `validation/pipeline/ValidationContext.h`
-- [!] `validation/pipeline/ValidationReport.h`
-- [!] `validation/checks/topology/ManifoldCheck.h`
-- [!] `validation/checks/topology/BoundaryCheck.h`
-- [!] `validation/checks/geometry/NormalConsistencyCheck.h`
-- [!] `validation/checks/geometry/DegenerateCheck.h`
-- [!] `validation/checks/geometry/IntersectionCheck.h`
-- [!] `validation/checks/printability/ThinWallCheck.h`
-- [!] `validation/checks/printability/PrintabilityCheck.h`
+- [!] `validation/pipeline/ValidationMode.h`
+- [!] `manufacturing/core/IAnalyzer.h`
+- [!] `manufacturing/core/AnalysisContext.h`
+- [!] `manufacturing/core/AnalysisReport.h`
+- [!] `manufacturing/core/PrintIssue.h`
+- [!] `manufacturing/core/PrintIssueType.h`
+- [!] `manufacturing/core/IssueSeverity.h`
+- [!] `manufacturing/profiles/PrintProfile.h`
+- [!] `manufacturing/profiles/PrintTechnology.h`
+- [!] `manufacturing/profiles/FDMProfile.h`
+- [!] `manufacturing/profiles/SLAProfile.h`
+- [!] `manufacturing/profiles/SLSProfile.h`
+- [!] `manufacturing/profiles/ProfileRegistry.h`
+- [!] `manufacturing/mesh/AnalysisMesh.h`
+- [!] `manufacturing/mesh/AnalysisMeshBuilder.h`
+- [!] `manufacturing/mesh/MeshHandleMapping.h`
+- [!] `manufacturing/analyzers/topology/ManifoldAnalyzer.h`
+- [!] `manufacturing/analyzers/topology/WatertightAnalyzer.h`
+- [!] `manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h`
+- [!] `manufacturing/analyzers/topology/IslandAnalyzer.h`
+- [!] `manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h`
+- [!] `manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h`
+- [!] `manufacturing/analyzers/thinwall/IThinWallAnalyzer.h`
+- [!] `manufacturing/analyzers/thinwall/ThinWallQuality.h`
+- [!] `manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h`
+- [!] `manufacturing/analyzers/thinwall/CurvatureApproxAnalyzer.h`
+- [!] `manufacturing/analyzers/thinwall/RaycastThinWallAnalyzer.h`
+- [!] `manufacturing/analyzers/thinwall/ComputeThinWallAnalyzer.h`
+- [!] `manufacturing/analyzers/process/OverhangAnalyzer.h`
+- [!] `manufacturing/analyzers/process/MinimumFeatureSizeAnalyzer.h`
+- [!] `manufacturing/analyzers/process/SupportRequirementAnalyzer.h`
+- [!] `manufacturing/analyzers/process/VolumeAnalyzer.h`
+- [!] `manufacturing/pipeline/AnalysisPipeline.h`
+- [!] `manufacturing/pipeline/AnalysisScheduler.h`
 
-These should be added as their owning boundaries become clear. In particular, modeling operations should depend on stable LEM editing primitives and explicit operation contexts, while validation and printability checks should stay independent from editor UI and viewport state.
+These should be added as their owning boundaries become clear. In particular, modeling operations should depend on stable LEM editing primitives and explicit operation contexts. Internal validation should stay focused on mesh/kernel invariants, while manufacturing analysis should stay independent from editor UI and viewport state and should be implemented after the geometry layer is stable enough to provide reliable derived analysis meshes.
 
 ---
 
@@ -274,6 +377,8 @@ When changing geometry code:
 - Prefer keeping editable topology in LEM and derived data in render, query, spatial, export, or validation modules.
 - Keep viewport rendering, GPU upload, object selection state, tool state, and UI interaction outside `source/kernel/`.
 - Add modeling operations only after their mesh mutation invariants are clear and covered by topology validation.
-- Treat triangulation, normals, wireframes, BVHs, and export meshes as rebuildable derived data.
+- Treat triangulation, normals, wireframes, BVHs, export meshes, and future manufacturing analysis meshes as rebuildable derived data.
+- Keep `validation/` focused on internal correctness and tool support; do not add user-facing printability policy there.
+- Keep `manufacturing/` focused on fabrication analysis under print profiles; implement it after the geometry layer has stable topology, triangulation, spatial queries, and modeling invariants.
 - Prefer typed handles and explicit validation over raw pointers or implicit ownership between mesh elements.
 - Update this document when files are added, renamed, or promoted from planned to implemented.
