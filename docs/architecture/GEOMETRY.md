@@ -206,7 +206,7 @@ source\kernel
 |   |   |
 |   |   +---topology
 |   |   |       TopologyCacheCheck.h [!]
-|   |   |       ConnectivityConsistencyCheck.h [!]
+|   |   |       ConnectivityConsistencyCheck.h
 |   |   |
 |   |   \---geometry
 |   |           InvalidPositionCheck.h
@@ -299,7 +299,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/preview/GhostMeshBuilder.h`
 - [!] `io/ThreeMFExporter.h`
 - [!] `validation/checks/topology/TopologyCacheCheck.h`
-- [!] `validation/checks/topology/ConnectivityConsistencyCheck.h`
 - [!] `manufacturing/core/IAnalyzer.h`
 - [!] `manufacturing/core/AnalysisContext.h`
 - [!] `manufacturing/core/AnalysisReport.h`

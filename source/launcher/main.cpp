@@ -5,6 +5,7 @@
 #include "kernel/validation/checks/lem/FaceCycleCheck.h"
 #include "kernel/validation/checks/lem/HandleValidityCheck.h"
 #include "kernel/validation/checks/lem/RadialCycleCheck.h"
+#include "kernel/validation/checks/topology/ConnectivityConsistencyCheck.h"
 #include "kernel/validation/core/ValidationReport.h"
 #include "kernel/validation/pipeline/ValidationPipeline.h"
 
@@ -81,6 +82,7 @@ namespace {
         pipeline.add_check(std::make_unique<RadialCycleCheck>());
         pipeline.add_check(std::make_unique<InvalidPositionCheck>());
         pipeline.add_check(std::make_unique<DegenerateEditableFaceCheck>());
+        pipeline.add_check(std::make_unique<ConnectivityConsistencyCheck>());
         return pipeline;
     }
 
@@ -311,6 +313,51 @@ namespace {
         return expect(report.has_errors(), "face com posicoes repetidas gera erro");
     }
 
+    bool test_connectivity_vertex_incident_edge_mismatch()
+    {
+        std::cout << "\n=== Validacao: conectividade vertex-edge inconsistente ===\n";
+
+        const ValidationPipeline pipeline = make_pipeline();
+        LEM mesh = make_quad();
+
+        mesh.vertex(VertexHandle(0)).edge = EdgeHandle(2);
+
+        const ValidationReport report = pipeline.validate(ValidationContext{ &mesh });
+        print_report(report);
+
+        return expect(report.has_errors(), "vertex apontando para edge nao incidente gera erro");
+    }
+
+    bool test_connectivity_loop_unreachable_from_face()
+    {
+        std::cout << "\n=== Validacao: loop fora do ciclo da face ===\n";
+
+        const ValidationPipeline pipeline = make_pipeline();
+        LEM mesh = make_quad();
+
+        mesh.loop(LoopHandle(0)).face = FaceHandle(999);
+
+        const ValidationReport report = pipeline.validate(ValidationContext{ &mesh });
+        print_report(report);
+
+        return expect(report.has_errors(), "loop fora da face valida gera erro");
+    }
+
+    bool test_connectivity_loop_unreachable_from_edge()
+    {
+        std::cout << "\n=== Validacao: loop fora do ciclo radial da edge ===\n";
+
+        const ValidationPipeline pipeline = make_pipeline();
+        LEM mesh = make_quad();
+
+        mesh.loop(LoopHandle(0)).edge = EdgeHandle(2);
+
+        const ValidationReport report = pipeline.validate(ValidationContext{ &mesh });
+        print_report(report);
+
+        return expect(report.has_errors(), "loop fora da edge radial valida gera erro");
+    }
+
     bool test_pipeline_without_mesh()
     {
         std::cout << "\n=== Validacao: contexto sem mesh ===\n";
@@ -328,7 +375,7 @@ namespace {
 int main()
 {
     std::cout << std::fixed << std::setprecision(3);
-    std::cout << "=== Locus3D LEM Geometry Validation Test ===\n";
+    std::cout << "=== Locus3D LEM Full Validation Test ===\n";
 
     bool passed = true;
 
@@ -341,6 +388,9 @@ int main()
     passed &= test_invalid_position_infinity();
     passed &= test_collinear_face();
     passed &= test_repeated_position_face();
+    passed &= test_connectivity_vertex_incident_edge_mismatch();
+    passed &= test_connectivity_loop_unreachable_from_face();
+    passed &= test_connectivity_loop_unreachable_from_edge();
     passed &= test_pipeline_without_mesh();
 
     std::cout << "\nResultado final: " << (passed ? "PASS" : "FAIL") << "\n";
