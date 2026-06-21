@@ -28,7 +28,32 @@ target_sources(locus3d_geometry PRIVATE
     "geometry/primitives/SphereBuilder.h"
     "geometry/primitives/ConeBuilder.h"
     "geometry/primitives/TorusBuilder.h"
-    "geometry/primitives/PrimitiveRegistry.h"  "validation/core/ValidationSeverity.h" "validation/core/ValidationIssue.h" "validation/core/ValidationReport.h" "validation/core/ValidationContext.h" "validation/core/IValidationCheck.h" "validation/pipeline/ValidationMode.h" "validation/pipeline/ValidationPipeline.h" "validation/checks/lem/HandleValidityCheck.h" "validation/checks/lem/FaceCycleCheck.h" "validation/checks/lem/RadialCycleCheck.h" "validation/checks/lem/ElementReferenceCheck.h" "validation/checks/geometry/InvalidPositionCheck.h" "validation/checks/geometry/DegenerateEditableFaceCheck.h" "validation/checks/topology/ConnectivityConsistencyCheck.h" "validation/ValidationCore.h" "validation/ValidationChecks.h" "validation/Validation.h")
+    "geometry/primitives/PrimitiveRegistry.h" 
+    "validation/core/ValidationSeverity.h"
+    "validation/core/ValidationIssue.h"
+    "validation/core/ValidationReport.h"
+    "validation/core/ValidationContext.h"
+    "validation/core/IValidationCheck.h"
+    "validation/pipeline/ValidationMode.h"
+    "validation/pipeline/ValidationPipeline.h"
+    "validation/checks/lem/HandleValidityCheck.h"
+    "validation/checks/lem/FaceCycleCheck.h"
+    "validation/checks/lem/RadialCycleCheck.h"
+    "validation/checks/lem/ElementReferenceCheck.h"
+    "validation/checks/geometry/InvalidPositionCheck.h"
+    "validation/checks/geometry/DegenerateEditableFaceCheck.h"
+    "validation/checks/topology/ConnectivityConsistencyCheck.h"
+    "validation/ValidationCore.h"
+    "validation/ValidationChecks.h"
+    "validation/Validation.h"
+    "geometry/mesh/LEMStorage.h"
+    "geometry/mesh/editing/TopologyEditor.h"
+    "geometry/mesh/editing/TopologyEditor.cpp"
+    "geometry/mesh/editing/GeometryEditor.h"
+    "geometry/mesh/editing/GeometryEditor.cpp"
+    "geometry/mesh/editing/AttributeEditor.h"
+    "geometry/mesh/editing/AttributeEditor.cpp"
+    "geometry/mesh/LEMEditor.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
