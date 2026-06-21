@@ -5,19 +5,15 @@
 
 #pragma once
 
-#include "kernel/geometry/mesh/LEMHandles.h"
-#include "kernel/geometry/mesh/elements/Edge.h"
-#include "kernel/geometry/mesh/elements/Face.h"
-#include "kernel/geometry/mesh/elements/Loop.h"
-#include "kernel/geometry/mesh/elements/Vertex.h"
+#include "kernel/geometry/mesh/LEMStorage.h"
 
 #include <glm/glm.hpp>
 
 #include <cstddef>
 #include <vector>
 
-namespace locus::kernel::geometry
-{
+namespace locus::kernel::geometry {
+
     /**
      * @brief Editable polygon mesh representation used by the geometry kernel.
      *
@@ -25,8 +21,7 @@ namespace locus::kernel::geometry
      * It represents polygonal faces directly; derived triangulation is expected
      * to be built by rendering, export, or analysis systems outside this class.
      */
-    class LEM
-    {
+    class LEM {
     public:
         /**
          * @brief Adds a loose vertex to the mesh.
@@ -62,6 +57,7 @@ namespace locus::kernel::geometry
          *
          * @param vertices Ordered face vertices.
          * @return Handle referencing the created face.
+         *
          * @note The vertex order defines the face winding and normal direction.
          */
         FaceHandle add_face(const std::vector<VertexHandle>& vertices);
@@ -239,9 +235,7 @@ namespace locus::kernel::geometry
         [[nodiscard]] const std::vector<Face>& faces() const;
 
     private:
-        std::vector<Vertex> vertices_;
-        std::vector<Edge> edges_;
-        std::vector<Loop> loops_;
-        std::vector<Face> faces_;
+        LEMStorage storage_;
     };
+
 }

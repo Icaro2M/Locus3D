@@ -18,67 +18,66 @@
 namespace locus::kernel::geometry {
 
     /**
-     * @brief Owns the canonical element storage used by an editable LEM mesh.
+     * @brief Owns the canonical element arrays used by a LEM mesh.
      *
-     * LEMStorage stores vertices, edges, loops, and faces in stable index-based
-     * arrays addressed through typed handles. It does not maintain derived
-     * topology caches, adjacency tables, triangulation data, or acceleration
-     * structures.
+     * LEMStorage is intentionally limited to low-level storage concerns. It stores
+     * vertices, edges, loops, and faces in index-addressed arrays and provides
+     * typed-handle access to those arrays.
      *
-     * The storage is intentionally low-level. Higher-level topology rules,
-     * connectivity editing, radial cycle management, and face cycle construction
-     * are responsibilities of LEM and LEMEditor.
+     * Topology rules, radial cycle maintenance, face cycle construction, editing
+     * operations, derived caches, triangulation, and acceleration structures are
+     * intentionally kept outside this class.
      */
     class LEMStorage {
     public:
         /**
-         * @brief Adds a vertex element to the storage.
+         * @brief Adds a vertex element.
          *
          * @param vertex Vertex data to append.
          * @return Handle referencing the appended vertex.
          */
         VertexHandle add_vertex(const Vertex& vertex)
         {
-            const auto index = static_cast<std::size_t>(vertices_.size());
+            const auto index = static_cast<IdValue>(vertices_.size());
             vertices_.push_back(vertex);
             return VertexHandle(index);
         }
 
         /**
-         * @brief Adds an edge element to the storage.
+         * @brief Adds an edge element.
          *
          * @param edge Edge data to append.
          * @return Handle referencing the appended edge.
          */
         EdgeHandle add_edge(const Edge& edge)
         {
-            const auto index = static_cast<std::size_t>(edges_.size());
+            const auto index = static_cast<IdValue>(edges_.size());
             edges_.push_back(edge);
             return EdgeHandle(index);
         }
 
         /**
-         * @brief Adds a loop element to the storage.
+         * @brief Adds a loop element.
          *
          * @param loop Loop data to append.
          * @return Handle referencing the appended loop.
          */
         LoopHandle add_loop(const Loop& loop)
         {
-            const auto index = static_cast<std::size_t>(loops_.size());
+            const auto index = static_cast<IdValue>(loops_.size());
             loops_.push_back(loop);
             return LoopHandle(index);
         }
 
         /**
-         * @brief Adds a face element to the storage.
+         * @brief Adds a face element.
          *
          * @param face Face data to append.
          * @return Handle referencing the appended face.
          */
         FaceHandle add_face(const Face& face)
         {
-            const auto index = static_cast<std::size_t>(faces_.size());
+            const auto index = static_cast<IdValue>(faces_.size());
             faces_.push_back(face);
             return FaceHandle(index);
         }
@@ -180,7 +179,7 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Checks whether a vertex handle references an active vertex slot.
+         * @brief Checks whether a vertex handle references an active vertex.
          *
          * @param handle Vertex handle.
          * @return True when the handle references an active vertex.
@@ -193,7 +192,7 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Checks whether an edge handle references an active edge slot.
+         * @brief Checks whether an edge handle references an active edge.
          *
          * @param handle Edge handle.
          * @return True when the handle references an active edge.
@@ -206,7 +205,7 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Checks whether a loop handle references an active loop slot.
+         * @brief Checks whether a loop handle references an active loop.
          *
          * @param handle Loop handle.
          * @return True when the handle references an active loop.
@@ -219,7 +218,7 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Checks whether a face handle references an active face slot.
+         * @brief Checks whether a face handle references an active face.
          *
          * @param handle Face handle.
          * @return True when the handle references an active face.
@@ -234,7 +233,7 @@ namespace locus::kernel::geometry {
         /**
          * @brief Returns the number of stored vertex slots.
          *
-         * @return Number of stored vertices, including deleted slots.
+         * @return Number of stored vertices.
          */
         [[nodiscard]] std::size_t vertex_count() const
         {
@@ -244,7 +243,7 @@ namespace locus::kernel::geometry {
         /**
          * @brief Returns the number of stored edge slots.
          *
-         * @return Number of stored edges, including deleted slots.
+         * @return Number of stored edges.
          */
         [[nodiscard]] std::size_t edge_count() const
         {
@@ -254,7 +253,7 @@ namespace locus::kernel::geometry {
         /**
          * @brief Returns the number of stored loop slots.
          *
-         * @return Number of stored loops, including deleted slots.
+         * @return Number of stored loops.
          */
         [[nodiscard]] std::size_t loop_count() const
         {
@@ -264,7 +263,7 @@ namespace locus::kernel::geometry {
         /**
          * @brief Returns the number of stored face slots.
          *
-         * @return Number of stored faces, including deleted slots.
+         * @return Number of stored faces.
          */
         [[nodiscard]] std::size_t face_count() const
         {
@@ -272,9 +271,9 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Checks whether the storage contains no element slots.
+         * @brief Checks whether all element arrays are empty.
          *
-         * @return True when all element arrays are empty.
+         * @return True when no element slots are stored.
          */
         [[nodiscard]] bool empty() const
         {
@@ -285,7 +284,7 @@ namespace locus::kernel::geometry {
         }
 
         /**
-         * @brief Removes all stored elements.
+         * @brief Removes all stored element slots.
          */
         void clear()
         {
@@ -331,46 +330,6 @@ namespace locus::kernel::geometry {
          * @return Read-only face array.
          */
         [[nodiscard]] const std::vector<Face>& faces() const
-        {
-            return faces_;
-        }
-
-        /**
-         * @brief Returns mutable access to all stored vertices.
-         *
-         * @return Mutable vertex array.
-         */
-        [[nodiscard]] std::vector<Vertex>& vertices()
-        {
-            return vertices_;
-        }
-
-        /**
-         * @brief Returns mutable access to all stored edges.
-         *
-         * @return Mutable edge array.
-         */
-        [[nodiscard]] std::vector<Edge>& edges()
-        {
-            return edges_;
-        }
-
-        /**
-         * @brief Returns mutable access to all stored loops.
-         *
-         * @return Mutable loop array.
-         */
-        [[nodiscard]] std::vector<Loop>& loops()
-        {
-            return loops_;
-        }
-
-        /**
-         * @brief Returns mutable access to all stored faces.
-         *
-         * @return Mutable face array.
-         */
-        [[nodiscard]] std::vector<Face>& faces()
         {
             return faces_;
         }
