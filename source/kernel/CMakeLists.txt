@@ -28,7 +28,7 @@ target_sources(locus3d_geometry PRIVATE
     "geometry/primitives/SphereBuilder.h"
     "geometry/primitives/ConeBuilder.h"
     "geometry/primitives/TorusBuilder.h"
-    "geometry/primitives/PrimitiveRegistry.h"  "validation/core/ValidationSeverity.h" "validation/core/ValidationIssue.h" "validation/core/ValidationReport.h" "validation/core/ValidationContext.h" "validation/core/IValidationCheck.h" "validation/pipeline/ValidationMode.h" "validation/pipeline/ValidationPipeline.h" "validation/checks/lem/HandleValidityCheck.h" "validation/checks/lem/FaceCycleCheck.h" "validation/checks/lem/RadialCycleCheck.h" "validation/checks/lem/ElementReferenceCheck.h")
+    "geometry/primitives/PrimitiveRegistry.h"  "validation/core/ValidationSeverity.h" "validation/core/ValidationIssue.h" "validation/core/ValidationReport.h" "validation/core/ValidationContext.h" "validation/core/IValidationCheck.h" "validation/pipeline/ValidationMode.h" "validation/pipeline/ValidationPipeline.h" "validation/checks/lem/HandleValidityCheck.h" "validation/checks/lem/FaceCycleCheck.h" "validation/checks/lem/RadialCycleCheck.h" "validation/checks/lem/ElementReferenceCheck.h" "validation/checks/geometry/InvalidPositionCheck.h" "validation/checks/geometry/DegenerateEditableFaceCheck.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

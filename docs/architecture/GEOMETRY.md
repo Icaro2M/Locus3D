@@ -209,8 +209,8 @@ source\kernel
 |   |   |       ConnectivityConsistencyCheck.h [!]
 |   |   |
 |   |   \---geometry
-|   |           InvalidPositionCheck.h [!]
-|   |           DegenerateEditableFaceCheck.h [!]
+|   |           InvalidPositionCheck.h
+|   |           DegenerateEditableFaceCheck.h
 |   |
 |   \---pipeline
 |           ValidationPipeline.h
@@ -300,8 +300,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `io/ThreeMFExporter.h`
 - [!] `validation/checks/topology/TopologyCacheCheck.h`
 - [!] `validation/checks/topology/ConnectivityConsistencyCheck.h`
-- [!] `validation/checks/geometry/InvalidPositionCheck.h`
-- [!] `validation/checks/geometry/DegenerateEditableFaceCheck.h`
 - [!] `manufacturing/core/IAnalyzer.h`
 - [!] `manufacturing/core/AnalysisContext.h`
 - [!] `manufacturing/core/AnalysisReport.h`
