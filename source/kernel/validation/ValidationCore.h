@@ -7,7 +7,10 @@
 
  /**
   * @file ValidationCore.h
-  * @brief Aggregates core validation types used by validation checks and pipelines.
+  * @brief Aggregates the core types shared by validation checks and validation pipelines.
+  *
+  * This header exposes the minimal validation API required to define checks,
+  * configure validation execution, and inspect validation reports.
   */
 
 #include "kernel/validation/core/IValidationCheck.h"

@@ -8,9 +8,13 @@
  /**
   * @file Validation.h
   * @brief Main aggregation header for the kernel validation module.
+  *
+  * This header exposes the public validation API, including core validation
+  * types, built-in checks, and pipeline utilities.
   */
 
 #include "kernel/validation/ValidationChecks.h"
 #include "kernel/validation/ValidationCore.h"
+
 #include "kernel/validation/pipeline/ValidationMode.h"
 #include "kernel/validation/pipeline/ValidationPipeline.h"
