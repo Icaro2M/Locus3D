@@ -92,6 +92,7 @@ source\kernel
 |   |   |   LEM.cpp
 |   |   |   LEMStorage.h
 |   |   |   LEMEditor.h
+|   |   |   LEMEditor.cpp
 |   |   |   LEMDiff.h
 |   |   |
 |   |   +---editing
@@ -201,9 +202,10 @@ source\kernel
 |   |   +---topology
 |   |   |       LoopCutOp.h [!]
 |   |   |       LoopCutOp.cpp [!]
-|   |   |       SubdivideOp.h [!]
-|   |   |       SubdivideOp.cpp [!]
-|   |   |       MergeVerticesOp.h [!]
+|   |   |       SubdivideOp.h
+|   |   |       SubdivideOp.cpp
+|   |   |       MergeVerticesOp.h
+|   |   |       MergeVerticesOp.cpp
 |   |   |       BridgeEdgeOp.h [!]
 |   |   |       FillHoleOp.h [!]
 |   |   |
@@ -329,9 +331,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/operations/edge/CreaseOp.h`
 - [!] `modeling/operations/topology/LoopCutOp.h`
 - [!] `modeling/operations/topology/LoopCutOp.cpp`
-- [!] `modeling/operations/topology/SubdivideOp.h`
-- [!] `modeling/operations/topology/SubdivideOp.cpp`
-- [!] `modeling/operations/topology/MergeVerticesOp.h`
 - [!] `modeling/operations/topology/BridgeEdgeOp.h`
 - [!] `modeling/operations/topology/FillHoleOp.h`
 - [!] `modeling/operations/transform/ShrinkFattenOp.h`

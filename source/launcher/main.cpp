@@ -1,46 +1,158 @@
+#define NOMINMAX
+
+#include "graphics/common/GraphicsConfig.h"
+#include "graphics/context/OpenGLContext.h"
+#include "graphics/gpu/Shader.h"
+#include "graphics/mesh/GpuMesh.h"
+#include "graphics/mesh/MeshUploadData.h"
+#include "graphics/renderer/Renderer.h"
+#include "graphics/scene/RenderObject.h"
+#include "graphics/scene/RenderScene.h"
+#include "graphics/window/Window.h"
+
+#include "kernel/common/Result.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
+#include "kernel/geometry/render/MeshTriangulator.h"
+#include "kernel/geometry/render/NormalBuilder.h"
+#include "kernel/geometry/render/RenderMesh.h"
+#include "kernel/geometry/render/WireframeBuilder.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
 #include "kernel/modeling/operations/face/FlipFaceOp.h"
+#include "kernel/modeling/operations/topology/MergeVerticesOp.h"
+#include "kernel/modeling/operations/topology/SubdivideOp.h"
 
-#include <glm/geometric.hpp>
+#include <glad/glad.h>
+
+#include <glm/ext/matrix_clip_space.hpp>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
-#include <cmath>
-#include <cstddef>
+#include <array>
+#include <chrono>
+#include <cstdlib>
+#include <iomanip>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
 namespace {
 
+    using namespace locus;
+    using namespace locus::graphics;
     using namespace locus::kernel;
     using namespace locus::kernel::geometry;
     using namespace locus::kernel::modeling;
 
-    struct TestStats {
-        int passed = 0;
-        int failed = 0;
+    const char* VisualVertexShader = R"(
+#version 450 core
+
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec4 a_Color;
+
+uniform mat4 u_Model;
+uniform mat4 u_MVP;
+
+out vec3 v_Normal;
+out vec4 v_Color;
+
+void main()
+{
+    mat3 normalMatrix = transpose(inverse(mat3(u_Model)));
+    v_Normal = normalize(normalMatrix * a_Normal);
+    v_Color = a_Color;
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
+}
+)";
+
+    const char* VisualFragmentShader = R"(
+#version 450 core
+
+in vec3 v_Normal;
+in vec4 v_Color;
+
+uniform vec4 u_BaseColor;
+uniform int u_UseVertexColor;
+
+out vec4 FragColor;
+
+void main()
+{
+    vec3 normal = normalize(v_Normal);
+    vec3 lightDirection = normalize(vec3(-0.35, -0.65, -0.75));
+    float diffuse = max(dot(normal, -lightDirection), 0.0);
+    float lighting = 0.30 + diffuse * 0.70;
+
+    vec4 color = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
+    FragColor = vec4(color.rgb * lighting, color.a);
+}
+)";
+
+    const char* WireVertexShader = R"(
+#version 450 core
+
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec4 a_Color;
+
+uniform mat4 u_Model;
+uniform mat4 u_MVP;
+
+out vec4 v_Color;
+
+void main()
+{
+    v_Color = a_Color;
+    gl_Position = u_MVP * vec4(a_Position, 1.0);
+}
+)";
+
+    const char* WireFragmentShader = R"(
+#version 450 core
+
+in vec4 v_Color;
+
+uniform vec4 u_BaseColor;
+uniform int u_UseVertexColor;
+
+out vec4 FragColor;
+
+void main()
+{
+    FragColor = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
+}
+)";
+
+    struct MeshFit {
+        glm::vec3 center{ 0.0f, 0.0f, 0.0f };
+        float scale = 1.0f;
     };
 
-    void print_header(std::string_view title)
-    {
-        std::cout << "\n=== " << title << " ===\n";
-    }
+    struct VisualMesh {
+        std::string name;
+        LEM mesh;
+        RenderMesh solidRenderMesh;
+        RenderMesh wireRenderMesh;
+        MeshFit fit;
+        MeshUploadData solidUploadData;
+        MeshUploadData wireUploadData;
+        GpuMesh solidGpuMesh;
+        GpuMesh wireGpuMesh;
+        glm::vec3 position{ 0.0f };
+        glm::vec4 color{ 1.0f };
+    };
 
-    void expect(TestStats& stats, bool condition, std::string_view message)
+    void print_graphics_error(const std::string& label, const GraphicsError& error)
     {
-        if (condition) {
-            ++stats.passed;
-            std::cout << "[OK] " << message << '\n';
-        }
-        else {
-            ++stats.failed;
-            std::cout << "[FAIL] " << message << '\n';
-        }
+        std::cout << label << ": " << error.message << '\n';
     }
 
     const char* status_name(OperationStatus status)
@@ -59,9 +171,10 @@ namespace {
         return "Unknown";
     }
 
-    void print_result(const OperationResult& result)
+    void print_operation_result(std::string_view label, const OperationResult& result)
     {
-        std::cout << "status: " << status_name(result.status())
+        std::cout << label
+            << " | status: " << status_name(result.status())
             << " | changed: " << (result.changed() ? "true" : "false")
             << " | diff: " << result.diff().size();
 
@@ -69,13 +182,10 @@ namespace {
             std::cout << " | message: " << result.message();
         }
 
-        if (result.is_failure()) {
-            std::cout << " | error";
-        }
-
         if (result.has_validation_report()) {
             const TopologyValidationReport& report = result.validation_report();
-            std::cout << " | validation issues: " << report.issues.size()
+            std::cout
+                << " | validation issues: " << report.issues.size()
                 << " | errors: " << report.error_count()
                 << " | warnings: " << report.warning_count();
         }
@@ -83,17 +193,17 @@ namespace {
         std::cout << '\n';
     }
 
-    OperationContext make_context(LEM& mesh)
+    void print_mesh_summary(std::string_view label, const LEM& mesh)
     {
-        OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-        return context;
+        std::cout << label
+            << " | vertices: " << TopologyTraversal::vertices(mesh).size()
+            << " | edges: " << TopologyTraversal::edges(mesh).size()
+            << " | loops: " << TopologyTraversal::loops(mesh).size()
+            << " | faces: " << TopologyTraversal::faces(mesh).size()
+            << '\n';
     }
 
-    bool validate_mesh(const LEM& mesh, std::string_view label)
+    bool validate_mesh(std::string_view label, const LEM& mesh)
     {
         const TopologyValidationReport report = TopologyValidator::validate(mesh);
 
@@ -106,387 +216,527 @@ namespace {
         return report.valid();
     }
 
-    std::size_t active_vertex_count(const LEM& mesh)
+    OperationContext make_context(LEM& mesh)
     {
-        return TopologyTraversal::vertices(mesh).size();
+        OperationContext context;
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+        context.allowNonManifold = true;
+        return context;
     }
 
-    std::size_t active_edge_count(const LEM& mesh)
+    MeshFit compute_mesh_fit(const RenderMesh& renderMesh)
     {
-        return TopologyTraversal::edges(mesh).size();
-    }
-
-    std::size_t active_loop_count(const LEM& mesh)
-    {
-        return TopologyTraversal::loops(mesh).size();
-    }
-
-    std::size_t active_face_count(const LEM& mesh)
-    {
-        return TopologyTraversal::faces(mesh).size();
-    }
-
-    std::vector<VertexHandle> face_vertices(const LEM& mesh, FaceHandle face)
-    {
-        std::vector<VertexHandle> result;
-
-        if (!mesh.is_valid(face)) {
-            return result;
+        if (renderMesh.vertices.empty()) {
+            return {};
         }
 
-        LoopHandle start = mesh.face(face).loop;
-        if (!mesh.is_valid(start)) {
-            return result;
+        glm::vec3 minPoint{
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max(),
+            std::numeric_limits<float>::max()
+        };
+
+        glm::vec3 maxPoint{
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest(),
+            std::numeric_limits<float>::lowest()
+        };
+
+        for (const RenderVertex& vertex : renderMesh.vertices) {
+            minPoint = glm::min(minPoint, vertex.position);
+            maxPoint = glm::max(maxPoint, vertex.position);
         }
 
-        LoopHandle current = start;
+        const glm::vec3 size = maxPoint - minPoint;
+        const float maxDimension = std::max({ size.x, size.y, size.z });
 
-        do {
-            if (!mesh.is_valid(current)) {
-                result.clear();
-                return result;
-            }
+        MeshFit fit;
+        fit.center = (minPoint + maxPoint) * 0.5f;
+        fit.scale = maxDimension > 0.00001f ? 2.15f / maxDimension : 1.0f;
 
-            result.push_back(mesh.loop(current).vertex);
-            current = mesh.loop(current).next;
-        } while (mesh.is_valid(current) && current != start);
-
-        return result;
+        return fit;
     }
 
-    glm::vec3 computed_face_normal(const LEM& mesh, FaceHandle face)
+    MeshUploadData build_triangle_upload_data(
+        const RenderMesh& renderMesh,
+        const MeshFit& fit,
+        const glm::vec4& color)
     {
-        const std::vector<VertexHandle> vertices = face_vertices(mesh, face);
+        MeshUploadData uploadData;
+        uploadData.topology = PrimitiveTopology::Triangles;
+        uploadData.usage = BufferUsage::Static;
+        uploadData.vertices.reserve(renderMesh.vertices.size());
+        uploadData.indices.reserve(renderMesh.triangles.size() * 3);
 
-        if (vertices.size() < 3) {
-            return { 0.0f, 0.0f, 0.0f };
+        for (const RenderVertex& renderVertex : renderMesh.vertices) {
+            const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+
+            MeshVertex vertex;
+            vertex.position[0] = fittedPosition.x;
+            vertex.position[1] = fittedPosition.y;
+            vertex.position[2] = fittedPosition.z;
+
+            vertex.normal[0] = renderVertex.normal.x;
+            vertex.normal[1] = renderVertex.normal.y;
+            vertex.normal[2] = renderVertex.normal.z;
+
+            vertex.color[0] = color.r;
+            vertex.color[1] = color.g;
+            vertex.color[2] = color.b;
+            vertex.color[3] = color.a;
+
+            uploadData.vertices.push_back(vertex);
         }
 
-        const glm::vec3& p0 = mesh.vertex(vertices[0]).position;
-        const glm::vec3& p1 = mesh.vertex(vertices[1]).position;
-        const glm::vec3& p2 = mesh.vertex(vertices[2]).position;
-
-        const glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
-        const float length = glm::length(normal);
-
-        if (length <= 0.000001f) {
-            return { 0.0f, 0.0f, 0.0f };
+        for (const RenderTriangle& triangle : renderMesh.triangles) {
+            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.a));
+            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.b));
+            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.c));
         }
 
-        return normal / length;
+        return uploadData;
     }
 
-    bool opposite_normals(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
+    MeshUploadData build_wire_upload_data(
+        const RenderMesh& wireRenderMesh,
+        const MeshFit& fit)
     {
-        return std::fabs(glm::dot(a, b) + 1.0f) <= epsilon;
+        MeshUploadData uploadData;
+        uploadData.topology = PrimitiveTopology::Lines;
+        uploadData.usage = BufferUsage::Static;
+        uploadData.vertices.reserve(wireRenderMesh.vertices.size());
+        uploadData.indices.reserve(wireRenderMesh.lines.size() * 2);
+
+        for (const RenderVertex& renderVertex : wireRenderMesh.vertices) {
+            const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+
+            MeshVertex vertex;
+            vertex.position[0] = fittedPosition.x;
+            vertex.position[1] = fittedPosition.y;
+            vertex.position[2] = fittedPosition.z;
+
+            vertex.normal[0] = renderVertex.normal.x;
+            vertex.normal[1] = renderVertex.normal.y;
+            vertex.normal[2] = renderVertex.normal.z;
+
+            vertex.color[0] = 0.02f;
+            vertex.color[1] = 0.02f;
+            vertex.color[2] = 0.025f;
+            vertex.color[3] = 1.0f;
+
+            uploadData.vertices.push_back(vertex);
+        }
+
+        for (const RenderLine& line : wireRenderMesh.lines) {
+            uploadData.indices.push_back(static_cast<std::uint32_t>(line.a));
+            uploadData.indices.push_back(static_cast<std::uint32_t>(line.b));
+        }
+
+        return uploadData;
     }
 
-    bool same_normals(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
+    bool create_shader(
+        Shader& shader,
+        const char* vertexSource,
+        const char* fragmentSource,
+        const std::string& label)
     {
-        return std::fabs(glm::dot(a, b) - 1.0f) <= epsilon;
-    }
+        GraphicsResult result = shader.create_from_source(vertexSource, fragmentSource);
 
-    bool same_vertex_sequence(
-        const std::vector<VertexHandle>& a,
-        const std::vector<VertexHandle>& b)
-    {
-        if (a.size() != b.size()) {
+        if (!result) {
+            print_graphics_error(label, result.error());
             return false;
         }
 
-        for (std::size_t i = 0; i < a.size(); ++i) {
-            if (a[i] != b[i]) {
-                return false;
-            }
+        std::cout << "[OK] " << label << '\n';
+        return true;
+    }
+
+    bool create_gpu_mesh(
+        GpuMesh& mesh,
+        const MeshUploadData& uploadData,
+        const std::string& label)
+    {
+        GraphicsResult result = mesh.create(uploadData);
+
+        if (!result) {
+            print_graphics_error(label, result.error());
+            return false;
+        }
+
+        std::cout << "[OK] " << label << '\n';
+        return true;
+    }
+
+    bool initialize_graphics(Window& window, OpenGLContext& context)
+    {
+        std::cout << "\n=== Graphics setup ===\n";
+
+        WindowCreateInfo windowInfo;
+        windowInfo.width = 1280;
+        windowInfo.height = 720;
+        windowInfo.title = "Locus3D - Modeling Operations Visual Test";
+        windowInfo.resizable = true;
+        windowInfo.visible = true;
+        windowInfo.requestOpenGLContext = true;
+        windowInfo.openglMajorVersion = 4;
+        windowInfo.openglMinorVersion = 5;
+        windowInfo.openglCoreProfile = true;
+        windowInfo.openglForwardCompatible = true;
+        windowInfo.openglDebugContext = true;
+
+        GraphicsResult windowResult = window.create(windowInfo);
+
+        if (!windowResult) {
+            print_graphics_error("Window error", windowResult.error());
+            return false;
+        }
+
+        GraphicsConfig config;
+        config.api = GraphicsApi::OpenGL;
+        config.enableDebugOutput = true;
+        config.enableVSync = true;
+        config.requestedMajorVersion = 4;
+        config.requestedMinorVersion = 5;
+        config.coreProfile = true;
+        config.forwardCompatible = true;
+
+        GraphicsResult contextResult = context.initialize(window, config);
+
+        if (!contextResult) {
+            print_graphics_error("OpenGL context error", contextResult.error());
+            return false;
+        }
+
+        context.make_current();
+        context.set_vsync(true);
+
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_CULL_FACE);
+        glLineWidth(2.0f);
+        glViewport(0, 0, window.framebuffer_width(), window.framebuffer_height());
+
+        std::cout << "[OK] janela e contexto OpenGL inicializados\n";
+        std::cout << "Framebuffer: "
+            << window.framebuffer_width()
+            << "x"
+            << window.framebuffer_height()
+            << '\n';
+
+        return true;
+    }
+
+    VisualMesh build_merge_visual_mesh()
+    {
+        VisualMesh visual;
+        visual.name = "MergeVerticesOp";
+        visual.position = { -3.0f, 0.0f, 0.0f };
+        visual.color = { 0.80f, 0.88f, 1.0f, 1.0f };
+
+        LEMEditor editor(visual.mesh);
+
+        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
+        VertexHandle v4 = editor.add_vertex({ -1.08f, 1.08f, 0.0f });
+
+        editor.add_face({ v0, v1, v2, v3 });
+        editor.clear_diff();
+
+        print_mesh_summary("Merge antes", visual.mesh);
+
+        OperationContext context = make_context(visual.mesh);
+        MergeVerticesOp op(v4, v3, { -1.0f, 1.0f, 0.0f });
+        OperationResult result = op.execute(context);
+
+        print_operation_result("MergeVerticesOp", result);
+        print_mesh_summary("Merge depois", visual.mesh);
+        validate_mesh("Validacao MergeVerticesOp", visual.mesh);
+
+        return visual;
+    }
+
+    VisualMesh build_flip_visual_mesh()
+    {
+        VisualMesh visual;
+        visual.name = "FlipFaceOp";
+        visual.position = { 0.0f, 0.0f, 0.0f };
+        visual.color = { 1.0f, 0.82f, 0.72f, 1.0f };
+
+        LEMEditor editor(visual.mesh);
+
+        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+        editor.clear_diff();
+
+        print_mesh_summary("Flip antes", visual.mesh);
+
+        OperationContext context = make_context(visual.mesh);
+        FlipFaceOp op(face);
+        OperationResult result = op.execute(context);
+
+        print_operation_result("FlipFaceOp", result);
+        print_mesh_summary("Flip depois", visual.mesh);
+        validate_mesh("Validacao FlipFaceOp", visual.mesh);
+
+        return visual;
+    }
+
+    VisualMesh build_subdivide_visual_mesh()
+    {
+        VisualMesh visual;
+        visual.name = "SubdivideOp";
+        visual.position = { 3.0f, 0.0f, 0.0f };
+        visual.color = { 0.78f, 1.0f, 0.82f, 1.0f };
+
+        LEMEditor editor(visual.mesh);
+
+        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+        editor.clear_diff();
+
+        print_mesh_summary("Subdivide antes", visual.mesh);
+
+        OperationContext context = make_context(visual.mesh);
+        SubdivideOp op = SubdivideOp::face(face);
+        OperationResult result = op.execute(context);
+
+        print_operation_result("SubdivideOp", result);
+        print_mesh_summary("Subdivide depois", visual.mesh);
+        validate_mesh("Validacao SubdivideOp", visual.mesh);
+
+        return visual;
+    }
+
+    bool prepare_visual_mesh(VisualMesh& visual)
+    {
+        visual.solidRenderMesh = MeshTriangulator::triangulate(visual.mesh);
+        NormalBuilder::rebuild_normals(visual.solidRenderMesh, NormalBuildMode::Flat);
+        visual.wireRenderMesh = WireframeBuilder::build(visual.mesh);
+
+        if (visual.solidRenderMesh.vertex_count() == 0 || visual.solidRenderMesh.triangle_count() == 0) {
+            std::cout << "[FAIL] RenderMesh solido vazio para " << visual.name << '\n';
+            return false;
+        }
+
+        if (visual.wireRenderMesh.line_count() == 0) {
+            std::cout << "[FAIL] WireRenderMesh vazio para " << visual.name << '\n';
+            return false;
+        }
+
+        visual.fit = compute_mesh_fit(visual.solidRenderMesh);
+        visual.solidUploadData = build_triangle_upload_data(
+            visual.solidRenderMesh,
+            visual.fit,
+            visual.color);
+        visual.wireUploadData = build_wire_upload_data(
+            visual.wireRenderMesh,
+            visual.fit);
+
+        std::cout << "[OK] RenderMesh preparado para " << visual.name
+            << " | triangles: " << visual.solidRenderMesh.triangle_count()
+            << " | wire lines: " << visual.wireRenderMesh.line_count()
+            << '\n';
+
+        return true;
+    }
+
+    bool upload_visual_mesh(VisualMesh& visual)
+    {
+        if (!create_gpu_mesh(
+            visual.solidGpuMesh,
+            visual.solidUploadData,
+            visual.name + " solid GpuMesh")) {
+            return false;
+        }
+
+        if (!create_gpu_mesh(
+            visual.wireGpuMesh,
+            visual.wireUploadData,
+            visual.name + " wire GpuMesh")) {
+            return false;
         }
 
         return true;
     }
 
-    bool reversed_vertex_sequence(
-        const std::vector<VertexHandle>& before,
-        const std::vector<VertexHandle>& after)
+    void add_visual_mesh_to_scene(
+        RenderScene& scene,
+        const VisualMesh& visual,
+        const Shader& solidShader,
+        const Shader& wireShader,
+        std::uint64_t& nextId,
+        const glm::quat& rotation)
     {
-        if (before.size() != after.size()) {
-            return false;
-        }
+        RenderObject solidObject;
+        solidObject.id = nextId++;
+        solidObject.name = visual.name + " Solid";
+        solidObject.mesh = &visual.solidGpuMesh;
+        solidObject.shader = &solidShader;
+        solidObject.transform.position = visual.position;
+        solidObject.transform.rotation = rotation;
+        solidObject.transform.scale = { 1.0f, 1.0f, 1.0f };
+        solidObject.layer = RenderLayer::Default;
 
-        if (before.empty()) {
-            return true;
-        }
+        RenderObject wireObject;
+        wireObject.id = nextId++;
+        wireObject.name = visual.name + " Wire";
+        wireObject.mesh = &visual.wireGpuMesh;
+        wireObject.shader = &wireShader;
+        wireObject.transform = solidObject.transform;
+        wireObject.layer = RenderLayer::Overlay;
 
-        const std::size_t count = before.size();
+        scene.add_object(solidObject);
+        scene.add_object(wireObject);
+    }
 
-        for (std::size_t offset = 0; offset < count; ++offset) {
-            bool matches = true;
+    void render_loop(
+        Window& window,
+        Renderer& renderer,
+        const std::array<VisualMesh, 3>& visuals,
+        const Shader& solidShader,
+        const Shader& wireShader)
+    {
+        const auto start = std::chrono::steady_clock::now();
 
-            for (std::size_t i = 0; i < count; ++i) {
-                const std::size_t reversedIndex = (count + offset - i) % count;
+        while (!window.should_close()) {
+            window.poll_events();
 
-                if (after[i] != before[reversedIndex]) {
-                    matches = false;
-                    break;
-                }
+            const int framebufferWidth = window.framebuffer_width();
+            const int framebufferHeight = window.framebuffer_height();
+
+            if (framebufferWidth <= 0 || framebufferHeight <= 0) {
+                continue;
             }
 
-            if (matches) {
-                return true;
+            const auto now = std::chrono::steady_clock::now();
+            const float time = std::chrono::duration<float>(now - start).count();
+
+            glViewport(0, 0, framebufferWidth, framebufferHeight);
+            glClearColor(0.075f, 0.075f, 0.085f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            const float aspect =
+                static_cast<float>(framebufferWidth)
+                / static_cast<float>(framebufferHeight);
+
+            const glm::mat4 projection = glm::perspective(
+                glm::radians(45.0f),
+                aspect,
+                0.1f,
+                100.0f);
+
+            const glm::mat4 view = glm::lookAt(
+                glm::vec3{ 0.0f, 2.5f, 8.0f },
+                glm::vec3{ 0.0f, 0.0f, 0.0f },
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+            const glm::quat rotation =
+                glm::angleAxis(time * 0.35f, glm::vec3{ 0.0f, 1.0f, 0.0f })
+                * glm::angleAxis(glm::radians(18.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+            RenderScene scene;
+            scene.reserve(6);
+
+            std::uint64_t nextId = 1;
+
+            for (const VisualMesh& visual : visuals) {
+                add_visual_mesh_to_scene(
+                    scene,
+                    visual,
+                    solidShader,
+                    wireShader,
+                    nextId,
+                    rotation);
             }
+
+            renderer.set_view_matrix(view);
+            renderer.set_projection_matrix(projection);
+            renderer.render(scene);
+
+            window.swap_buffers();
         }
-
-        return false;
-    }
-
-    void test_triangle_flip(TestStats& stats)
-    {
-        print_header("FlipFaceOp: triangulo");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2 });
-        editor.rebuild_face_normals();
-        editor.clear_diff();
-
-        expect(stats, mesh.is_valid(face), "triangulo criado");
-        expect(stats, active_vertex_count(mesh) == 3, "triangulo tem 3 vertices");
-        expect(stats, active_edge_count(mesh) == 3, "triangulo tem 3 edges");
-        expect(stats, active_loop_count(mesh) == 3, "triangulo tem 3 loops");
-        expect(stats, active_face_count(mesh) == 1, "triangulo tem 1 face");
-        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
-
-        const std::vector<VertexHandle> beforeVertices = face_vertices(mesh, face);
-        const glm::vec3 beforeNormal = computed_face_normal(mesh, face);
-
-        OperationContext context = make_context(mesh);
-        FlipFaceOp op(face);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        const std::vector<VertexHandle> afterVertices = face_vertices(mesh, face);
-        const glm::vec3 afterNormal = computed_face_normal(mesh, face);
-
-        expect(stats, result.is_success(), "flip de triangulo retorna sucesso");
-        expect(stats, result.changed(), "flip de triangulo registra diff");
-        expect(stats, mesh.is_valid(face), "face continua valida");
-        expect(stats, active_vertex_count(mesh) == 3, "flip nao altera quantidade de vertices");
-        expect(stats, active_edge_count(mesh) == 3, "flip nao altera quantidade de edges");
-        expect(stats, active_loop_count(mesh) == 3, "flip nao altera quantidade de loops");
-        expect(stats, active_face_count(mesh) == 1, "flip nao altera quantidade de faces");
-        expect(stats, reversed_vertex_sequence(beforeVertices, afterVertices), "ordem dos vertices foi invertida");
-        expect(stats, opposite_normals(beforeNormal, afterNormal), "normal calculada foi invertida");
-        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip");
-    }
-
-    void test_quad_flip(TestStats& stats)
-    {
-        print_header("FlipFaceOp: quad");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
-        editor.rebuild_face_normals();
-        editor.clear_diff();
-
-        expect(stats, mesh.is_valid(face), "quad criado");
-        expect(stats, active_vertex_count(mesh) == 4, "quad tem 4 vertices");
-        expect(stats, active_edge_count(mesh) == 4, "quad tem 4 edges");
-        expect(stats, active_loop_count(mesh) == 4, "quad tem 4 loops");
-        expect(stats, active_face_count(mesh) == 1, "quad tem 1 face");
-        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
-
-        const std::vector<VertexHandle> beforeVertices = face_vertices(mesh, face);
-        const glm::vec3 beforeNormal = computed_face_normal(mesh, face);
-
-        OperationContext context = make_context(mesh);
-        FlipFaceOp op(face);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        const std::vector<VertexHandle> afterVertices = face_vertices(mesh, face);
-        const glm::vec3 afterNormal = computed_face_normal(mesh, face);
-
-        expect(stats, result.is_success(), "flip de quad retorna sucesso");
-        expect(stats, result.changed(), "flip de quad registra diff");
-        expect(stats, mesh.is_valid(face), "face continua valida");
-        expect(stats, active_vertex_count(mesh) == 4, "flip nao altera quantidade de vertices");
-        expect(stats, active_edge_count(mesh) == 4, "flip nao altera quantidade de edges");
-        expect(stats, active_loop_count(mesh) == 4, "flip nao altera quantidade de loops");
-        expect(stats, active_face_count(mesh) == 1, "flip nao altera quantidade de faces");
-        expect(stats, reversed_vertex_sequence(beforeVertices, afterVertices), "ordem dos vertices foi invertida");
-        expect(stats, opposite_normals(beforeNormal, afterNormal), "normal calculada foi invertida");
-        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip");
-    }
-
-    void test_double_flip(TestStats& stats)
-    {
-        print_header("FlipFaceOp: duplo flip");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2 });
-        editor.rebuild_face_normals();
-        editor.clear_diff();
-
-        expect(stats, mesh.is_valid(face), "triangulo criado");
-        expect(stats, validate_mesh(mesh, "validacao antes do duplo flip"), "malha inicial valida");
-
-        const std::vector<VertexHandle> originalVertices = face_vertices(mesh, face);
-        const glm::vec3 originalNormal = computed_face_normal(mesh, face);
-
-        OperationContext context = make_context(mesh);
-
-        FlipFaceOp firstFlip(face);
-        OperationResult firstResult = firstFlip.execute(context);
-
-        print_result(firstResult);
-
-        FlipFaceOp secondFlip(face);
-        OperationResult secondResult = secondFlip.execute(context);
-
-        print_result(secondResult);
-
-        const std::vector<VertexHandle> finalVertices = face_vertices(mesh, face);
-        const glm::vec3 finalNormal = computed_face_normal(mesh, face);
-
-        expect(stats, firstResult.is_success(), "primeiro flip retorna sucesso");
-        expect(stats, secondResult.is_success(), "segundo flip retorna sucesso");
-        expect(stats, same_vertex_sequence(originalVertices, finalVertices), "duplo flip restaura ordem original");
-        expect(stats, same_normals(originalNormal, finalNormal), "duplo flip restaura normal original");
-        expect(stats, active_vertex_count(mesh) == 3, "duplo flip nao altera vertices");
-        expect(stats, active_edge_count(mesh) == 3, "duplo flip nao altera edges");
-        expect(stats, active_loop_count(mesh) == 3, "duplo flip nao altera loops");
-        expect(stats, active_face_count(mesh) == 1, "duplo flip nao altera faces");
-        expect(stats, validate_mesh(mesh, "validacao depois do duplo flip"), "malha valida depois do duplo flip");
-    }
-
-    void test_invalid_face_no_change(TestStats& stats)
-    {
-        print_header("FlipFaceOp: face invalida");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle validFace = editor.add_face({ v0, v1, v2 });
-        FaceHandle invalidFace{};
-
-        editor.clear_diff();
-
-        expect(stats, mesh.is_valid(validFace), "face valida criada");
-        expect(stats, !mesh.is_valid(invalidFace), "handle default nao aponta para face valida");
-        expect(stats, validate_mesh(mesh, "validacao antes do no change"), "malha inicial valida");
-
-        OperationContext context = make_context(mesh);
-        FlipFaceOp op(invalidFace);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.status() == OperationStatus::NoChange, "face invalida retorna NoChange");
-        expect(stats, !result.changed(), "face invalida nao altera diff");
-        expect(stats, mesh.is_valid(validFace), "face valida continua existindo");
-        expect(stats, active_vertex_count(mesh) == 3, "NoChange nao altera vertices");
-        expect(stats, active_edge_count(mesh) == 3, "NoChange nao altera edges");
-        expect(stats, active_loop_count(mesh) == 3, "NoChange nao altera loops");
-        expect(stats, active_face_count(mesh) == 1, "NoChange nao altera faces");
-        expect(stats, validate_mesh(mesh, "validacao depois do no change"), "malha continua valida");
-    }
-
-    void test_shared_edge_faces(TestStats& stats)
-    {
-        print_header("FlipFaceOp: faces compartilhando edge");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle f0 = editor.add_face({ v0, v1, v2 });
-        FaceHandle f1 = editor.add_face({ v0, v2, v3 });
-
-        editor.rebuild_face_normals();
-        editor.clear_diff();
-
-        expect(stats, mesh.is_valid(f0), "primeira face criada");
-        expect(stats, mesh.is_valid(f1), "segunda face criada");
-        expect(stats, active_vertex_count(mesh) == 4, "malha compartilhada tem 4 vertices");
-        expect(stats, active_edge_count(mesh) == 5, "malha compartilhada tem 5 edges");
-        expect(stats, active_loop_count(mesh) == 6, "malha compartilhada tem 6 loops");
-        expect(stats, active_face_count(mesh) == 2, "malha compartilhada tem 2 faces");
-        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
-
-        const glm::vec3 f0BeforeNormal = computed_face_normal(mesh, f0);
-        const glm::vec3 f1BeforeNormal = computed_face_normal(mesh, f1);
-
-        OperationContext context = make_context(mesh);
-        FlipFaceOp op(f0);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        const glm::vec3 f0AfterNormal = computed_face_normal(mesh, f0);
-        const glm::vec3 f1AfterNormal = computed_face_normal(mesh, f1);
-
-        expect(stats, result.is_success(), "flip em uma face compartilhada retorna sucesso");
-        expect(stats, result.changed(), "flip em face compartilhada registra diff");
-        expect(stats, mesh.is_valid(f0), "face flipada continua valida");
-        expect(stats, mesh.is_valid(f1), "face vizinha continua valida");
-        expect(stats, opposite_normals(f0BeforeNormal, f0AfterNormal), "normal da face flipada inverte");
-        expect(stats, same_normals(f1BeforeNormal, f1AfterNormal), "normal da face vizinha permanece igual");
-        expect(stats, active_vertex_count(mesh) == 4, "flip compartilhado nao altera vertices");
-        expect(stats, active_edge_count(mesh) == 5, "flip compartilhado nao altera edges");
-        expect(stats, active_loop_count(mesh) == 6, "flip compartilhado nao altera loops");
-        expect(stats, active_face_count(mesh) == 2, "flip compartilhado nao altera faces");
-        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip compartilhado");
     }
 
 }
 
 int main()
 {
-    std::cout << "=== Locus3D FlipFaceOp Regression Test ===\n";
+    std::cout << std::fixed << std::setprecision(3);
+    std::cout << "=== Locus3D Modeling Operations Visual Test ===\n";
 
-    TestStats stats;
+    std::array<VisualMesh, 3> visuals{
+        build_merge_visual_mesh(),
+        build_flip_visual_mesh(),
+        build_subdivide_visual_mesh()
+    };
 
-    test_triangle_flip(stats);
-    test_quad_flip(stats);
-    test_double_flip(stats);
-    test_invalid_face_no_change(stats);
-    test_shared_edge_faces(stats);
-
-    std::cout << "\n=== Resultado final ===\n";
-    std::cout << "Passou: " << stats.passed << '\n';
-    std::cout << "Falhou: " << stats.failed << '\n';
-
-    if (stats.failed == 0) {
-        std::cout << "\nTodos os testes de FlipFaceOp passaram.\n";
-        return 0;
+    for (VisualMesh& visual : visuals) {
+        if (!prepare_visual_mesh(visual)) {
+            std::cout << "\nResultado final: FAIL\n";
+            return EXIT_FAILURE;
+        }
     }
 
-    std::cout << "\nAlguns testes de FlipFaceOp falharam.\n";
-    return 1;
+    Window window;
+    OpenGLContext context;
+
+    if (!initialize_graphics(window, context)) {
+        std::cout << "\nResultado final: FAIL\n";
+        return EXIT_FAILURE;
+    }
+
+    Shader solidShader;
+    Shader wireShader;
+
+    if (!create_shader(
+        solidShader,
+        VisualVertexShader,
+        VisualFragmentShader,
+        "shader solido criado")) {
+        std::cout << "\nResultado final: FAIL\n";
+        return EXIT_FAILURE;
+    }
+
+    if (!create_shader(
+        wireShader,
+        WireVertexShader,
+        WireFragmentShader,
+        "shader wire criado")) {
+        std::cout << "\nResultado final: FAIL\n";
+        return EXIT_FAILURE;
+    }
+
+    for (VisualMesh& visual : visuals) {
+        if (!upload_visual_mesh(visual)) {
+            std::cout << "\nResultado final: FAIL\n";
+            return EXIT_FAILURE;
+        }
+    }
+
+    Renderer renderer;
+
+    std::cout << "\n=== Visual result ===\n";
+    std::cout << "Esquerda: MergeVerticesOp\n";
+    std::cout << "Centro: FlipFaceOp\n";
+    std::cout << "Direita: SubdivideOp\n";
+    std::cout << "Cada objeto aparece com wireframe topologico por cima.\n";
+    std::cout << "Feche a janela para encerrar o teste.\n";
+
+    render_loop(window, renderer, visuals, solidShader, wireShader);
+
+    std::cout << "\nResultado final: PASS\n";
+    return EXIT_SUCCESS;
 }

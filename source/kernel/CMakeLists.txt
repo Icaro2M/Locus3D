@@ -79,7 +79,7 @@ target_sources(locus3d_geometry PRIVATE
     "geometry/mesh/editing/attributes/AttributeShading.h"
     "geometry/mesh/editing/attributes/AttributeShading.cpp"
     "geometry/mesh/editing/attributes/AttributeTags.h"
-    "geometry/mesh/editing/attributes/AttributeTags.cpp" "modeling/operations/topology/MergeVerticesOp.h" "modeling/operations/topology/MergeVerticesOp.cpp")
+    "geometry/mesh/editing/attributes/AttributeTags.cpp" "modeling/operations/topology/MergeVerticesOp.h" "modeling/operations/topology/MergeVerticesOp.cpp" "modeling/operations/topology/SubdivideOp.h" "modeling/operations/topology/SubdivideOp.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
