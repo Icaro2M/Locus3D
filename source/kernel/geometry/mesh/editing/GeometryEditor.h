@@ -6,21 +6,28 @@
 #pragma once
 
 #include "kernel/geometry/mesh/LEMDiff.h"
-#include "kernel/geometry/mesh/LEM.h"
+#include "kernel/geometry/mesh/LEMHandles.h"
+#include "kernel/geometry/mesh/editing/geometry/GeometryNormals.h"
+#include "kernel/geometry/mesh/editing/geometry/GeometryPosition.h"
+#include "kernel/geometry/mesh/editing/geometry/GeometryTransform.h"
 
-#include <glm/glm.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstddef>
 #include <vector>
 
 namespace locus::kernel::geometry {
 
+    class LEM;
+
     /**
-     * @brief Low-level editor for LEM geometric mutations.
+     * @brief Facade for geometric mutations on a Locus Editable Mesh.
      *
-     * GeometryEditor changes vertex positions and derived geometric data without
-     * directly creating or deleting topology. It records accepted changes into
-     * the shared LEMDiff owned by the parent LEMEditor facade.
+     * GeometryEditor exposes a stable public access point for operations that
+     * edit vertex positions, transform vertices, and rebuild derived normals.
+     * The implementation is delegated to smaller internal geometry modules
+     * under editing/geometry.
      */
     class GeometryEditor {
     public:
@@ -56,6 +63,16 @@ namespace locus::kernel::geometry {
         bool set_vertex_position(VertexHandle handle, const glm::vec3& position);
 
         /**
+         * @brief Linearly interpolates a vertex position toward a target.
+         *
+         * @param handle Vertex to modify.
+         * @param target Target object-space position.
+         * @param t Interpolation factor clamped to the range [0, 1].
+         * @return True when the vertex exists and the edit was accepted.
+         */
+        bool set_vertex_position_lerp(VertexHandle handle, const glm::vec3& target, float t);
+
+        /**
          * @brief Translates a single vertex by an object-space offset.
          *
          * @param handle Vertex to translate.
@@ -83,6 +100,15 @@ namespace locus::kernel::geometry {
         std::size_t transform_vertices(const std::vector<VertexHandle>& vertices, const glm::mat4& transform);
 
         /**
+         * @brief Moves a vertex along the averaged normal of adjacent faces.
+         *
+         * @param handle Vertex to move.
+         * @param distance Signed movement distance.
+         * @return True when the vertex exists and the edit was accepted.
+         */
+        bool offset_vertex_along_normal(VertexHandle handle, float distance);
+
+        /**
          * @brief Recomputes all active face normals.
          */
         void rebuild_face_normals();
@@ -105,6 +131,9 @@ namespace locus::kernel::geometry {
     private:
         LEM& mesh_;
         LEMDiff& diff_;
+        GeometryPosition position_;
+        GeometryTransform transform_;
+        GeometryNormals normals_;
     };
 
 }

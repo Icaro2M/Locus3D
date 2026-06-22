@@ -7,15 +7,16 @@
 
 #include "kernel/geometry/mesh/LEMHandles.h"
 
-#include <glm/glm.hpp>
+#include <glm/vec3.hpp>
 
-namespace locus::kernel::geometry
-{
+#include <cstdint>
+
+namespace locus::kernel::geometry {
+
     /**
      * @brief Stores geometric and topological data for a mesh vertex.
      */
-    struct Vertex
-    {
+    struct Vertex {
         /**
          * @brief Vertex position in object space.
          */
@@ -28,6 +29,11 @@ namespace locus::kernel::geometry
          * topology from this edge.
          */
         EdgeHandle edge{};
+
+        /**
+         * @brief Internal user-defined tag used by editing and modeling tools.
+         */
+        std::uint32_t tag = 0;
 
         /**
          * @brief True when the vertex is selected by editing tools.
@@ -44,4 +50,5 @@ namespace locus::kernel::geometry
          */
         bool deleted = false;
     };
+
 }

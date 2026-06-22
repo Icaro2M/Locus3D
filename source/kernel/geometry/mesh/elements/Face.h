@@ -7,15 +7,16 @@
 
 #include "kernel/geometry/mesh/LEMHandles.h"
 
-#include <glm/glm.hpp>
+#include <glm/vec3.hpp>
 
-namespace locus::kernel::geometry
-{
+#include <cstdint>
+
+namespace locus::kernel::geometry {
+
     /**
-     * @brief Stores topological and shading data for a mesh face.
+     * @brief Stores topological, geometric, and attribute data for a mesh face.
      */
-    struct Face
-    {
+    struct Face {
         /**
          * @brief One boundary loop belonging to this face.
          *
@@ -28,6 +29,11 @@ namespace locus::kernel::geometry
          * @brief Face normal used by geometry tools and default shading.
          */
         glm::vec3 normal{ 0.0f, 1.0f, 0.0f };
+
+        /**
+         * @brief Internal user-defined tag used by editing and modeling tools.
+         */
+        std::uint32_t tag = 0;
 
         /**
          * @brief True when the face is selected by editing tools.
@@ -44,4 +50,5 @@ namespace locus::kernel::geometry
          */
         bool deleted = false;
     };
+
 }

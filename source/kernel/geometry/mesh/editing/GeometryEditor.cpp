@@ -5,108 +5,77 @@
 
 #include "kernel/geometry/mesh/editing/GeometryEditor.h"
 
-#include "kernel/geometry/render/NormalBuilder.h"
-#include "kernel/geometry/topology/TopologyTraversal.h"
-
 namespace locus::kernel::geometry {
 
     GeometryEditor::GeometryEditor(LEM& mesh, LEMDiff& diff)
         : mesh_(mesh)
-        , diff_(diff) {
+        , diff_(diff)
+        , position_(mesh, diff)
+        , transform_(mesh, diff)
+        , normals_(mesh, diff)
+    {
     }
 
-    LEM& GeometryEditor::mesh() {
+    LEM& GeometryEditor::mesh()
+    {
         return mesh_;
     }
 
-    const LEM& GeometryEditor::mesh() const {
+    const LEM& GeometryEditor::mesh() const
+    {
         return mesh_;
     }
 
-    bool GeometryEditor::set_vertex_position(VertexHandle handle, const glm::vec3& position) {
-        if (!mesh_.is_valid(handle)) {
-            return false;
-        }
-
-        Vertex& vertex = mesh_.vertex(handle);
-
-        if (vertex.position == position) {
-            return true;
-        }
-
-        vertex.position = position;
-
-        diff_.record(LEMChangeType::VertexModified, handle);
-        rebuild_normals_around_vertex(handle);
-
-        return true;
+    bool GeometryEditor::set_vertex_position(VertexHandle handle, const glm::vec3& position)
+    {
+        return position_.set_vertex_position(handle, position);
     }
 
-    bool GeometryEditor::translate_vertex(VertexHandle handle, const glm::vec3& offset) {
-        if (!mesh_.is_valid(handle)) {
-            return false;
-        }
-
-        return set_vertex_position(handle, mesh_.vertex(handle).position + offset);
+    bool GeometryEditor::set_vertex_position_lerp(
+        VertexHandle handle,
+        const glm::vec3& target,
+        float t)
+    {
+        return position_.set_vertex_position_lerp(handle, target, t);
     }
 
-    std::size_t GeometryEditor::translate_vertices(const std::vector<VertexHandle>& vertices, const glm::vec3& offset) {
-        std::size_t count = 0;
-
-        for (VertexHandle handle : vertices) {
-            if (translate_vertex(handle, offset)) {
-                ++count;
-            }
-        }
-
-        return count;
+    bool GeometryEditor::translate_vertex(VertexHandle handle, const glm::vec3& offset)
+    {
+        return position_.translate_vertex(handle, offset);
     }
 
-    std::size_t GeometryEditor::transform_vertices(const std::vector<VertexHandle>& vertices, const glm::mat4& transform) {
-        std::size_t count = 0;
-
-        for (VertexHandle handle : vertices) {
-            if (!mesh_.is_valid(handle)) {
-                continue;
-            }
-
-            const glm::vec4 transformed = transform * glm::vec4(mesh_.vertex(handle).position, 1.0f);
-
-            if (set_vertex_position(handle, glm::vec3(transformed))) {
-                ++count;
-            }
-        }
-
-        return count;
+    std::size_t GeometryEditor::translate_vertices(
+        const std::vector<VertexHandle>& vertices,
+        const glm::vec3& offset)
+    {
+        return transform_.translate_vertices(vertices, offset);
     }
 
-    void GeometryEditor::rebuild_face_normals() {
-        NormalBuilder::rebuild_face_normals(mesh_);
-
-        for (FaceHandle faceHandle : TopologyTraversal::faces(mesh_)) {
-            diff_.record(LEMChangeType::NormalsChanged, faceHandle);
-        }
+    std::size_t GeometryEditor::transform_vertices(
+        const std::vector<VertexHandle>& vertices,
+        const glm::mat4& transform)
+    {
+        return transform_.transform_vertices(vertices, transform);
     }
 
-    void GeometryEditor::rebuild_normals_around_vertex(VertexHandle vertex) {
-        if (!mesh_.is_valid(vertex)) {
-            return;
-        }
-
-        for (FaceHandle faceHandle : TopologyTraversal::vertex_faces(mesh_, vertex)) {
-            rebuild_normals_around_face(faceHandle);
-        }
+    bool GeometryEditor::offset_vertex_along_normal(VertexHandle handle, float distance)
+    {
+        return position_.offset_vertex_along_normal(handle, distance);
     }
 
-    bool GeometryEditor::rebuild_normals_around_face(FaceHandle face) {
-        if (!mesh_.is_valid(face)) {
-            return false;
-        }
+    void GeometryEditor::rebuild_face_normals()
+    {
+        normals_.rebuild_face_normals();
+    }
 
-        mesh_.face(face).normal = NormalBuilder::face_normal(mesh_, face);
-        diff_.record(LEMChangeType::NormalsChanged, face);
+    void GeometryEditor::rebuild_normals_around_vertex(VertexHandle vertex)
+    {
+        normals_.rebuild_normals_around_vertex(vertex);
+    }
 
-        return true;
+    bool GeometryEditor::rebuild_normals_around_face(FaceHandle face)
+    {
+        return normals_.rebuild_normals_around_face(face);
     }
 
 }

@@ -95,12 +95,44 @@ source\kernel
 |   |   |   LEMDiff.h
 |   |   |
 |   |   +---editing
-|   |   |   TopologyEditor.h 
-|   |   |   TopologyEditor.cpp
-|   |   |   GeometryEditor.h
-|   |   |   GeometryEditor.cpp
-|   |   |   AttributeEditor.h
-|   |   |   AttributeEditor.cpp
+|   |   |   |   TopologyEditor.h
+|   |   |   |   TopologyEditor.cpp
+|   |   |   |   GeometryEditor.h
+|   |   |   |   GeometryEditor.cpp
+|   |   |   |   AttributeEditor.h
+|   |   |   |   AttributeEditor.cpp
+|   |   |   |
+|   |   |   +---topology
+|   |   |   |       TopologyCreation.h
+|   |   |   |       TopologyCreation.cpp
+|   |   |   |       TopologyRemoval.h
+|   |   |   |       TopologyRemoval.cpp
+|   |   |   |       TopologySplit.h
+|   |   |   |       TopologySplit.cpp
+|   |   |   |       TopologyCollapse.h
+|   |   |   |       TopologyCollapse.cpp
+|   |   |   |       TopologyFlip.h
+|   |   |   |       TopologyFlip.cpp
+|   |   |   |       TopologyRelink.h
+|   |   |   |       TopologyRelink.cpp
+|   |   |   |
+|   |   |   +---geometry
+|   |   |   |       GeometryPosition.h
+|   |   |   |       GeometryPosition.cpp
+|   |   |   |       GeometryTransform.h
+|   |   |   |       GeometryTransform.cpp
+|   |   |   |       GeometryNormals.h
+|   |   |   |       GeometryNormals.cpp
+|   |   |   |
+|   |   |   \---attributes
+|   |   |           AttributeSelection.h
+|   |   |           AttributeSelection.cpp
+|   |   |           AttributeVisibility.h
+|   |   |           AttributeVisibility.cpp
+|   |   |           AttributeShading.h
+|   |   |           AttributeShading.cpp
+|   |   |           AttributeTags.h
+|   |   |           AttributeTags.cpp
 |   |   |
 |   |   \---elements
 |   |           Vertex.h
