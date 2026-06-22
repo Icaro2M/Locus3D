@@ -271,20 +271,55 @@ namespace locus::kernel::geometry
                 return {};
             }
 
-            std::vector<EdgeHandle> result;
-
-            for (std::size_t index = 0; index < mesh.edge_count(); ++index)
+            const Vertex& vertexElement = mesh.vertex(vertex);
+            if (!mesh.is_valid(vertexElement.edge))
             {
-                EdgeHandle edgeHandle(static_cast<IdValue>(index));
-                if (!mesh.is_valid(edgeHandle))
+                return {};
+            }
+
+            std::vector<EdgeHandle> result;
+            std::vector<EdgeHandle> pending;
+            pending.push_back(vertexElement.edge);
+
+            while (!pending.empty())
+            {
+                const EdgeHandle edgeHandle = pending.back();
+                pending.pop_back();
+
+                if (!mesh.is_valid(edgeHandle) || contains(result, edgeHandle))
                 {
                     continue;
                 }
 
                 const Edge& edge = mesh.edge(edgeHandle);
-                if (edge.vertexA == vertex || edge.vertexB == vertex)
+                if (edge.vertexA != vertex && edge.vertexB != vertex)
                 {
-                    result.push_back(edgeHandle);
+                    continue;
+                }
+
+                result.push_back(edgeHandle);
+
+                for (LoopHandle loopHandle : edge_loops(mesh, edgeHandle))
+                {
+                    const Loop& loop = mesh.loop(loopHandle);
+
+                    if (loop.vertex == vertex && mesh.is_valid(loop.previous))
+                    {
+                        const Loop& previous = mesh.loop(loop.previous);
+                        if (mesh.is_valid(previous.edge) && !contains(result, previous.edge))
+                        {
+                            pending.push_back(previous.edge);
+                        }
+                    }
+
+                    if (mesh.is_valid(loop.next))
+                    {
+                        const Loop& next = mesh.loop(loop.next);
+                        if (next.vertex == vertex && mesh.is_valid(next.edge) && !contains(result, next.edge))
+                        {
+                            pending.push_back(next.edge);
+                        }
+                    }
                 }
             }
 
@@ -307,18 +342,15 @@ namespace locus::kernel::geometry
 
             std::vector<LoopHandle> result;
 
-            for (std::size_t index = 0; index < mesh.loop_count(); ++index)
+            for (EdgeHandle edgeHandle : vertex_edges(mesh, vertex))
             {
-                LoopHandle loopHandle(static_cast<IdValue>(index));
-                if (!mesh.is_valid(loopHandle))
+                for (LoopHandle loopHandle : edge_loops(mesh, edgeHandle))
                 {
-                    continue;
-                }
-
-                const Loop& loop = mesh.loop(loopHandle);
-                if (loop.vertex == vertex)
-                {
-                    result.push_back(loopHandle);
+                    const Loop& loop = mesh.loop(loopHandle);
+                    if (loop.vertex == vertex && !contains(result, loopHandle))
+                    {
+                        result.push_back(loopHandle);
+                    }
                 }
             }
 

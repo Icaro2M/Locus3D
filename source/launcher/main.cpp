@@ -7,6 +7,7 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -164,6 +165,46 @@ namespace {
         check(!looseMesh.is_valid(a), "vertice solto removido deixa de ser valido");
     }
 
+    void test_topology_traversal_vertex_incidence()
+    {
+        print_section("TopologyTraversal: vertex incidence");
+
+        QuadFixture fixture;
+
+        const std::vector<EdgeHandle> v0Edges = TopologyTraversal::vertex_edges(fixture.mesh, fixture.v0);
+        check(v0Edges.size() == 2, "vertex_edges encontra duas edges incidentes no canto do quad");
+        check(
+            std::find(v0Edges.begin(), v0Edges.end(), fixture.e01) != v0Edges.end(),
+            "vertex_edges inclui edge seguinte do vertice");
+        check(
+            std::find(v0Edges.begin(), v0Edges.end(), fixture.e30) != v0Edges.end(),
+            "vertex_edges inclui edge anterior do vertice");
+
+        const std::vector<LoopHandle> v0Loops = TopologyTraversal::vertex_loops(fixture.mesh, fixture.v0);
+        check(v0Loops.size() == 1, "vertex_loops encontra o loop do vertice no quad");
+
+        if (!v0Loops.empty()) {
+            const Loop& loop = fixture.mesh.loop(v0Loops.front());
+            check(loop.vertex == fixture.v0, "vertex_loops retorna loop que referencia o vertice pedido");
+            check(loop.edge == fixture.e01, "vertex_loops retorna loop de entrada da face cycle");
+        }
+
+        LEM looseMesh;
+        LEMEditor looseEditor(looseMesh);
+        VertexHandle a = looseEditor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle b = looseEditor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        EdgeHandle looseEdge = looseEditor.find_or_create_edge(a, b);
+
+        const std::vector<EdgeHandle> looseEdges = TopologyTraversal::vertex_edges(looseMesh, a);
+        check(looseEdges.size() == 1, "vertex_edges encontra edge solta pela entrada direta do vertice");
+        check(
+            !looseEdges.empty() && looseEdges.front() == looseEdge,
+            "vertex_edges retorna a edge solta correta");
+
+        const std::vector<LoopHandle> looseLoops = TopologyTraversal::vertex_loops(looseMesh, a);
+        check(looseLoops.empty(), "vertex_loops retorna vazio para vertice ligado apenas a edge solta");
+    }
+
     void test_geometry_passthrough()
     {
         print_section("LEMEditor facade: geometry passthrough");
@@ -317,6 +358,7 @@ int main()
 
     test_facade_accessors();
     test_topology_passthrough();
+    test_topology_traversal_vertex_incidence();
     test_geometry_passthrough();
     test_attribute_passthrough();
     test_clear();
