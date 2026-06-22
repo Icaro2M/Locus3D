@@ -4,8 +4,9 @@
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/topology/MergeVerticesOp.h"
+#include "kernel/modeling/operations/face/FlipFaceOp.h"
 
+#include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 
 #include <cmath>
@@ -69,7 +70,7 @@ namespace {
         }
 
         if (result.is_failure()) {
-            std::cout << " | error: " << result.error().message;
+            std::cout << " | error";
         }
 
         if (result.has_validation_report()) {
@@ -82,26 +83,14 @@ namespace {
         std::cout << '\n';
     }
 
-    bool near_vec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
+    OperationContext make_context(LEM& mesh)
     {
-        return std::fabs(a.x - b.x) <= epsilon
-            && std::fabs(a.y - b.y) <= epsilon
-            && std::fabs(a.z - b.z) <= epsilon;
-    }
-
-    std::size_t active_vertex_count(const LEM& mesh)
-    {
-        return TopologyTraversal::vertices(mesh).size();
-    }
-
-    std::size_t active_edge_count(const LEM& mesh)
-    {
-        return TopologyTraversal::edges(mesh).size();
-    }
-
-    std::size_t active_face_count(const LEM& mesh)
-    {
-        return TopologyTraversal::faces(mesh).size();
+        OperationContext context;
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+        context.allowNonManifold = true;
+        return context;
     }
 
     bool validate_mesh(const LEM& mesh, std::string_view label)
@@ -117,19 +106,140 @@ namespace {
         return report.valid();
     }
 
-    OperationContext make_context(LEM& mesh)
+    std::size_t active_vertex_count(const LEM& mesh)
     {
-        OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-        return context;
+        return TopologyTraversal::vertices(mesh).size();
     }
 
-    void test_pair_merge(TestStats& stats)
+    std::size_t active_edge_count(const LEM& mesh)
     {
-        print_header("MergeVerticesOp: Pair");
+        return TopologyTraversal::edges(mesh).size();
+    }
+
+    std::size_t active_loop_count(const LEM& mesh)
+    {
+        return TopologyTraversal::loops(mesh).size();
+    }
+
+    std::size_t active_face_count(const LEM& mesh)
+    {
+        return TopologyTraversal::faces(mesh).size();
+    }
+
+    std::vector<VertexHandle> face_vertices(const LEM& mesh, FaceHandle face)
+    {
+        std::vector<VertexHandle> result;
+
+        if (!mesh.is_valid(face)) {
+            return result;
+        }
+
+        LoopHandle start = mesh.face(face).loop;
+        if (!mesh.is_valid(start)) {
+            return result;
+        }
+
+        LoopHandle current = start;
+
+        do {
+            if (!mesh.is_valid(current)) {
+                result.clear();
+                return result;
+            }
+
+            result.push_back(mesh.loop(current).vertex);
+            current = mesh.loop(current).next;
+        } while (mesh.is_valid(current) && current != start);
+
+        return result;
+    }
+
+    glm::vec3 computed_face_normal(const LEM& mesh, FaceHandle face)
+    {
+        const std::vector<VertexHandle> vertices = face_vertices(mesh, face);
+
+        if (vertices.size() < 3) {
+            return { 0.0f, 0.0f, 0.0f };
+        }
+
+        const glm::vec3& p0 = mesh.vertex(vertices[0]).position;
+        const glm::vec3& p1 = mesh.vertex(vertices[1]).position;
+        const glm::vec3& p2 = mesh.vertex(vertices[2]).position;
+
+        const glm::vec3 normal = glm::cross(p1 - p0, p2 - p0);
+        const float length = glm::length(normal);
+
+        if (length <= 0.000001f) {
+            return { 0.0f, 0.0f, 0.0f };
+        }
+
+        return normal / length;
+    }
+
+    bool opposite_normals(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
+    {
+        return std::fabs(glm::dot(a, b) + 1.0f) <= epsilon;
+    }
+
+    bool same_normals(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
+    {
+        return std::fabs(glm::dot(a, b) - 1.0f) <= epsilon;
+    }
+
+    bool same_vertex_sequence(
+        const std::vector<VertexHandle>& a,
+        const std::vector<VertexHandle>& b)
+    {
+        if (a.size() != b.size()) {
+            return false;
+        }
+
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            if (a[i] != b[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool reversed_vertex_sequence(
+        const std::vector<VertexHandle>& before,
+        const std::vector<VertexHandle>& after)
+    {
+        if (before.size() != after.size()) {
+            return false;
+        }
+
+        if (before.empty()) {
+            return true;
+        }
+
+        const std::size_t count = before.size();
+
+        for (std::size_t offset = 0; offset < count; ++offset) {
+            bool matches = true;
+
+            for (std::size_t i = 0; i < count; ++i) {
+                const std::size_t reversedIndex = (count + offset - i) % count;
+
+                if (after[i] != before[reversedIndex]) {
+                    matches = false;
+                    break;
+                }
+            }
+
+            if (matches) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void test_triangle_flip(TestStats& stats)
+    {
+        print_header("FlipFaceOp: triangulo");
 
         LEM mesh;
         LEMEditor editor(mesh);
@@ -139,172 +249,43 @@ namespace {
         VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
 
         FaceHandle face = editor.add_face({ v0, v1, v2 });
+        editor.rebuild_face_normals();
         editor.clear_diff();
 
-        expect(stats, mesh.is_valid(face), "triangulo inicial criado");
-        expect(stats, active_vertex_count(mesh) == 3, "malha inicia com 3 vertices ativos");
-        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
+        expect(stats, mesh.is_valid(face), "triangulo criado");
+        expect(stats, active_vertex_count(mesh) == 3, "triangulo tem 3 vertices");
+        expect(stats, active_edge_count(mesh) == 3, "triangulo tem 3 edges");
+        expect(stats, active_loop_count(mesh) == 3, "triangulo tem 3 loops");
+        expect(stats, active_face_count(mesh) == 1, "triangulo tem 1 face");
+        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
+
+        const std::vector<VertexHandle> beforeVertices = face_vertices(mesh, face);
+        const glm::vec3 beforeNormal = computed_face_normal(mesh, face);
 
         OperationContext context = make_context(mesh);
-        MergeVerticesOp op(v1, v0);
+        FlipFaceOp op(face);
         OperationResult result = op.execute(context);
 
         print_result(result);
 
-        expect(stats, result.is_success(), "Pair retorna sucesso");
-        expect(stats, result.changed(), "Pair registra diff nao vazio");
-        expect(stats, mesh.is_valid(v0), "target continua valido");
-        expect(stats, !mesh.is_valid(v1), "source deixa de ser valido");
-        expect(stats, active_vertex_count(mesh) == 2, "Pair reduz vertices ativos para 2");
-        expect(stats, validate_mesh(mesh, "validacao depois do Pair"), "malha valida depois do Pair");
+        const std::vector<VertexHandle> afterVertices = face_vertices(mesh, face);
+        const glm::vec3 afterNormal = computed_face_normal(mesh, face);
+
+        expect(stats, result.is_success(), "flip de triangulo retorna sucesso");
+        expect(stats, result.changed(), "flip de triangulo registra diff");
+        expect(stats, mesh.is_valid(face), "face continua valida");
+        expect(stats, active_vertex_count(mesh) == 3, "flip nao altera quantidade de vertices");
+        expect(stats, active_edge_count(mesh) == 3, "flip nao altera quantidade de edges");
+        expect(stats, active_loop_count(mesh) == 3, "flip nao altera quantidade de loops");
+        expect(stats, active_face_count(mesh) == 1, "flip nao altera quantidade de faces");
+        expect(stats, reversed_vertex_sequence(beforeVertices, afterVertices), "ordem dos vertices foi invertida");
+        expect(stats, opposite_normals(beforeNormal, afterNormal), "normal calculada foi invertida");
+        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip");
     }
 
-    void test_pair_at_position(TestStats& stats)
+    void test_quad_flip(TestStats& stats)
     {
-        print_header("MergeVerticesOp: PairAtPosition");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2 });
-        editor.clear_diff();
-
-        const glm::vec3 mergedPosition{ 0.5f, 0.5f, 2.0f };
-
-        expect(stats, mesh.is_valid(face), "triangulo inicial criado");
-        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
-
-        OperationContext context = make_context(mesh);
-        MergeVerticesOp op(v1, v0, mergedPosition);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.is_success(), "PairAtPosition retorna sucesso");
-        expect(stats, result.changed(), "PairAtPosition registra diff nao vazio");
-        expect(stats, mesh.is_valid(v0), "target continua valido");
-        expect(stats, !mesh.is_valid(v1), "source deixa de ser valido");
-        expect(stats, near_vec3(mesh.vertex(v0).position, mergedPosition), "target recebe posicao final customizada");
-        expect(stats, validate_mesh(mesh, "validacao depois do PairAtPosition"), "malha valida depois do PairAtPosition");
-    }
-
-    void test_distance_merge(TestStats& stats)
-    {
-        print_header("MergeVerticesOp: Distance");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 0.02f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ 3.0f, 0.0f, 0.0f });
-
-        editor.clear_diff();
-
-        expect(stats, active_vertex_count(mesh) == 4, "malha inicia com 4 vertices ativos");
-        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
-
-        OperationContext context = make_context(mesh);
-        MergeVerticesOp op(0.05f);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.is_success(), "Distance retorna sucesso");
-        expect(stats, result.changed(), "Distance registra diff nao vazio");
-        expect(stats, active_vertex_count(mesh) == 3, "Distance funde apenas o par proximo");
-        expect(stats, mesh.is_valid(v2), "vertice distante v2 continua valido");
-        expect(stats, mesh.is_valid(v3), "vertice distante v3 continua valido");
-        expect(stats, validate_mesh(mesh, "validacao depois do Distance"), "malha valida depois do Distance");
-    }
-
-    void test_vertex_set_distance_merge(TestStats& stats)
-    {
-        print_header("MergeVerticesOp: VertexSetDistance");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 0.02f, 0.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ 2.02f, 0.0f, 0.0f });
-
-        editor.clear_diff();
-
-        expect(stats, active_vertex_count(mesh) == 4, "malha inicia com 4 vertices ativos");
-        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
-
-        OperationContext context = make_context(mesh);
-        MergeVerticesOp op(std::vector<VertexHandle>{ v0, v1 }, 0.05f);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.is_success(), "VertexSetDistance retorna sucesso");
-        expect(stats, result.changed(), "VertexSetDistance registra diff nao vazio");
-        expect(stats, active_vertex_count(mesh) == 3, "VertexSetDistance funde apenas vertices do conjunto passado");
-        expect(stats, mesh.is_valid(v2), "v2 fora do conjunto continua valido");
-        expect(stats, mesh.is_valid(v3), "v3 fora do conjunto continua valido");
-        expect(stats, validate_mesh(mesh, "validacao depois do VertexSetDistance"), "malha valida depois do VertexSetDistance");
-    }
-
-    void test_no_change_invalid_pair(TestStats& stats)
-    {
-        print_header("MergeVerticesOp: NoChange com par igual");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        editor.clear_diff();
-
-        OperationContext context = make_context(mesh);
-        MergeVerticesOp op(v0, v0);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.status() == OperationStatus::NoChange, "source e target iguais retornam NoChange");
-        expect(stats, !result.changed(), "NoChange nao registra mudanca");
-        expect(stats, active_vertex_count(mesh) == 1, "malha continua com 1 vertice");
-        expect(stats, validate_mesh(mesh, "validacao depois do NoChange"), "malha continua valida");
-    }
-
-    void test_no_change_distance(TestStats& stats)
-    {
-        print_header("MergeVerticesOp: NoChange com distancia sem candidatos");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 5.0f, 0.0f, 0.0f });
-
-        editor.clear_diff();
-
-        OperationContext context = make_context(mesh);
-        MergeVerticesOp op(0.01f);
-        OperationResult result = op.execute(context);
-
-        print_result(result);
-
-        expect(stats, result.status() == OperationStatus::NoChange, "distancia sem candidatos retorna NoChange");
-        expect(stats, !result.changed(), "NoChange nao registra mudanca");
-        expect(stats, mesh.is_valid(v0), "v0 continua valido");
-        expect(stats, mesh.is_valid(v1), "v1 continua valido");
-        expect(stats, active_vertex_count(mesh) == 2, "malha continua com 2 vertices");
-        expect(stats, validate_mesh(mesh, "validacao depois do NoChange"), "malha continua valida");
-    }
-
-    void test_distance_with_connected_geometry(TestStats& stats)
-    {
-        print_header("MergeVerticesOp: Distance em geometria com faces");
+        print_header("FlipFaceOp: quad");
 
         LEM mesh;
         LEMEditor editor(mesh);
@@ -313,57 +294,199 @@ namespace {
         VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
         VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
         VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
-        VertexHandle v4 = editor.add_vertex({ 0.01f, 1.0f, 0.0f });
 
-        FaceHandle f0 = editor.add_face({ v0, v1, v2, v3 });
-        FaceHandle f1 = editor.add_face({ v0, v1, v2, v4 });
-
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+        editor.rebuild_face_normals();
         editor.clear_diff();
 
-        expect(stats, mesh.is_valid(f0), "primeiro quad criado");
-        expect(stats, mesh.is_valid(f1), "segundo quad criado");
-        expect(stats, active_vertex_count(mesh) == 5, "malha inicia com 5 vertices ativos");
-        expect(stats, active_face_count(mesh) == 2, "malha inicia com 2 faces ativas");
-        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
+        expect(stats, mesh.is_valid(face), "quad criado");
+        expect(stats, active_vertex_count(mesh) == 4, "quad tem 4 vertices");
+        expect(stats, active_edge_count(mesh) == 4, "quad tem 4 edges");
+        expect(stats, active_loop_count(mesh) == 4, "quad tem 4 loops");
+        expect(stats, active_face_count(mesh) == 1, "quad tem 1 face");
+        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
+
+        const std::vector<VertexHandle> beforeVertices = face_vertices(mesh, face);
+        const glm::vec3 beforeNormal = computed_face_normal(mesh, face);
 
         OperationContext context = make_context(mesh);
-        MergeVerticesOp op(0.05f);
+        FlipFaceOp op(face);
         OperationResult result = op.execute(context);
 
         print_result(result);
 
-        expect(stats, result.is_success(), "Distance em malha com faces retorna sucesso");
-        expect(stats, result.changed(), "Distance em malha com faces registra diff nao vazio");
-        expect(stats, active_vertex_count(mesh) == 4, "vertices proximos em faces foram fundidos");
-        expect(stats, active_face_count(mesh) >= 1, "malha ainda possui pelo menos uma face ativa");
-        expect(stats, validate_mesh(mesh, "validacao depois do Distance com faces"), "malha valida depois do Distance com faces");
+        const std::vector<VertexHandle> afterVertices = face_vertices(mesh, face);
+        const glm::vec3 afterNormal = computed_face_normal(mesh, face);
+
+        expect(stats, result.is_success(), "flip de quad retorna sucesso");
+        expect(stats, result.changed(), "flip de quad registra diff");
+        expect(stats, mesh.is_valid(face), "face continua valida");
+        expect(stats, active_vertex_count(mesh) == 4, "flip nao altera quantidade de vertices");
+        expect(stats, active_edge_count(mesh) == 4, "flip nao altera quantidade de edges");
+        expect(stats, active_loop_count(mesh) == 4, "flip nao altera quantidade de loops");
+        expect(stats, active_face_count(mesh) == 1, "flip nao altera quantidade de faces");
+        expect(stats, reversed_vertex_sequence(beforeVertices, afterVertices), "ordem dos vertices foi invertida");
+        expect(stats, opposite_normals(beforeNormal, afterNormal), "normal calculada foi invertida");
+        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip");
+    }
+
+    void test_double_flip(TestStats& stats)
+    {
+        print_header("FlipFaceOp: duplo flip");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2 });
+        editor.rebuild_face_normals();
+        editor.clear_diff();
+
+        expect(stats, mesh.is_valid(face), "triangulo criado");
+        expect(stats, validate_mesh(mesh, "validacao antes do duplo flip"), "malha inicial valida");
+
+        const std::vector<VertexHandle> originalVertices = face_vertices(mesh, face);
+        const glm::vec3 originalNormal = computed_face_normal(mesh, face);
+
+        OperationContext context = make_context(mesh);
+
+        FlipFaceOp firstFlip(face);
+        OperationResult firstResult = firstFlip.execute(context);
+
+        print_result(firstResult);
+
+        FlipFaceOp secondFlip(face);
+        OperationResult secondResult = secondFlip.execute(context);
+
+        print_result(secondResult);
+
+        const std::vector<VertexHandle> finalVertices = face_vertices(mesh, face);
+        const glm::vec3 finalNormal = computed_face_normal(mesh, face);
+
+        expect(stats, firstResult.is_success(), "primeiro flip retorna sucesso");
+        expect(stats, secondResult.is_success(), "segundo flip retorna sucesso");
+        expect(stats, same_vertex_sequence(originalVertices, finalVertices), "duplo flip restaura ordem original");
+        expect(stats, same_normals(originalNormal, finalNormal), "duplo flip restaura normal original");
+        expect(stats, active_vertex_count(mesh) == 3, "duplo flip nao altera vertices");
+        expect(stats, active_edge_count(mesh) == 3, "duplo flip nao altera edges");
+        expect(stats, active_loop_count(mesh) == 3, "duplo flip nao altera loops");
+        expect(stats, active_face_count(mesh) == 1, "duplo flip nao altera faces");
+        expect(stats, validate_mesh(mesh, "validacao depois do duplo flip"), "malha valida depois do duplo flip");
+    }
+
+    void test_invalid_face_no_change(TestStats& stats)
+    {
+        print_header("FlipFaceOp: face invalida");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle validFace = editor.add_face({ v0, v1, v2 });
+        FaceHandle invalidFace{};
+
+        editor.clear_diff();
+
+        expect(stats, mesh.is_valid(validFace), "face valida criada");
+        expect(stats, !mesh.is_valid(invalidFace), "handle default nao aponta para face valida");
+        expect(stats, validate_mesh(mesh, "validacao antes do no change"), "malha inicial valida");
+
+        OperationContext context = make_context(mesh);
+        FlipFaceOp op(invalidFace);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.status() == OperationStatus::NoChange, "face invalida retorna NoChange");
+        expect(stats, !result.changed(), "face invalida nao altera diff");
+        expect(stats, mesh.is_valid(validFace), "face valida continua existindo");
+        expect(stats, active_vertex_count(mesh) == 3, "NoChange nao altera vertices");
+        expect(stats, active_edge_count(mesh) == 3, "NoChange nao altera edges");
+        expect(stats, active_loop_count(mesh) == 3, "NoChange nao altera loops");
+        expect(stats, active_face_count(mesh) == 1, "NoChange nao altera faces");
+        expect(stats, validate_mesh(mesh, "validacao depois do no change"), "malha continua valida");
+    }
+
+    void test_shared_edge_faces(TestStats& stats)
+    {
+        print_header("FlipFaceOp: faces compartilhando edge");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle f0 = editor.add_face({ v0, v1, v2 });
+        FaceHandle f1 = editor.add_face({ v0, v2, v3 });
+
+        editor.rebuild_face_normals();
+        editor.clear_diff();
+
+        expect(stats, mesh.is_valid(f0), "primeira face criada");
+        expect(stats, mesh.is_valid(f1), "segunda face criada");
+        expect(stats, active_vertex_count(mesh) == 4, "malha compartilhada tem 4 vertices");
+        expect(stats, active_edge_count(mesh) == 5, "malha compartilhada tem 5 edges");
+        expect(stats, active_loop_count(mesh) == 6, "malha compartilhada tem 6 loops");
+        expect(stats, active_face_count(mesh) == 2, "malha compartilhada tem 2 faces");
+        expect(stats, validate_mesh(mesh, "validacao antes do flip"), "malha inicial valida");
+
+        const glm::vec3 f0BeforeNormal = computed_face_normal(mesh, f0);
+        const glm::vec3 f1BeforeNormal = computed_face_normal(mesh, f1);
+
+        OperationContext context = make_context(mesh);
+        FlipFaceOp op(f0);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        const glm::vec3 f0AfterNormal = computed_face_normal(mesh, f0);
+        const glm::vec3 f1AfterNormal = computed_face_normal(mesh, f1);
+
+        expect(stats, result.is_success(), "flip em uma face compartilhada retorna sucesso");
+        expect(stats, result.changed(), "flip em face compartilhada registra diff");
+        expect(stats, mesh.is_valid(f0), "face flipada continua valida");
+        expect(stats, mesh.is_valid(f1), "face vizinha continua valida");
+        expect(stats, opposite_normals(f0BeforeNormal, f0AfterNormal), "normal da face flipada inverte");
+        expect(stats, same_normals(f1BeforeNormal, f1AfterNormal), "normal da face vizinha permanece igual");
+        expect(stats, active_vertex_count(mesh) == 4, "flip compartilhado nao altera vertices");
+        expect(stats, active_edge_count(mesh) == 5, "flip compartilhado nao altera edges");
+        expect(stats, active_loop_count(mesh) == 6, "flip compartilhado nao altera loops");
+        expect(stats, active_face_count(mesh) == 2, "flip compartilhado nao altera faces");
+        expect(stats, validate_mesh(mesh, "validacao depois do flip"), "malha valida depois do flip compartilhado");
     }
 
 }
 
 int main()
 {
-    std::cout << "=== Locus3D MergeVerticesOp Regression Test ===\n";
+    std::cout << "=== Locus3D FlipFaceOp Regression Test ===\n";
 
     TestStats stats;
 
-    test_pair_merge(stats);
-    test_pair_at_position(stats);
-    test_distance_merge(stats);
-    test_vertex_set_distance_merge(stats);
-    test_no_change_invalid_pair(stats);
-    test_no_change_distance(stats);
-    test_distance_with_connected_geometry(stats);
+    test_triangle_flip(stats);
+    test_quad_flip(stats);
+    test_double_flip(stats);
+    test_invalid_face_no_change(stats);
+    test_shared_edge_faces(stats);
 
     std::cout << "\n=== Resultado final ===\n";
     std::cout << "Passou: " << stats.passed << '\n';
     std::cout << "Falhou: " << stats.failed << '\n';
 
     if (stats.failed == 0) {
-        std::cout << "\nTodos os testes de MergeVerticesOp passaram.\n";
+        std::cout << "\nTodos os testes de FlipFaceOp passaram.\n";
         return 0;
     }
 
-    std::cout << "\nAlguns testes de MergeVerticesOp falharam.\n";
+    std::cout << "\nAlguns testes de FlipFaceOp falharam.\n";
     return 1;
 }
