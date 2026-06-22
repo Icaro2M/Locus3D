@@ -1,55 +1,92 @@
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
+#include "kernel/geometry/topology/TopologyValidator.h"
+#include "kernel/modeling/core/OperationContext.h"
+#include "kernel/modeling/core/OperationResult.h"
+#include "kernel/modeling/operations/topology/MergeVerticesOp.h"
 
-#include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 
 #include <cmath>
-#include <cstdlib>
+#include <cstddef>
 #include <iostream>
-#include <string>
+#include <string_view>
 #include <vector>
-
-using namespace locus::kernel::geometry;
 
 namespace {
 
-    int g_failed = 0;
-    int g_passed = 0;
+    using namespace locus::kernel;
+    using namespace locus::kernel::geometry;
+    using namespace locus::kernel::modeling;
 
-    void check(bool condition, const std::string& message)
-    {
-        if (condition) {
-            ++g_passed;
-            std::cout << "[OK] " << message << '\n';
-            return;
-        }
+    struct TestStats {
+        int passed = 0;
+        int failed = 0;
+    };
 
-        ++g_failed;
-        std::cout << "[FAIL] " << message << '\n';
-    }
-
-    void print_section(const std::string& title)
+    void print_header(std::string_view title)
     {
         std::cout << "\n=== " << title << " ===\n";
     }
 
-    bool near(float a, float b, float epsilon = 0.0001f)
+    void expect(TestStats& stats, bool condition, std::string_view message)
     {
-        return std::abs(a - b) <= epsilon;
+        if (condition) {
+            ++stats.passed;
+            std::cout << "[OK] " << message << '\n';
+        }
+        else {
+            ++stats.failed;
+            std::cout << "[FAIL] " << message << '\n';
+        }
+    }
+
+    const char* status_name(OperationStatus status)
+    {
+        switch (status) {
+        case OperationStatus::Success:
+            return "Success";
+        case OperationStatus::Failed:
+            return "Failed";
+        case OperationStatus::NoChange:
+            return "NoChange";
+        case OperationStatus::Cancelled:
+            return "Cancelled";
+        }
+
+        return "Unknown";
+    }
+
+    void print_result(const OperationResult& result)
+    {
+        std::cout << "status: " << status_name(result.status())
+            << " | changed: " << (result.changed() ? "true" : "false")
+            << " | diff: " << result.diff().size();
+
+        if (!result.message().empty()) {
+            std::cout << " | message: " << result.message();
+        }
+
+        if (result.is_failure()) {
+            std::cout << " | error: " << result.error().message;
+        }
+
+        if (result.has_validation_report()) {
+            const TopologyValidationReport& report = result.validation_report();
+            std::cout << " | validation issues: " << report.issues.size()
+                << " | errors: " << report.error_count()
+                << " | warnings: " << report.warning_count();
+        }
+
+        std::cout << '\n';
     }
 
     bool near_vec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
     {
-        return near(a.x, b.x, epsilon)
-            && near(a.y, b.y, epsilon)
-            && near(a.z, b.z, epsilon);
-    }
-
-    std::size_t active_face_count(const LEM& mesh)
-    {
-        return TopologyTraversal::faces(mesh).size();
+        return std::fabs(a.x - b.x) <= epsilon
+            && std::fabs(a.y - b.y) <= epsilon
+            && std::fabs(a.z - b.z) <= epsilon;
     }
 
     std::size_t active_vertex_count(const LEM& mesh)
@@ -62,80 +99,37 @@ namespace {
         return TopologyTraversal::edges(mesh).size();
     }
 
-    void test_merge_loose_vertices()
+    std::size_t active_face_count(const LEM& mesh)
     {
-        print_section("merge_vertices: vertices soltos sem edge");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle source = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-
-        editor.clear_diff();
-
-        check(mesh.is_valid(target), "target valido antes do merge");
-        check(mesh.is_valid(source), "source valido antes do merge");
-        check(active_vertex_count(mesh) == 2, "malha possui 2 vertices ativos antes do merge");
-
-        check(editor.merge_vertices(source, target), "merge_vertices executa em vertices soltos");
-        check(mesh.is_valid(target), "target continua valido apos merge");
-        check(!mesh.is_valid(source), "source deixa de ser valido apos merge");
-        check(active_vertex_count(mesh) == 1, "malha possui 1 vertice ativo apos merge");
-        check(near_vec3(mesh.vertex(target).position, { 0.0f, 0.0f, 0.0f }), "merge_vertices preserva posicao do target");
-        check(!editor.diff().empty(), "merge_vertices registra eventos no diff");
+        return TopologyTraversal::faces(mesh).size();
     }
 
-    void test_merge_vertices_at_position()
+    bool validate_mesh(const LEM& mesh, std::string_view label)
     {
-        print_section("merge_vertices_at_position: posicao final explicita");
+        const TopologyValidationReport report = TopologyValidator::validate(mesh);
 
-        LEM mesh;
-        LEMEditor editor(mesh);
+        std::cout << label
+            << " | issues: " << report.issues.size()
+            << " | errors: " << report.error_count()
+            << " | warnings: " << report.warning_count()
+            << '\n';
 
-        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle source = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
-
-        editor.clear_diff();
-
-        check(
-            editor.merge_vertices_at_position(source, target, { 1.0f, 2.0f, 3.0f }),
-            "merge_vertices_at_position executa");
-
-        check(mesh.is_valid(target), "target continua valido");
-        check(!mesh.is_valid(source), "source foi removido");
-        check(
-            near_vec3(mesh.vertex(target).position, { 1.0f, 2.0f, 3.0f }),
-            "target recebe posicao final explicita");
-        check(active_vertex_count(mesh) == 1, "apenas 1 vertice ativo permanece");
+        return report.valid();
     }
 
-    void test_merge_connected_vertices()
+    OperationContext make_context(LEM& mesh)
     {
-        print_section("merge_vertices: vertices conectados por edge");
-
-        LEM mesh;
-        LEMEditor editor(mesh);
-
-        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle source = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        EdgeHandle edge = editor.find_or_create_edge(target, source);
-
-        editor.clear_diff();
-
-        check(mesh.is_valid(edge), "edge solta criada entre target e source");
-        check(active_edge_count(mesh) == 1, "malha possui 1 edge antes do merge");
-
-        check(editor.merge_vertices(source, target), "merge_vertices executa mesmo com edge entre vertices");
-        check(mesh.is_valid(target), "target continua valido");
-        check(!mesh.is_valid(source), "source deixa de ser valido");
-        check(!mesh.is_valid(edge), "edge entre source e target foi removida");
-        check(active_edge_count(mesh) == 0, "malha fica sem edges ativas apos merge");
+        OperationContext context;
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+        context.allowNonManifold = true;
+        return context;
     }
 
-    void test_merge_degenerate_face()
+    void test_pair_merge(TestStats& stats)
     {
-        print_section("merge_vertices: face degenerada removida");
+        print_header("MergeVerticesOp: Pair");
 
         LEM mesh;
         LEMEditor editor(mesh);
@@ -145,201 +139,231 @@ namespace {
         VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
 
         FaceHandle face = editor.add_face({ v0, v1, v2 });
-
         editor.clear_diff();
 
-        check(mesh.is_valid(face), "triangulo valido antes do merge");
-        check(active_face_count(mesh) == 1, "malha possui 1 face antes do merge");
+        expect(stats, mesh.is_valid(face), "triangulo inicial criado");
+        expect(stats, active_vertex_count(mesh) == 3, "malha inicia com 3 vertices ativos");
+        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
 
-        check(editor.merge_vertices(v1, v0), "merge_vertices executa em vertices da mesma face");
-        check(mesh.is_valid(v0), "target continua valido");
-        check(!mesh.is_valid(v1), "source deixa de ser valido");
-        check(!mesh.is_valid(face), "face original degenerada deixa de ser valida");
-        check(active_face_count(mesh) == 0, "face degenerada nao foi recriada");
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(v1, v0);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.is_success(), "Pair retorna sucesso");
+        expect(stats, result.changed(), "Pair registra diff nao vazio");
+        expect(stats, mesh.is_valid(v0), "target continua valido");
+        expect(stats, !mesh.is_valid(v1), "source deixa de ser valido");
+        expect(stats, active_vertex_count(mesh) == 2, "Pair reduz vertices ativos para 2");
+        expect(stats, validate_mesh(mesh, "validacao depois do Pair"), "malha valida depois do Pair");
     }
 
-    void test_merge_rebuilds_non_degenerate_face()
+    void test_pair_at_position(TestStats& stats)
     {
-        print_section("merge_vertices: face afetada reconstruida");
+        print_header("MergeVerticesOp: PairAtPosition");
 
         LEM mesh;
         LEMEditor editor(mesh);
 
-        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
 
-        VertexHandle source = editor.add_vertex({ 3.0f, 0.0f, 0.0f });
-        VertexHandle a = editor.add_vertex({ 4.0f, 0.0f, 0.0f });
-        VertexHandle b = editor.add_vertex({ 3.5f, 1.0f, 0.0f });
-
-        FaceHandle oldFace = editor.add_face({ source, a, b });
-
+        FaceHandle face = editor.add_face({ v0, v1, v2 });
         editor.clear_diff();
 
-        check(mesh.is_valid(oldFace), "face original valida antes do merge");
-        check(active_face_count(mesh) == 1, "malha possui 1 face antes do merge");
+        const glm::vec3 mergedPosition{ 0.5f, 0.5f, 2.0f };
 
-        check(editor.merge_vertices(source, target), "merge_vertices executa com face nao degenerada");
-        check(mesh.is_valid(target), "target continua valido");
-        check(!mesh.is_valid(source), "source removido");
-        check(!mesh.is_valid(oldFace), "face antiga foi removida");
-        check(active_face_count(mesh) == 1, "face nao degenerada foi reconstruida");
+        expect(stats, mesh.is_valid(face), "triangulo inicial criado");
+        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
 
-        std::vector<FaceHandle> targetFaces = TopologyTraversal::vertex_faces(mesh, target);
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(v1, v0, mergedPosition);
+        OperationResult result = op.execute(context);
 
-        check(targetFaces.size() == 1, "target passa a pertencer a face reconstruida");
+        print_result(result);
 
-        if (!targetFaces.empty()) {
-            std::vector<VertexHandle> vertices = TopologyTraversal::face_vertices(mesh, targetFaces.front());
-
-            bool hasTarget = false;
-            bool hasA = false;
-            bool hasB = false;
-            bool hasSource = false;
-
-            for (VertexHandle vertex : vertices) {
-                if (vertex == target) {
-                    hasTarget = true;
-                }
-                if (vertex == a) {
-                    hasA = true;
-                }
-                if (vertex == b) {
-                    hasB = true;
-                }
-                if (vertex == source) {
-                    hasSource = true;
-                }
-            }
-
-            check(vertices.size() == 3, "face reconstruida continua triangular");
-            check(hasTarget, "face reconstruida usa target");
-            check(hasA, "face reconstruida preserva vertice A");
-            check(hasB, "face reconstruida preserva vertice B");
-            check(!hasSource, "face reconstruida nao usa source removido");
-        }
+        expect(stats, result.is_success(), "PairAtPosition retorna sucesso");
+        expect(stats, result.changed(), "PairAtPosition registra diff nao vazio");
+        expect(stats, mesh.is_valid(v0), "target continua valido");
+        expect(stats, !mesh.is_valid(v1), "source deixa de ser valido");
+        expect(stats, near_vec3(mesh.vertex(v0).position, mergedPosition), "target recebe posicao final customizada");
+        expect(stats, validate_mesh(mesh, "validacao depois do PairAtPosition"), "malha valida depois do PairAtPosition");
     }
 
-    void test_weld_vertices_restricted()
+    void test_distance_merge(TestStats& stats)
     {
-        print_section("weld_vertices: conjunto restrito");
+        print_header("MergeVerticesOp: Distance");
 
         LEM mesh;
         LEMEditor editor(mesh);
 
-        VertexHandle a = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle b = editor.add_vertex({ 0.0005f, 0.0f, 0.0f });
-        VertexHandle c = editor.add_vertex({ 10.0f, 0.0f, 0.0f });
-        VertexHandle d = editor.add_vertex({ 0.0004f, 0.0f, 0.0f });
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 0.02f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 3.0f, 0.0f, 0.0f });
 
         editor.clear_diff();
 
-        std::size_t merged = editor.weld_vertices({ a, b, c }, 0.001f);
+        expect(stats, active_vertex_count(mesh) == 4, "malha inicia com 4 vertices ativos");
+        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
 
-        check(merged == 1, "weld_vertices funde apenas vertices dentro da lista");
-        check(mesh.is_valid(a), "primeiro vertice da lista continua valido como target");
-        check(!mesh.is_valid(b), "vertice proximo dentro da lista foi fundido");
-        check(mesh.is_valid(c), "vertice distante dentro da lista continua valido");
-        check(mesh.is_valid(d), "vertice proximo fora da lista nao foi afetado");
-        check(active_vertex_count(mesh) == 3, "malha possui 3 vertices ativos apos weld restrito");
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(0.05f);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.is_success(), "Distance retorna sucesso");
+        expect(stats, result.changed(), "Distance registra diff nao vazio");
+        expect(stats, active_vertex_count(mesh) == 3, "Distance funde apenas o par proximo");
+        expect(stats, mesh.is_valid(v2), "vertice distante v2 continua valido");
+        expect(stats, mesh.is_valid(v3), "vertice distante v3 continua valido");
+        expect(stats, validate_mesh(mesh, "validacao depois do Distance"), "malha valida depois do Distance");
     }
 
-    void test_merge_vertices_by_distance()
+    void test_vertex_set_distance_merge(TestStats& stats)
     {
-        print_section("merge_vertices_by_distance: malha inteira");
+        print_header("MergeVerticesOp: VertexSetDistance");
 
         LEM mesh;
         LEMEditor editor(mesh);
 
-        VertexHandle a0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle a1 = editor.add_vertex({ 0.05f, 0.0f, 0.0f });
-
-        VertexHandle b0 = editor.add_vertex({ 10.0f, 0.0f, 0.0f });
-        VertexHandle b1 = editor.add_vertex({ 10.05f, 0.0f, 0.0f });
-
-        VertexHandle c0 = editor.add_vertex({ 20.0f, 0.0f, 0.0f });
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 0.02f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 2.02f, 0.0f, 0.0f });
 
         editor.clear_diff();
 
-        std::size_t merged = editor.merge_vertices_by_distance(0.1f);
+        expect(stats, active_vertex_count(mesh) == 4, "malha inicia com 4 vertices ativos");
+        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
 
-        check(merged == 2, "merge_vertices_by_distance funde dois pares proximos");
-        check(mesh.is_valid(a0), "a0 continua valido");
-        check(!mesh.is_valid(a1), "a1 foi fundido em a0");
-        check(mesh.is_valid(b0), "b0 continua valido");
-        check(!mesh.is_valid(b1), "b1 foi fundido em b0");
-        check(mesh.is_valid(c0), "c0 distante continua valido");
-        check(active_vertex_count(mesh) == 3, "malha possui 3 vertices ativos apos merge por distancia");
-        check(near_vec3(mesh.vertex(a0).position, { 0.025f, 0.0f, 0.0f }), "a0 recebe media do primeiro par");
-        check(near_vec3(mesh.vertex(b0).position, { 10.025f, 0.0f, 0.0f }), "b0 recebe media do segundo par");
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(std::vector<VertexHandle>{ v0, v1 }, 0.05f);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.is_success(), "VertexSetDistance retorna sucesso");
+        expect(stats, result.changed(), "VertexSetDistance registra diff nao vazio");
+        expect(stats, active_vertex_count(mesh) == 3, "VertexSetDistance funde apenas vertices do conjunto passado");
+        expect(stats, mesh.is_valid(v2), "v2 fora do conjunto continua valido");
+        expect(stats, mesh.is_valid(v3), "v3 fora do conjunto continua valido");
+        expect(stats, validate_mesh(mesh, "validacao depois do VertexSetDistance"), "malha valida depois do VertexSetDistance");
     }
 
-    void test_merge_invalid_inputs()
+    void test_no_change_invalid_pair(TestStats& stats)
     {
-        print_section("merge/weld: entradas invalidas");
+        print_header("MergeVerticesOp: NoChange com par igual");
 
         LEM mesh;
         LEMEditor editor(mesh);
 
-        VertexHandle valid = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle invalid{};
-
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
         editor.clear_diff();
 
-        check(!editor.merge_vertices(invalid, valid), "merge_vertices rejeita source invalido");
-        check(!editor.merge_vertices(valid, invalid), "merge_vertices rejeita target invalido");
-        check(!editor.merge_vertices(valid, valid), "merge_vertices rejeita source igual ao target");
-        check(!editor.merge_vertices_at_position(valid, valid, { 1.0f, 0.0f, 0.0f }), "merge_vertices_at_position rejeita source igual ao target");
-        check(editor.merge_vertices_by_distance(-1.0f) == 0, "merge_vertices_by_distance rejeita distancia negativa");
-        check(editor.weld_vertices({ valid }, -1.0f) == 0, "weld_vertices rejeita distancia negativa");
-        check(editor.weld_vertices({ valid }, 0.1f) == 0, "weld_vertices com apenas um vertice nao funde nada");
-        check(mesh.is_valid(valid), "vertice valido permanece ativo apos entradas invalidas");
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(v0, v0);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.status() == OperationStatus::NoChange, "source e target iguais retornam NoChange");
+        expect(stats, !result.changed(), "NoChange nao registra mudanca");
+        expect(stats, active_vertex_count(mesh) == 1, "malha continua com 1 vertice");
+        expect(stats, validate_mesh(mesh, "validacao depois do NoChange"), "malha continua valida");
     }
 
-    void test_merge_with_zero_distance()
+    void test_no_change_distance(TestStats& stats)
     {
-        print_section("merge_vertices_by_distance: distancia zero");
+        print_header("MergeVerticesOp: NoChange com distancia sem candidatos");
 
         LEM mesh;
         LEMEditor editor(mesh);
 
-        VertexHandle a = editor.add_vertex({ 1.0f, 2.0f, 3.0f });
-        VertexHandle b = editor.add_vertex({ 1.0f, 2.0f, 3.0f });
-        VertexHandle c = editor.add_vertex({ 1.0f, 2.0f, 3.001f });
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 5.0f, 0.0f, 0.0f });
 
         editor.clear_diff();
 
-        std::size_t merged = editor.merge_vertices_by_distance(0.0f);
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(0.01f);
+        OperationResult result = op.execute(context);
 
-        check(merged == 1, "distancia zero funde apenas vertices coincidentes");
-        check(mesh.is_valid(a), "vertice coincidente target continua valido");
-        check(!mesh.is_valid(b), "vertice coincidente source removido");
-        check(mesh.is_valid(c), "vertice quase coincidente permanece valido");
-        check(active_vertex_count(mesh) == 2, "malha possui 2 vertices ativos apos merge com distancia zero");
+        print_result(result);
+
+        expect(stats, result.status() == OperationStatus::NoChange, "distancia sem candidatos retorna NoChange");
+        expect(stats, !result.changed(), "NoChange nao registra mudanca");
+        expect(stats, mesh.is_valid(v0), "v0 continua valido");
+        expect(stats, mesh.is_valid(v1), "v1 continua valido");
+        expect(stats, active_vertex_count(mesh) == 2, "malha continua com 2 vertices");
+        expect(stats, validate_mesh(mesh, "validacao depois do NoChange"), "malha continua valida");
+    }
+
+    void test_distance_with_connected_geometry(TestStats& stats)
+    {
+        print_header("MergeVerticesOp: Distance em geometria com faces");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+        VertexHandle v4 = editor.add_vertex({ 0.01f, 1.0f, 0.0f });
+
+        FaceHandle f0 = editor.add_face({ v0, v1, v2, v3 });
+        FaceHandle f1 = editor.add_face({ v0, v1, v2, v4 });
+
+        editor.clear_diff();
+
+        expect(stats, mesh.is_valid(f0), "primeiro quad criado");
+        expect(stats, mesh.is_valid(f1), "segundo quad criado");
+        expect(stats, active_vertex_count(mesh) == 5, "malha inicia com 5 vertices ativos");
+        expect(stats, active_face_count(mesh) == 2, "malha inicia com 2 faces ativas");
+        expect(stats, validate_mesh(mesh, "validacao antes do merge"), "malha inicial valida");
+
+        OperationContext context = make_context(mesh);
+        MergeVerticesOp op(0.05f);
+        OperationResult result = op.execute(context);
+
+        print_result(result);
+
+        expect(stats, result.is_success(), "Distance em malha com faces retorna sucesso");
+        expect(stats, result.changed(), "Distance em malha com faces registra diff nao vazio");
+        expect(stats, active_vertex_count(mesh) == 4, "vertices proximos em faces foram fundidos");
+        expect(stats, active_face_count(mesh) >= 1, "malha ainda possui pelo menos uma face ativa");
+        expect(stats, validate_mesh(mesh, "validacao depois do Distance com faces"), "malha valida depois do Distance com faces");
     }
 
 }
 
 int main()
 {
-    std::cout << "=== Locus3D LEM Merge/Weld Regression Test ===\n";
+    std::cout << "=== Locus3D MergeVerticesOp Regression Test ===\n";
 
-    test_merge_loose_vertices();
-    test_merge_vertices_at_position();
-    test_merge_connected_vertices();
-    test_merge_degenerate_face();
-    test_merge_rebuilds_non_degenerate_face();
-    test_weld_vertices_restricted();
-    test_merge_vertices_by_distance();
-    test_merge_invalid_inputs();
-    test_merge_with_zero_distance();
+    TestStats stats;
 
-    std::cout << "\n=== Resultado ===\n";
-    std::cout << "Passou: " << g_passed << '\n';
-    std::cout << "Falhou: " << g_failed << '\n';
+    test_pair_merge(stats);
+    test_pair_at_position(stats);
+    test_distance_merge(stats);
+    test_vertex_set_distance_merge(stats);
+    test_no_change_invalid_pair(stats);
+    test_no_change_distance(stats);
+    test_distance_with_connected_geometry(stats);
 
-    if (g_failed != 0) {
-        return EXIT_FAILURE;
+    std::cout << "\n=== Resultado final ===\n";
+    std::cout << "Passou: " << stats.passed << '\n';
+    std::cout << "Falhou: " << stats.failed << '\n';
+
+    if (stats.failed == 0) {
+        std::cout << "\nTodos os testes de MergeVerticesOp passaram.\n";
+        return 0;
     }
 
-    return EXIT_SUCCESS;
+    std::cout << "\nAlguns testes de MergeVerticesOp falharam.\n";
+    return 1;
 }
