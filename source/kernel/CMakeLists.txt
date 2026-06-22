@@ -53,7 +53,7 @@ target_sources(locus3d_geometry PRIVATE
     "geometry/mesh/editing/GeometryEditor.cpp"
     "geometry/mesh/editing/AttributeEditor.h"
     "geometry/mesh/editing/AttributeEditor.cpp"
-    "geometry/mesh/LEMEditor.cpp")
+    "geometry/mesh/LEMEditor.cpp" "geometry/mesh/editing/topology/TopologyRelink.h" "geometry/mesh/editing/topology/TopologyRelink.cpp" "geometry/mesh/editing/topology/TopologyCreation.h" "geometry/mesh/editing/topology/TopologyCreation.cpp" "geometry/mesh/editing/topology/TopologyRemoval.h" "geometry/mesh/editing/topology/TopologyRemoval.cpp" "geometry/mesh/editing/topology/TopologySplit.h" "geometry/mesh/editing/topology/TopologySplit.cpp" "geometry/mesh/editing/topology/TopologyCollapse.h" "geometry/mesh/editing/topology/TopologyCollapse.cpp" "geometry/mesh/editing/topology/TopologyFlip.h" "geometry/mesh/editing/topology/TopologyFlip.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

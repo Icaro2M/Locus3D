@@ -6,21 +6,25 @@
 #pragma once
 
 #include "kernel/geometry/mesh/LEMDiff.h"
-#include "kernel/geometry/mesh/LEM.h"
+#include "kernel/geometry/mesh/LEMHandles.h"
 
-#include <glm/glm.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 namespace locus::kernel::geometry {
 
+    class LEM;
+
     /**
-     * @brief Low-level editor for LEM topology mutations.
+     * @brief Facade for topological mutations on a Locus Editable Mesh.
      *
-     * TopologyEditor owns editing operations that create, remove, relink, or
-     * rebuild topological mesh structure. It records all accepted topology
-     * changes into the shared LEMDiff owned by the parent LEMEditor facade.
+     * TopologyEditor exposes a stable public access point for operations that
+     * create, remove, split, collapse, dissolve, flip, or relink editable mesh
+     * topology. The implementation is delegated to smaller internal topology
+     * modules under editing/topology.
      */
     class TopologyEditor {
     public:
@@ -28,7 +32,7 @@ namespace locus::kernel::geometry {
          * @brief Creates a topology editor bound to a mesh and diff recorder.
          *
          * @param mesh Mesh that receives topology mutations.
-         * @param diff Diff that receives change events.
+         * @param diff Diff that receives accepted change events.
          */
         TopologyEditor(LEM& mesh, LEMDiff& diff);
 
@@ -72,7 +76,7 @@ namespace locus::kernel::geometry {
         FaceHandle add_face(const std::vector<VertexHandle>& vertices);
 
         /**
-         * @brief Removes a face and its boundary loops from radial cycles.
+         * @brief Removes a face and its boundary loops.
          *
          * Edges and vertices are kept alive. Loose cleanup can be performed
          * explicitly through remove_edge_if_loose() and remove_vertex_if_loose().
@@ -99,6 +103,92 @@ namespace locus::kernel::geometry {
         bool remove_vertex_if_loose(VertexHandle vertex);
 
         /**
+         * @brief Marks a face as deleted without deleting its boundary loops.
+         *
+         * @param face Face to kill.
+         * @return True when the face existed and was killed.
+         */
+        bool kill_face_only(FaceHandle face);
+
+        /**
+         * @brief Marks an edge as deleted without deleting its endpoint vertices.
+         *
+         * @param edge Edge to kill.
+         * @return True when the edge existed and was killed.
+         */
+        bool kill_edge_only(EdgeHandle edge);
+
+        /**
+         * @brief Removes a loop from face and radial cycles and marks it as deleted.
+         *
+         * @param loop Loop to kill.
+         * @return True when the loop existed and was killed.
+         */
+        bool kill_loop(LoopHandle loop);
+
+        /**
+         * @brief Splits an edge at its midpoint.
+         *
+         * @param edge Edge to split.
+         * @return Created vertex, or an empty optional on failure.
+         */
+        std::optional<VertexHandle> split_edge(EdgeHandle edge);
+
+        /**
+         * @brief Splits an edge at a parametric point.
+         *
+         * @param edge Edge to split.
+         * @param t Parametric position from vertexA to vertexB, clamped to [0, 1].
+         * @return Created vertex, or an empty optional on failure.
+         */
+        std::optional<VertexHandle> split_edge_at_param(EdgeHandle edge, float t);
+
+        /**
+         * @brief Splits a face by connecting two non-adjacent boundary vertices.
+         *
+         * @param face Face to split.
+         * @param vertexA First boundary vertex.
+         * @param vertexB Second boundary vertex.
+         * @return Created diagonal edge, or an empty optional on failure.
+         */
+        std::optional<EdgeHandle> split_face(
+            FaceHandle face,
+            VertexHandle vertexA,
+            VertexHandle vertexB);
+
+        /**
+         * @brief Collapses an edge by merging its endpoints into one vertex.
+         *
+         * @param edge Edge to collapse.
+         * @return True when the collapse succeeded.
+         */
+        bool collapse_edge(EdgeHandle edge);
+
+        /**
+         * @brief Dissolves an edge while trying to preserve the surrounding region.
+         *
+         * @param edge Edge to dissolve.
+         * @return True when the edge was dissolved or safely removed.
+         */
+        bool dissolve_edge(EdgeHandle edge);
+
+        /**
+         * @brief Dissolves a vertex when it can be removed without invalid topology.
+         *
+         * @param vertex Vertex to dissolve.
+         * @return True when the vertex was dissolved or safely removed.
+         */
+        bool dissolve_vertex(VertexHandle vertex);
+
+        /**
+         * @brief Dissolves a face and removes loose boundary elements left behind.
+         *
+         * @param face Face to dissolve.
+         * @return True when the face existed and was dissolved.
+         */
+        bool dissolve_face(FaceHandle face);
+
+        /**
          * @brief Reverses the winding of a face while preserving radial links.
          *
          * @param face Face whose boundary orientation will be reversed.
@@ -114,7 +204,18 @@ namespace locus::kernel::geometry {
         std::size_t flip_all_faces();
 
         /**
+         * @brief Flips a manifold edge shared by two triangular faces.
+         *
+         * @param edge Edge to flip.
+         * @return True when the edge was shared by two triangles and was flipped.
+         */
+        bool flip_edge(EdgeHandle edge);
+
+        /**
          * @brief Recomputes all active face normals and records normal changes.
+         *
+         * This method is kept for compatibility with the current LEMEditor facade.
+         * New code should prefer GeometryEditor for normal rebuild operations.
          */
         void rebuild_face_normals();
 
@@ -127,33 +228,64 @@ namespace locus::kernel::geometry {
         /**
          * @brief Removes a loop from its edge radial cycle.
          *
-         * @param loopHandle Loop to detach.
+         * @param loop Loop to detach.
          * @return True when the loop could be detached.
          */
-        bool remove_loop_from_radial(LoopHandle loopHandle);
+        bool remove_loop_from_radial(LoopHandle loop);
 
         /**
          * @brief Inserts a loop into an edge radial cycle.
          *
-         * @param loopHandle Loop to insert.
-         * @param edgeHandle Edge that will own the radial cycle.
+         * @param loop Loop to insert.
+         * @param edge Edge that will own the radial cycle.
          * @return True when insertion succeeded.
          */
-        bool insert_loop_into_radial(LoopHandle loopHandle, EdgeHandle edgeHandle);
+        bool insert_loop_into_radial(LoopHandle loop, EdgeHandle edge);
 
         /**
          * @brief Refreshes the entry loop stored by an edge.
          *
-         * @param edgeHandle Edge whose entry loop may need updating.
+         * @param edge Edge whose entry loop may need updating.
          */
-        void refresh_edge_entry_loop(EdgeHandle edgeHandle);
+        void refresh_edge_entry_loop(EdgeHandle edge);
 
         /**
          * @brief Refreshes the incident edge stored by a vertex.
          *
-         * @param vertexHandle Vertex whose incident edge may need updating.
+         * @param vertex Vertex whose incident edge may need updating.
          */
-        void refresh_vertex_incident_edge(VertexHandle vertexHandle);
+        void refresh_vertex_incident_edge(VertexHandle vertex);
+
+        /**
+         * @brief Reassigns the vertex referenced by a loop.
+         *
+         * @param loop Loop to update.
+         * @param vertex New loop vertex.
+         * @return True when the loop was updated.
+         */
+        bool update_loop_vertex(LoopHandle loop, VertexHandle vertex);
+
+        /**
+         * @brief Reassigns the edge referenced by a loop.
+         *
+         * @param loop Loop to update.
+         * @param edge New loop edge.
+         * @return True when the loop was relinked.
+         */
+        bool update_loop_edge(LoopHandle loop, EdgeHandle edge);
+
+        /**
+         * @brief Replaces all occurrences of one vertex in a face boundary.
+         *
+         * @param face Face whose boundary loops will be edited.
+         * @param oldVertex Vertex to replace.
+         * @param newVertex Replacement vertex.
+         * @return True when at least one loop was updated.
+         */
+        bool replace_vertex_in_face(
+            FaceHandle face,
+            VertexHandle oldVertex,
+            VertexHandle newVertex);
 
         LEM& mesh_;
         LEMDiff& diff_;
