@@ -11,22 +11,18 @@ namespace locus::kernel::geometry {
 
     AttributeEditor::AttributeEditor(LEM& mesh, LEMDiff& diff)
         : mesh_(mesh)
-        , diff_(diff)
-    {
+        , diff_(diff) {
     }
 
-    LEM& AttributeEditor::mesh()
-    {
+    LEM& AttributeEditor::mesh() {
         return mesh_;
     }
 
-    const LEM& AttributeEditor::mesh() const
-    {
+    const LEM& AttributeEditor::mesh() const {
         return mesh_;
     }
 
-    bool AttributeEditor::set_selected(VertexHandle handle, bool selected)
-    {
+    bool AttributeEditor::set_selected(VertexHandle handle, bool selected) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -43,8 +39,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    bool AttributeEditor::set_selected(EdgeHandle handle, bool selected)
-    {
+    bool AttributeEditor::set_selected(EdgeHandle handle, bool selected) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -61,8 +56,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    bool AttributeEditor::set_selected(FaceHandle handle, bool selected)
-    {
+    bool AttributeEditor::set_selected(FaceHandle handle, bool selected) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -79,8 +73,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    void AttributeEditor::clear_selection()
-    {
+    void AttributeEditor::clear_selection() {
         for (VertexHandle handle : TopologyTraversal::vertices(mesh_)) {
             set_selected(handle, false);
         }
@@ -94,8 +87,7 @@ namespace locus::kernel::geometry {
         }
     }
 
-    bool AttributeEditor::set_hidden(VertexHandle handle, bool hidden)
-    {
+    bool AttributeEditor::set_hidden(VertexHandle handle, bool hidden) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -112,8 +104,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    bool AttributeEditor::set_hidden(EdgeHandle handle, bool hidden)
-    {
+    bool AttributeEditor::set_hidden(EdgeHandle handle, bool hidden) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -130,8 +121,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    bool AttributeEditor::set_hidden(FaceHandle handle, bool hidden)
-    {
+    bool AttributeEditor::set_hidden(FaceHandle handle, bool hidden) {
         if (!mesh_.is_valid(handle)) {
             return false;
         }
@@ -148,8 +138,7 @@ namespace locus::kernel::geometry {
         return true;
     }
 
-    void AttributeEditor::clear_visibility()
-    {
+    void AttributeEditor::clear_visibility() {
         for (VertexHandle handle : TopologyTraversal::vertices(mesh_)) {
             set_hidden(handle, false);
         }

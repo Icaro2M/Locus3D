@@ -73,6 +73,16 @@ namespace {
         return count;
     }
 
+    std::vector<VertexHandle> make_quad_vertices(LEMEditor& editor)
+    {
+        return {
+            editor.add_vertex({ 0.0f, 0.0f, 0.0f }),
+            editor.add_vertex({ 1.0f, 0.0f, 0.0f }),
+            editor.add_vertex({ 1.0f, 1.0f, 0.0f }),
+            editor.add_vertex({ 0.0f, 1.0f, 0.0f })
+        };
+    }
+
     void test_editor_facade_creation(TestState& state)
     {
         print_section("LEMEditor facade: criacao basica");
@@ -204,6 +214,38 @@ namespace {
         check(state, !invalidMove, "translate_vertex rejeitou handle invalido");
     }
 
+    void test_transform_vertices(TestState& state)
+    {
+        print_section("transform_vertices");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+
+        editor.clear_diff();
+
+        glm::mat4 transform(1.0f);
+        transform[3] = glm::vec4(2.0f, 3.0f, 4.0f, 1.0f);
+
+        std::size_t transformed = editor.transform_vertices({ v0, v1, v2, v3 }, transform);
+
+        check(state, transformed == 4, "transform_vertices transformou 4 vertices");
+        check(state, nearly_equal(mesh.vertex(v0).position, { 2.0f, 3.0f, 4.0f }), "transform_vertices atualizou v0");
+        check(state, nearly_equal(mesh.vertex(v1).position, { 3.0f, 3.0f, 4.0f }), "transform_vertices atualizou v1");
+        check(state, nearly_equal(mesh.vertex(v2).position, { 3.0f, 4.0f, 4.0f }), "transform_vertices atualizou v2");
+        check(state, nearly_equal(mesh.vertex(v3).position, { 2.0f, 4.0f, 4.0f }), "transform_vertices atualizou v3");
+        check(state, count_changes(editor.diff(), LEMChangeType::VertexModified, LEMElementType::Vertex) == 4, "transform_vertices registrou 4 VertexModified");
+        check(state, count_changes(editor.diff(), LEMChangeType::NormalsChanged, LEMElementType::Face) >= 1, "transform_vertices atualizou normal da face");
+
+        glm::vec3 normal = mesh.face(face).normal;
+        check(state, glm::length(normal) > 0.0f, "normal continua valida apos transform_vertices");
+    }
+
     void test_attribute_editing(TestState& state)
     {
         print_section("edicao de atributos");
@@ -260,6 +302,197 @@ namespace {
         check(state, !editor.set_hidden(invalidVertex, true), "set_hidden rejeitou vertex invalido");
         check(state, !editor.set_hidden(invalidEdge, true), "set_hidden rejeitou edge invalida");
         check(state, !editor.set_hidden(invalidFace, true), "set_hidden rejeitou face invalida");
+    }
+
+    void test_flip_face(TestState& state)
+    {
+        print_section("flip_face");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+
+        std::vector<VertexHandle> before = TopologyTraversal::face_vertices(mesh, face);
+        glm::vec3 normalBefore = mesh.face(face).normal;
+
+        editor.clear_diff();
+
+        bool flipped = editor.flip_face(face);
+
+        std::vector<VertexHandle> after = TopologyTraversal::face_vertices(mesh, face);
+        glm::vec3 normalAfter = mesh.face(face).normal;
+
+        check(state, flipped, "flip_face retornou true");
+        check(state, mesh.is_valid(face), "face continua valida apos flip_face");
+        check(state, after.size() == 4, "face continua com 4 vertices apos flip_face");
+        check(state, after[0] == before[0], "flip_face preservou loop de entrada da face");
+        check(state, after[1] == before[3], "flip_face inverteu ordem do segundo vertice");
+        check(state, after[2] == before[2], "flip_face inverteu ordem do terceiro vertice");
+        check(state, after[3] == before[1], "flip_face inverteu ordem do quarto vertice");
+        check(state, glm::length(normalAfter) > 0.0f, "normal apos flip_face nao e nula");
+        check(state, glm::dot(normalBefore, normalAfter) < 0.0f, "flip_face inverteu direcao da normal");
+        check(state, count_changes(editor.diff(), LEMChangeType::LoopModified, LEMElementType::Loop) >= 4, "flip_face registrou modificacao nos loops");
+        check(state, count_changes(editor.diff(), LEMChangeType::FaceModified, LEMElementType::Face) >= 1, "flip_face registrou modificacao na face");
+        check(state, count_changes(editor.diff(), LEMChangeType::NormalsChanged, LEMElementType::Face) >= 1, "flip_face registrou mudanca de normal");
+
+        bool flippedInvalid = editor.flip_face(FaceHandle{});
+
+        check(state, !flippedInvalid, "flip_face rejeitou handle invalido");
+    }
+
+    void test_flip_all_faces(TestState& state)
+    {
+        print_section("flip_all_faces");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+        VertexHandle v4 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
+        VertexHandle v5 = editor.add_vertex({ 2.0f, 1.0f, 0.0f });
+
+        FaceHandle f0 = editor.add_face({ v0, v1, v2, v3 });
+        FaceHandle f1 = editor.add_face({ v1, v4, v5, v2 });
+
+        glm::vec3 n0 = mesh.face(f0).normal;
+        glm::vec3 n1 = mesh.face(f1).normal;
+
+        editor.clear_diff();
+
+        std::size_t count = editor.flip_all_faces();
+
+        check(state, count == 2, "flip_all_faces retornou 2");
+        check(state, glm::dot(n0, mesh.face(f0).normal) < 0.0f, "flip_all_faces inverteu normal da primeira face");
+        check(state, glm::dot(n1, mesh.face(f1).normal) < 0.0f, "flip_all_faces inverteu normal da segunda face");
+        check(state, TopologyTraversal::faces(mesh).size() == 2, "flip_all_faces manteve 2 faces ativas");
+        check(state, TopologyTraversal::loops(mesh).size() == 8, "flip_all_faces manteve 8 loops ativos");
+        check(state, count_changes(editor.diff(), LEMChangeType::FaceModified, LEMElementType::Face) >= 2, "flip_all_faces registrou faces modificadas");
+    }
+
+    void test_remove_face_and_loose_cleanup(TestState& state)
+    {
+        print_section("remove_face e limpeza loose");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+
+        EdgeHandle e01 = mesh.find_edge(v0, v1);
+        EdgeHandle e12 = mesh.find_edge(v1, v2);
+        EdgeHandle e23 = mesh.find_edge(v2, v3);
+        EdgeHandle e30 = mesh.find_edge(v3, v0);
+
+        check(state, mesh.is_valid(face), "face inicial valida");
+        check(state, mesh.is_valid(e01), "edge e01 valida antes da remocao");
+        check(state, TopologyTraversal::edge_loops(mesh, e01).size() == 1, "edge e01 possui 1 loop antes da remocao");
+
+        editor.clear_diff();
+
+        bool removedFace = editor.remove_face(face);
+
+        check(state, removedFace, "remove_face retornou true");
+        check(state, !mesh.is_valid(face), "face removida ficou invalida");
+        check(state, TopologyTraversal::faces(mesh).empty(), "traversal nao retorna face removida");
+        check(state, TopologyTraversal::loops(mesh).empty(), "traversal nao retorna loops removidos");
+        check(state, TopologyTraversal::edge_loops(mesh, e01).empty(), "edge e01 ficou sem loops");
+        check(state, TopologyTraversal::edge_loops(mesh, e12).empty(), "edge e12 ficou sem loops");
+        check(state, TopologyTraversal::edge_loops(mesh, e23).empty(), "edge e23 ficou sem loops");
+        check(state, TopologyTraversal::edge_loops(mesh, e30).empty(), "edge e30 ficou sem loops");
+        check(state, count_changes(editor.diff(), LEMChangeType::FaceModified, LEMElementType::Face) >= 1, "remove_face registrou FaceModified");
+        check(state, count_changes(editor.diff(), LEMChangeType::LoopModified, LEMElementType::Loop) >= 4, "remove_face registrou LoopModified");
+
+        editor.clear_diff();
+
+        bool removedE01 = editor.remove_edge_if_loose(e01);
+        bool removedE12 = editor.remove_edge_if_loose(e12);
+        bool removedE23 = editor.remove_edge_if_loose(e23);
+        bool removedE30 = editor.remove_edge_if_loose(e30);
+
+        check(state, removedE01, "remove_edge_if_loose removeu e01");
+        check(state, removedE12, "remove_edge_if_loose removeu e12");
+        check(state, removedE23, "remove_edge_if_loose removeu e23");
+        check(state, removedE30, "remove_edge_if_loose removeu e30");
+        check(state, TopologyTraversal::edges(mesh).empty(), "traversal nao retorna edges removidas");
+        check(state, count_changes(editor.diff(), LEMChangeType::EdgeModified, LEMElementType::Edge) >= 4, "remove_edge_if_loose registrou edges modificadas");
+
+        editor.clear_diff();
+
+        bool removedV0 = editor.remove_vertex_if_loose(v0);
+        bool removedV1 = editor.remove_vertex_if_loose(v1);
+        bool removedV2 = editor.remove_vertex_if_loose(v2);
+        bool removedV3 = editor.remove_vertex_if_loose(v3);
+
+        check(state, removedV0, "remove_vertex_if_loose removeu v0");
+        check(state, removedV1, "remove_vertex_if_loose removeu v1");
+        check(state, removedV2, "remove_vertex_if_loose removeu v2");
+        check(state, removedV3, "remove_vertex_if_loose removeu v3");
+        check(state, TopologyTraversal::vertices(mesh).empty(), "traversal nao retorna vertices removidos");
+        check(state, count_changes(editor.diff(), LEMChangeType::VertexModified, LEMElementType::Vertex) >= 4, "remove_vertex_if_loose registrou vertices modificados");
+
+        bool removedInvalidFace = editor.remove_face(FaceHandle{});
+        bool removedInvalidEdge = editor.remove_edge_if_loose(EdgeHandle{});
+        bool removedInvalidVertex = editor.remove_vertex_if_loose(VertexHandle{});
+
+        check(state, !removedInvalidFace, "remove_face rejeitou face invalida");
+        check(state, !removedInvalidEdge, "remove_edge_if_loose rejeitou edge invalida");
+        check(state, !removedInvalidVertex, "remove_vertex_if_loose rejeitou vertex invalido");
+    }
+
+    void test_remove_shared_face_preserves_neighbor(TestState& state)
+    {
+        print_section("remove_face preservando vizinho compartilhado");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
+        VertexHandle v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+        VertexHandle v4 = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
+        VertexHandle v5 = editor.add_vertex({ 2.0f, 1.0f, 0.0f });
+
+        FaceHandle f0 = editor.add_face({ v0, v1, v2, v3 });
+        FaceHandle f1 = editor.add_face({ v1, v4, v5, v2 });
+
+        EdgeHandle shared = mesh.find_edge(v1, v2);
+
+        check(state, mesh.is_valid(shared), "edge compartilhada valida antes da remocao");
+        check(state, TopologyTraversal::edge_loops(mesh, shared).size() == 2, "edge compartilhada com 2 loops antes");
+
+        editor.clear_diff();
+
+        bool removed = editor.remove_face(f0);
+
+        check(state, removed, "remove_face removeu primeira face");
+        check(state, !mesh.is_valid(f0), "primeira face ficou invalida");
+        check(state, mesh.is_valid(f1), "segunda face continua valida");
+        check(state, TopologyTraversal::faces(mesh).size() == 1, "traversal retorna 1 face restante");
+        check(state, TopologyTraversal::face_loops(mesh, f1).size() == 4, "face restante preservou 4 loops");
+        check(state, TopologyTraversal::edge_loops(mesh, shared).size() == 1, "edge compartilhada preservou 1 loop radial");
+        check(state, TopologyTraversal::edge_faces(mesh, shared).size() == 1, "edge compartilhada preservou 1 face adjacente");
+        check(state, TopologyTraversal::is_boundary_edge(mesh, shared), "edge compartilhada virou boundary apos remocao");
+        check(state, TopologyTraversal::is_manifold_edge(mesh, shared), "edge compartilhada continua manifold");
+
+        bool removedSharedEdge = editor.remove_edge_if_loose(shared);
+
+        check(state, !removedSharedEdge, "remove_edge_if_loose nao remove edge ainda usada");
+        check(state, mesh.is_valid(shared), "edge compartilhada continua valida");
     }
 
     void test_topology_traversal_regression(TestState& state)
@@ -348,14 +581,19 @@ namespace {
 
 int main()
 {
-    std::cout << "=== Locus3D LEMEditor Regression Test ===\n";
+    std::cout << "=== Locus3D LEMEditor Full Regression Test ===\n";
 
     TestState state;
 
     test_editor_facade_creation(state);
     test_internal_editors_creation(state);
     test_geometry_editing(state);
+    test_transform_vertices(state);
     test_attribute_editing(state);
+    test_flip_face(state);
+    test_flip_all_faces(state);
+    test_remove_face_and_loose_cleanup(state);
+    test_remove_shared_face_preserves_neighbor(state);
     test_topology_traversal_regression(state);
     test_normals_and_clear(state);
 

@@ -19,8 +19,8 @@ namespace locus::kernel::geometry {
      * @brief Low-level editor for LEM geometric mutations.
      *
      * GeometryEditor changes vertex positions and derived geometric data without
-     * directly creating or deleting topology. It records accepted changes into the
-     * shared LEMDiff owned by the parent LEMEditor facade.
+     * directly creating or deleting topology. It records accepted changes into
+     * the shared LEMDiff owned by the parent LEMEditor facade.
      */
     class GeometryEditor {
     public:
@@ -73,9 +73,36 @@ namespace locus::kernel::geometry {
          */
         std::size_t translate_vertices(const std::vector<VertexHandle>& vertices, const glm::vec3& offset);
 
-    private:
-        void rebuild_adjacent_face_normals(VertexHandle vertex);
+        /**
+         * @brief Applies a transform matrix to multiple vertices.
+         *
+         * @param vertices Vertices to transform.
+         * @param transform Transform matrix applied to each position.
+         * @return Number of vertices accepted by the edit.
+         */
+        std::size_t transform_vertices(const std::vector<VertexHandle>& vertices, const glm::mat4& transform);
 
+        /**
+         * @brief Recomputes all active face normals.
+         */
+        void rebuild_face_normals();
+
+        /**
+         * @brief Recomputes normals for faces adjacent to a vertex.
+         *
+         * @param vertex Vertex whose adjacent faces will be updated.
+         */
+        void rebuild_normals_around_vertex(VertexHandle vertex);
+
+        /**
+         * @brief Recomputes a single face normal.
+         *
+         * @param face Face whose normal will be updated.
+         * @return True when the face exists and was updated.
+         */
+        bool rebuild_normals_around_face(FaceHandle face);
+
+    private:
         LEM& mesh_;
         LEMDiff& diff_;
     };

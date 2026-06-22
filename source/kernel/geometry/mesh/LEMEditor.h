@@ -138,6 +138,45 @@ namespace locus::kernel::geometry {
         FaceHandle add_face(const std::vector<VertexHandle>& vertices);
 
         /**
+         * @brief Removes a face and its boundary loops.
+         *
+         * @param face Face to remove.
+         * @return True when the face existed and was removed.
+         */
+        bool remove_face(FaceHandle face);
+
+        /**
+         * @brief Removes an edge only when no active loop references it.
+         *
+         * @param edge Edge to remove.
+         * @return True when the edge existed and was loose.
+         */
+        bool remove_edge_if_loose(EdgeHandle edge);
+
+        /**
+         * @brief Removes a vertex only when no active edge or loop references it.
+         *
+         * @param vertex Vertex to remove.
+         * @return True when the vertex existed and was loose.
+         */
+        bool remove_vertex_if_loose(VertexHandle vertex);
+
+        /**
+         * @brief Reverses the winding of a face.
+         *
+         * @param face Face to flip.
+         * @return True when the face existed and was flipped.
+         */
+        bool flip_face(FaceHandle face);
+
+        /**
+         * @brief Reverses the winding of every active face.
+         *
+         * @return Number of faces successfully flipped.
+         */
+        std::size_t flip_all_faces();
+
+        /**
          * @brief Sets a vertex position and updates adjacent face normals.
          *
          * @param handle Vertex to modify.
@@ -163,6 +202,15 @@ namespace locus::kernel::geometry {
          * @return Number of vertices accepted by the edit.
          */
         std::size_t translate_vertices(const std::vector<VertexHandle>& vertices, const glm::vec3& offset);
+
+        /**
+         * @brief Applies a transform matrix to multiple vertices.
+         *
+         * @param vertices Vertices to transform.
+         * @param transform Transform matrix applied to each position.
+         * @return Number of vertices accepted by the edit.
+         */
+        std::size_t transform_vertices(const std::vector<VertexHandle>& vertices, const glm::mat4& transform);
 
         /**
          * @brief Changes a vertex selection flag.
