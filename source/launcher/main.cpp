@@ -2,12 +2,9 @@
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
-#include <glm/ext/matrix_transform.hpp>
 #include <glm/geometric.hpp>
-#include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -33,6 +30,11 @@ namespace {
         std::cout << "[FAIL] " << message << '\n';
     }
 
+    void print_section(const std::string& title)
+    {
+        std::cout << "\n=== " << title << " ===\n";
+    }
+
     bool near(float a, float b, float epsilon = 0.0001f)
     {
         return std::abs(a - b) <= epsilon;
@@ -45,323 +47,291 @@ namespace {
             && near(a.z, b.z, epsilon);
     }
 
-    void print_section(const std::string& title)
+    std::size_t active_face_count(const LEM& mesh)
     {
-        std::cout << "\n=== " << title << " ===\n";
+        return TopologyTraversal::faces(mesh).size();
     }
 
-    struct QuadFixture {
+    std::size_t active_vertex_count(const LEM& mesh)
+    {
+        return TopologyTraversal::vertices(mesh).size();
+    }
+
+    std::size_t active_edge_count(const LEM& mesh)
+    {
+        return TopologyTraversal::edges(mesh).size();
+    }
+
+    void test_merge_loose_vertices()
+    {
+        print_section("merge_vertices: vertices soltos sem edge");
+
         LEM mesh;
-        LEMEditor editor;
-        VertexHandle v0;
-        VertexHandle v1;
-        VertexHandle v2;
-        VertexHandle v3;
-        EdgeHandle e01;
-        EdgeHandle e12;
-        EdgeHandle e23;
-        EdgeHandle e30;
-        FaceHandle face;
+        LEMEditor editor(mesh);
 
-        QuadFixture()
-            : mesh()
-            , editor(mesh)
-        {
-            v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
-            v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
-            v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-            v3 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle source = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
 
-            face = editor.add_face({ v0, v1, v2, v3 });
+        editor.clear_diff();
 
-            e01 = mesh.find_edge(v0, v1);
-            e12 = mesh.find_edge(v1, v2);
-            e23 = mesh.find_edge(v2, v3);
-            e30 = mesh.find_edge(v3, v0);
+        check(mesh.is_valid(target), "target valido antes do merge");
+        check(mesh.is_valid(source), "source valido antes do merge");
+        check(active_vertex_count(mesh) == 2, "malha possui 2 vertices ativos antes do merge");
+
+        check(editor.merge_vertices(source, target), "merge_vertices executa em vertices soltos");
+        check(mesh.is_valid(target), "target continua valido apos merge");
+        check(!mesh.is_valid(source), "source deixa de ser valido apos merge");
+        check(active_vertex_count(mesh) == 1, "malha possui 1 vertice ativo apos merge");
+        check(near_vec3(mesh.vertex(target).position, { 0.0f, 0.0f, 0.0f }), "merge_vertices preserva posicao do target");
+        check(!editor.diff().empty(), "merge_vertices registra eventos no diff");
+    }
+
+    void test_merge_vertices_at_position()
+    {
+        print_section("merge_vertices_at_position: posicao final explicita");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle source = editor.add_vertex({ 2.0f, 0.0f, 0.0f });
+
+        editor.clear_diff();
+
+        check(
+            editor.merge_vertices_at_position(source, target, { 1.0f, 2.0f, 3.0f }),
+            "merge_vertices_at_position executa");
+
+        check(mesh.is_valid(target), "target continua valido");
+        check(!mesh.is_valid(source), "source foi removido");
+        check(
+            near_vec3(mesh.vertex(target).position, { 1.0f, 2.0f, 3.0f }),
+            "target recebe posicao final explicita");
+        check(active_vertex_count(mesh) == 1, "apenas 1 vertice ativo permanece");
+    }
+
+    void test_merge_connected_vertices()
+    {
+        print_section("merge_vertices: vertices conectados por edge");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle source = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        EdgeHandle edge = editor.find_or_create_edge(target, source);
+
+        editor.clear_diff();
+
+        check(mesh.is_valid(edge), "edge solta criada entre target e source");
+        check(active_edge_count(mesh) == 1, "malha possui 1 edge antes do merge");
+
+        check(editor.merge_vertices(source, target), "merge_vertices executa mesmo com edge entre vertices");
+        check(mesh.is_valid(target), "target continua valido");
+        check(!mesh.is_valid(source), "source deixa de ser valido");
+        check(!mesh.is_valid(edge), "edge entre source e target foi removida");
+        check(active_edge_count(mesh) == 0, "malha fica sem edges ativas apos merge");
+    }
+
+    void test_merge_degenerate_face()
+    {
+        print_section("merge_vertices: face degenerada removida");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle v0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, 0.0f });
+        VertexHandle v2 = editor.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+        FaceHandle face = editor.add_face({ v0, v1, v2 });
+
+        editor.clear_diff();
+
+        check(mesh.is_valid(face), "triangulo valido antes do merge");
+        check(active_face_count(mesh) == 1, "malha possui 1 face antes do merge");
+
+        check(editor.merge_vertices(v1, v0), "merge_vertices executa em vertices da mesma face");
+        check(mesh.is_valid(v0), "target continua valido");
+        check(!mesh.is_valid(v1), "source deixa de ser valido");
+        check(!mesh.is_valid(face), "face original degenerada deixa de ser valida");
+        check(active_face_count(mesh) == 0, "face degenerada nao foi recriada");
+    }
+
+    void test_merge_rebuilds_non_degenerate_face()
+    {
+        print_section("merge_vertices: face afetada reconstruida");
+
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        VertexHandle target = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+
+        VertexHandle source = editor.add_vertex({ 3.0f, 0.0f, 0.0f });
+        VertexHandle a = editor.add_vertex({ 4.0f, 0.0f, 0.0f });
+        VertexHandle b = editor.add_vertex({ 3.5f, 1.0f, 0.0f });
+
+        FaceHandle oldFace = editor.add_face({ source, a, b });
+
+        editor.clear_diff();
+
+        check(mesh.is_valid(oldFace), "face original valida antes do merge");
+        check(active_face_count(mesh) == 1, "malha possui 1 face antes do merge");
+
+        check(editor.merge_vertices(source, target), "merge_vertices executa com face nao degenerada");
+        check(mesh.is_valid(target), "target continua valido");
+        check(!mesh.is_valid(source), "source removido");
+        check(!mesh.is_valid(oldFace), "face antiga foi removida");
+        check(active_face_count(mesh) == 1, "face nao degenerada foi reconstruida");
+
+        std::vector<FaceHandle> targetFaces = TopologyTraversal::vertex_faces(mesh, target);
+
+        check(targetFaces.size() == 1, "target passa a pertencer a face reconstruida");
+
+        if (!targetFaces.empty()) {
+            std::vector<VertexHandle> vertices = TopologyTraversal::face_vertices(mesh, targetFaces.front());
+
+            bool hasTarget = false;
+            bool hasA = false;
+            bool hasB = false;
+            bool hasSource = false;
+
+            for (VertexHandle vertex : vertices) {
+                if (vertex == target) {
+                    hasTarget = true;
+                }
+                if (vertex == a) {
+                    hasA = true;
+                }
+                if (vertex == b) {
+                    hasB = true;
+                }
+                if (vertex == source) {
+                    hasSource = true;
+                }
+            }
+
+            check(vertices.size() == 3, "face reconstruida continua triangular");
+            check(hasTarget, "face reconstruida usa target");
+            check(hasA, "face reconstruida preserva vertice A");
+            check(hasB, "face reconstruida preserva vertice B");
+            check(!hasSource, "face reconstruida nao usa source removido");
         }
-    };
-
-    void test_facade_accessors()
-    {
-        print_section("LEMEditor facade: accessors e diff");
-
-        QuadFixture fixture;
-
-        check(&fixture.editor.mesh() == &fixture.mesh, "mesh() retorna a malha editada");
-        check(&fixture.editor.topology().mesh() == &fixture.mesh, "topology() aponta para a mesma malha");
-        check(&fixture.editor.geometry().mesh() == &fixture.mesh, "geometry() aponta para a mesma malha");
-        check(&fixture.editor.attributes().mesh() == &fixture.mesh, "attributes() aponta para a mesma malha");
-
-        check(!fixture.editor.diff().empty(), "diff registra criacao inicial");
-
-        const std::size_t beforeTake = fixture.editor.diff().size();
-        LEMDiff diff = fixture.editor.take_diff();
-
-        check(diff.size() == beforeTake, "take_diff retorna os eventos acumulados");
-        check(fixture.editor.diff().empty(), "take_diff limpa o diff interno");
-
-        fixture.editor.set_selected(fixture.v0, true);
-        check(!fixture.editor.diff().empty(), "diff volta a registrar novos eventos depois de take_diff");
-
-        fixture.editor.clear_diff();
-        check(fixture.editor.diff().empty(), "clear_diff limpa eventos acumulados");
     }
 
-    void test_topology_passthrough()
+    void test_weld_vertices_restricted()
     {
-        print_section("LEMEditor facade: topology passthrough");
+        print_section("weld_vertices: conjunto restrito");
 
-        QuadFixture fixture;
+        LEM mesh;
+        LEMEditor editor(mesh);
 
-        check(fixture.mesh.vertex_count() == 4, "quad possui 4 vertices");
-        check(fixture.mesh.edge_count() == 4, "quad possui 4 edges");
-        check(fixture.mesh.loop_count() == 4, "quad possui 4 loops");
-        check(fixture.mesh.face_count() == 1, "quad possui 1 face");
-        check(fixture.mesh.is_valid(fixture.face), "face criada pela fachada e valida");
-        check(fixture.mesh.is_valid(fixture.e01), "edge recuperada apos add_face e valida");
+        VertexHandle a = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle b = editor.add_vertex({ 0.0005f, 0.0f, 0.0f });
+        VertexHandle c = editor.add_vertex({ 10.0f, 0.0f, 0.0f });
+        VertexHandle d = editor.add_vertex({ 0.0004f, 0.0f, 0.0f });
 
-        std::optional<VertexHandle> splitVertex = fixture.editor.split_edge_at_param(fixture.e01, 0.25f);
+        editor.clear_diff();
 
-        check(splitVertex.has_value(), "split_edge_at_param exposto pela fachada cria vertice");
-        check(splitVertex.has_value() && fixture.mesh.is_valid(*splitVertex), "vertice criado no split e valido");
+        std::size_t merged = editor.weld_vertices({ a, b, c }, 0.001f);
 
-        if (splitVertex.has_value()) {
-            check(
-                near_vec3(fixture.mesh.vertex(*splitVertex).position, { 0.25f, 0.0f, 0.0f }),
-                "split_edge_at_param posiciona vertice no parametro esperado");
-        }
-
-        QuadFixture splitFaceFixture;
-        std::optional<EdgeHandle> diagonal = splitFaceFixture.editor.split_face(
-            splitFaceFixture.face,
-            splitFaceFixture.v0,
-            splitFaceFixture.v2);
-
-        check(diagonal.has_value(), "split_face exposto pela fachada cria diagonal");
-        check(diagonal.has_value() && splitFaceFixture.mesh.is_valid(*diagonal), "diagonal criada e valida");
-
-        QuadFixture flipFixture;
-        const glm::vec3 normalBefore = flipFixture.mesh.face(flipFixture.face).normal;
-        check(flipFixture.editor.flip_face(flipFixture.face), "flip_face exposto pela fachada executa");
-        const glm::vec3 normalAfter = flipFixture.mesh.face(flipFixture.face).normal;
-        check(glm::dot(normalBefore, normalAfter) < 0.0f, "flip_face inverte normal da face");
-
-        check(flipFixture.editor.flip_all_faces() == 1, "flip_all_faces exposto pela fachada retorna quantidade correta");
-
-        QuadFixture dissolveFixture;
-        check(dissolveFixture.editor.dissolve_face(dissolveFixture.face), "dissolve_face exposto pela fachada executa");
-        check(!dissolveFixture.mesh.is_valid(dissolveFixture.face), "face dissolvida deixa de ser valida");
-
-        LEM looseMesh;
-        LEMEditor looseEditor(looseMesh);
-        VertexHandle a = looseEditor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle b = looseEditor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        EdgeHandle looseEdge = looseEditor.find_or_create_edge(a, b);
-
-        check(looseMesh.is_valid(looseEdge), "find_or_create_edge exposto pela fachada cria edge solta");
-        check(looseEditor.remove_edge_if_loose(looseEdge), "remove_edge_if_loose remove edge sem loops");
-        check(!looseMesh.is_valid(looseEdge), "edge solta removida deixa de ser valida");
-        check(looseEditor.remove_vertex_if_loose(a), "remove_vertex_if_loose remove vertice sem edges e loops");
-        check(!looseMesh.is_valid(a), "vertice solto removido deixa de ser valido");
+        check(merged == 1, "weld_vertices funde apenas vertices dentro da lista");
+        check(mesh.is_valid(a), "primeiro vertice da lista continua valido como target");
+        check(!mesh.is_valid(b), "vertice proximo dentro da lista foi fundido");
+        check(mesh.is_valid(c), "vertice distante dentro da lista continua valido");
+        check(mesh.is_valid(d), "vertice proximo fora da lista nao foi afetado");
+        check(active_vertex_count(mesh) == 3, "malha possui 3 vertices ativos apos weld restrito");
     }
 
-    void test_topology_traversal_vertex_incidence()
+    void test_merge_vertices_by_distance()
     {
-        print_section("TopologyTraversal: vertex incidence");
+        print_section("merge_vertices_by_distance: malha inteira");
 
-        QuadFixture fixture;
+        LEM mesh;
+        LEMEditor editor(mesh);
 
-        const std::vector<EdgeHandle> v0Edges = TopologyTraversal::vertex_edges(fixture.mesh, fixture.v0);
-        check(v0Edges.size() == 2, "vertex_edges encontra duas edges incidentes no canto do quad");
-        check(
-            std::find(v0Edges.begin(), v0Edges.end(), fixture.e01) != v0Edges.end(),
-            "vertex_edges inclui edge seguinte do vertice");
-        check(
-            std::find(v0Edges.begin(), v0Edges.end(), fixture.e30) != v0Edges.end(),
-            "vertex_edges inclui edge anterior do vertice");
+        VertexHandle a0 = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle a1 = editor.add_vertex({ 0.05f, 0.0f, 0.0f });
 
-        const std::vector<LoopHandle> v0Loops = TopologyTraversal::vertex_loops(fixture.mesh, fixture.v0);
-        check(v0Loops.size() == 1, "vertex_loops encontra o loop do vertice no quad");
+        VertexHandle b0 = editor.add_vertex({ 10.0f, 0.0f, 0.0f });
+        VertexHandle b1 = editor.add_vertex({ 10.05f, 0.0f, 0.0f });
 
-        if (!v0Loops.empty()) {
-            const Loop& loop = fixture.mesh.loop(v0Loops.front());
-            check(loop.vertex == fixture.v0, "vertex_loops retorna loop que referencia o vertice pedido");
-            check(loop.edge == fixture.e01, "vertex_loops retorna loop de entrada da face cycle");
-        }
+        VertexHandle c0 = editor.add_vertex({ 20.0f, 0.0f, 0.0f });
 
-        LEM looseMesh;
-        LEMEditor looseEditor(looseMesh);
-        VertexHandle a = looseEditor.add_vertex({ 0.0f, 0.0f, 0.0f });
-        VertexHandle b = looseEditor.add_vertex({ 1.0f, 0.0f, 0.0f });
-        EdgeHandle looseEdge = looseEditor.find_or_create_edge(a, b);
+        editor.clear_diff();
 
-        const std::vector<EdgeHandle> looseEdges = TopologyTraversal::vertex_edges(looseMesh, a);
-        check(looseEdges.size() == 1, "vertex_edges encontra edge solta pela entrada direta do vertice");
-        check(
-            !looseEdges.empty() && looseEdges.front() == looseEdge,
-            "vertex_edges retorna a edge solta correta");
+        std::size_t merged = editor.merge_vertices_by_distance(0.1f);
 
-        const std::vector<LoopHandle> looseLoops = TopologyTraversal::vertex_loops(looseMesh, a);
-        check(looseLoops.empty(), "vertex_loops retorna vazio para vertice ligado apenas a edge solta");
+        check(merged == 2, "merge_vertices_by_distance funde dois pares proximos");
+        check(mesh.is_valid(a0), "a0 continua valido");
+        check(!mesh.is_valid(a1), "a1 foi fundido em a0");
+        check(mesh.is_valid(b0), "b0 continua valido");
+        check(!mesh.is_valid(b1), "b1 foi fundido em b0");
+        check(mesh.is_valid(c0), "c0 distante continua valido");
+        check(active_vertex_count(mesh) == 3, "malha possui 3 vertices ativos apos merge por distancia");
+        check(near_vec3(mesh.vertex(a0).position, { 0.025f, 0.0f, 0.0f }), "a0 recebe media do primeiro par");
+        check(near_vec3(mesh.vertex(b0).position, { 10.025f, 0.0f, 0.0f }), "b0 recebe media do segundo par");
     }
 
-    void test_geometry_passthrough()
+    void test_merge_invalid_inputs()
     {
-        print_section("LEMEditor facade: geometry passthrough");
+        print_section("merge/weld: entradas invalidas");
 
-        QuadFixture fixture;
+        LEM mesh;
+        LEMEditor editor(mesh);
 
-        check(
-            fixture.editor.set_vertex_position(fixture.v0, { 0.0f, 0.0f, 1.0f }),
-            "set_vertex_position exposto pela fachada executa");
+        VertexHandle valid = editor.add_vertex({ 0.0f, 0.0f, 0.0f });
+        VertexHandle invalid{};
 
-        check(
-            near_vec3(fixture.mesh.vertex(fixture.v0).position, { 0.0f, 0.0f, 1.0f }),
-            "set_vertex_position altera posicao");
+        editor.clear_diff();
 
-        check(
-            fixture.editor.translate_vertex(fixture.v0, { 1.0f, 0.0f, 0.0f }),
-            "translate_vertex exposto pela fachada executa");
-
-        check(
-            near_vec3(fixture.mesh.vertex(fixture.v0).position, { 1.0f, 0.0f, 1.0f }),
-            "translate_vertex altera posicao");
-
-        check(
-            fixture.editor.set_vertex_position_lerp(fixture.v1, { 3.0f, 0.0f, 0.0f }, 0.5f),
-            "set_vertex_position_lerp exposto pela fachada executa");
-
-        check(
-            near_vec3(fixture.mesh.vertex(fixture.v1).position, { 2.0f, 0.0f, 0.0f }),
-            "set_vertex_position_lerp aplica interpolacao esperada");
-
-        std::size_t translated = fixture.editor.translate_vertices(
-            { fixture.v1, fixture.v2, fixture.v3 },
-            { 0.0f, 2.0f, 0.0f });
-
-        check(translated == 3, "translate_vertices retorna quantidade de vertices alterados");
-        check(
-            near_vec3(fixture.mesh.vertex(fixture.v2).position, { 1.0f, 3.0f, 0.0f }),
-            "translate_vertices altera posicao de vertice em lote");
-
-        glm::mat4 transform{ 1.0f };
-        transform = glm::translate(transform, glm::vec3{ 0.0f, 0.0f, 2.0f });
-
-        std::size_t transformed = fixture.editor.transform_vertices(
-            { fixture.v1, fixture.v2 },
-            transform);
-
-        check(transformed == 2, "transform_vertices retorna quantidade de vertices alterados");
-        check(
-            near_vec3(fixture.mesh.vertex(fixture.v2).position, { 1.0f, 3.0f, 2.0f }),
-            "transform_vertices aplica matriz");
-
-        QuadFixture normalFixture;
-        normalFixture.editor.rebuild_face_normals();
-
-        const glm::vec3 originalNormal = normalFixture.mesh.face(normalFixture.face).normal;
-        check(
-            near_vec3(originalNormal, { 0.0f, 0.0f, 1.0f }),
-            "rebuild_face_normals gera normal esperada para quad XY");
-
-        check(
-            normalFixture.editor.offset_vertex_along_normal(normalFixture.v0, 0.5f),
-            "offset_vertex_along_normal exposto pela fachada executa");
-
-        check(
-            near_vec3(normalFixture.mesh.vertex(normalFixture.v0).position, { 0.0f, 0.0f, 0.5f }),
-            "offset_vertex_along_normal move vertice pela normal media");
-
-        check(
-            normalFixture.editor.rebuild_normals_around_face(normalFixture.face),
-            "rebuild_normals_around_face exposto pela fachada executa");
-
-        normalFixture.editor.rebuild_normals_around_vertex(normalFixture.v0);
-        check(!normalFixture.editor.diff().empty(), "rebuild_normals_around_vertex registra eventos no diff");
+        check(!editor.merge_vertices(invalid, valid), "merge_vertices rejeita source invalido");
+        check(!editor.merge_vertices(valid, invalid), "merge_vertices rejeita target invalido");
+        check(!editor.merge_vertices(valid, valid), "merge_vertices rejeita source igual ao target");
+        check(!editor.merge_vertices_at_position(valid, valid, { 1.0f, 0.0f, 0.0f }), "merge_vertices_at_position rejeita source igual ao target");
+        check(editor.merge_vertices_by_distance(-1.0f) == 0, "merge_vertices_by_distance rejeita distancia negativa");
+        check(editor.weld_vertices({ valid }, -1.0f) == 0, "weld_vertices rejeita distancia negativa");
+        check(editor.weld_vertices({ valid }, 0.1f) == 0, "weld_vertices com apenas um vertice nao funde nada");
+        check(mesh.is_valid(valid), "vertice valido permanece ativo apos entradas invalidas");
     }
 
-    void test_attribute_passthrough()
+    void test_merge_with_zero_distance()
     {
-        print_section("LEMEditor facade: attributes passthrough");
+        print_section("merge_vertices_by_distance: distancia zero");
 
-        QuadFixture fixture;
+        LEM mesh;
+        LEMEditor editor(mesh);
 
-        check(fixture.editor.set_selected(fixture.v0, true), "set_selected(vertex) exposto pela fachada executa");
-        check(fixture.editor.set_selected(fixture.e01, true), "set_selected(edge) exposto pela fachada executa");
-        check(fixture.editor.set_selected(fixture.face, true), "set_selected(face) exposto pela fachada executa");
+        VertexHandle a = editor.add_vertex({ 1.0f, 2.0f, 3.0f });
+        VertexHandle b = editor.add_vertex({ 1.0f, 2.0f, 3.0f });
+        VertexHandle c = editor.add_vertex({ 1.0f, 2.0f, 3.001f });
 
-        check(fixture.mesh.vertex(fixture.v0).selected, "vertex selected alterado");
-        check(fixture.mesh.edge(fixture.e01).selected, "edge selected alterado");
-        check(fixture.mesh.face(fixture.face).selected, "face selected alterado");
+        editor.clear_diff();
 
-        fixture.editor.clear_selection();
+        std::size_t merged = editor.merge_vertices_by_distance(0.0f);
 
-        check(!fixture.mesh.vertex(fixture.v0).selected, "clear_selection limpa vertex selected");
-        check(!fixture.mesh.edge(fixture.e01).selected, "clear_selection limpa edge selected");
-        check(!fixture.mesh.face(fixture.face).selected, "clear_selection limpa face selected");
-
-        check(fixture.editor.set_hidden(fixture.v1, true), "set_hidden(vertex) exposto pela fachada executa");
-        check(fixture.editor.set_hidden(fixture.e12, true), "set_hidden(edge) exposto pela fachada executa");
-        check(fixture.editor.set_hidden(fixture.face, true), "set_hidden(face) exposto pela fachada executa");
-
-        check(fixture.mesh.vertex(fixture.v1).hidden, "vertex hidden alterado");
-        check(fixture.mesh.edge(fixture.e12).hidden, "edge hidden alterado");
-        check(fixture.mesh.face(fixture.face).hidden, "face hidden alterado");
-
-        fixture.editor.clear_visibility();
-
-        check(!fixture.mesh.vertex(fixture.v1).hidden, "clear_visibility limpa vertex hidden");
-        check(!fixture.mesh.edge(fixture.e12).hidden, "clear_visibility limpa edge hidden");
-        check(!fixture.mesh.face(fixture.face).hidden, "clear_visibility limpa face hidden");
-
-        check(fixture.editor.set_smooth(fixture.e23, true), "set_smooth exposto pela fachada executa");
-        check(fixture.mesh.edge(fixture.e23).smooth, "set_smooth altera edge.smooth");
-
-        check(fixture.editor.set_crease(fixture.e23, 1.5f), "set_crease exposto pela fachada executa");
-        check(near(fixture.mesh.edge(fixture.e23).crease, 1.0f), "set_crease clampa valor acima de 1");
-
-        check(fixture.editor.set_crease(fixture.e23, -2.0f), "set_crease aceita valor abaixo de 0");
-        check(near(fixture.mesh.edge(fixture.e23).crease, 0.0f), "set_crease clampa valor abaixo de 0");
-
-        check(fixture.editor.set_tag(fixture.v2, 11), "set_tag(vertex) exposto pela fachada executa");
-        check(fixture.editor.set_tag(fixture.e30, 22), "set_tag(edge) exposto pela fachada executa");
-        check(fixture.editor.set_tag(fixture.face, 33), "set_tag(face) exposto pela fachada executa");
-
-        check(fixture.mesh.vertex(fixture.v2).tag == 11, "vertex tag alterada");
-        check(fixture.mesh.edge(fixture.e30).tag == 22, "edge tag alterada");
-        check(fixture.mesh.face(fixture.face).tag == 33, "face tag alterada");
-
-        fixture.editor.clear_tags();
-
-        check(fixture.mesh.vertex(fixture.v2).tag == 0, "clear_tags limpa vertex tag");
-        check(fixture.mesh.edge(fixture.e30).tag == 0, "clear_tags limpa edge tag");
-        check(fixture.mesh.face(fixture.face).tag == 0, "clear_tags limpa face tag");
-    }
-
-    void test_clear()
-    {
-        print_section("LEMEditor facade: clear");
-
-        QuadFixture fixture;
-
-        fixture.editor.clear();
-
-        check(fixture.mesh.empty(), "clear limpa a malha");
-        check(!fixture.editor.diff().empty(), "clear registra evento no diff");
+        check(merged == 1, "distancia zero funde apenas vertices coincidentes");
+        check(mesh.is_valid(a), "vertice coincidente target continua valido");
+        check(!mesh.is_valid(b), "vertice coincidente source removido");
+        check(mesh.is_valid(c), "vertice quase coincidente permanece valido");
+        check(active_vertex_count(mesh) == 2, "malha possui 2 vertices ativos apos merge com distancia zero");
     }
 
 }
 
 int main()
 {
-    std::cout << "=== Locus3D LEMEditor Facade Regression Test ===\n";
+    std::cout << "=== Locus3D LEM Merge/Weld Regression Test ===\n";
 
-    test_facade_accessors();
-    test_topology_passthrough();
-    test_topology_traversal_vertex_incidence();
-    test_geometry_passthrough();
-    test_attribute_passthrough();
-    test_clear();
+    test_merge_loose_vertices();
+    test_merge_vertices_at_position();
+    test_merge_connected_vertices();
+    test_merge_degenerate_face();
+    test_merge_rebuilds_non_degenerate_face();
+    test_weld_vertices_restricted();
+    test_merge_vertices_by_distance();
+    test_merge_invalid_inputs();
+    test_merge_with_zero_distance();
 
     std::cout << "\n=== Resultado ===\n";
     std::cout << "Passou: " << g_passed << '\n';

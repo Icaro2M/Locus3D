@@ -227,6 +227,47 @@ namespace locus::kernel::geometry {
         bool collapse_edge(EdgeHandle edge);
 
         /**
+         * @brief Merges one vertex into another, even when no edge connects them.
+         *
+         * @param sourceVertex Vertex that will be removed.
+         * @param targetVertex Vertex that will receive the merged topology.
+         * @return True when the merge succeeded.
+         */
+        bool merge_vertices(VertexHandle sourceVertex, VertexHandle targetVertex);
+
+        /**
+         * @brief Merges one vertex into another and assigns the final target position.
+         *
+         * @param sourceVertex Vertex that will be removed.
+         * @param targetVertex Vertex that will receive the merged topology.
+         * @param position Final object-space position assigned to targetVertex.
+         * @return True when the merge succeeded.
+         */
+        bool merge_vertices_at_position(
+            VertexHandle sourceVertex,
+            VertexHandle targetVertex,
+            const glm::vec3& position);
+
+        /**
+         * @brief Merges all active vertices that are closer than a distance threshold.
+         *
+         * @param distance Maximum distance between vertices to merge.
+         * @return Number of successful vertex merges.
+         */
+        std::size_t merge_vertices_by_distance(float distance);
+
+        /**
+         * @brief Merges vertices from a restricted vertex set using a distance threshold.
+         *
+         * @param vertices Candidate vertices to weld.
+         * @param distance Maximum distance between vertices to merge.
+         * @return Number of successful vertex merges.
+         */
+        std::size_t weld_vertices(
+            const std::vector<VertexHandle>& vertices,
+            float distance);
+
+        /**
          * @brief Dissolves an edge while trying to preserve the surrounding region.
          *
          * @param edge Edge to dissolve.

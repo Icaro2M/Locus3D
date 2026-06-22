@@ -102,6 +102,47 @@ namespace locus::kernel::geometry {
         return editing::topology::collapse_edge(mesh_, diff_, edge);
     }
 
+    bool TopologyEditor::merge_vertices(VertexHandle sourceVertex, VertexHandle targetVertex)
+    {
+        return editing::topology::merge_vertices(
+            mesh_,
+            diff_,
+            sourceVertex,
+            targetVertex);
+    }
+
+    bool TopologyEditor::merge_vertices_at_position(
+        VertexHandle sourceVertex,
+        VertexHandle targetVertex,
+        const glm::vec3& position)
+    {
+        return editing::topology::merge_vertices_at_position(
+            mesh_,
+            diff_,
+            sourceVertex,
+            targetVertex,
+            position);
+    }
+
+    std::size_t TopologyEditor::merge_vertices_by_distance(float distance)
+    {
+        return editing::topology::merge_vertices_by_distance(
+            mesh_,
+            diff_,
+            distance);
+    }
+
+    std::size_t TopologyEditor::weld_vertices(
+        const std::vector<VertexHandle>& vertices,
+        float distance)
+    {
+        return editing::topology::weld_vertices(
+            mesh_,
+            diff_,
+            vertices,
+            distance);
+    }
+
     bool TopologyEditor::dissolve_edge(EdgeHandle edge)
     {
         return editing::topology::dissolve_edge(mesh_, diff_, edge);

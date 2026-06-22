@@ -141,6 +141,31 @@ namespace locus::kernel::geometry {
         return topology_.collapse_edge(edge);
     }
 
+    bool LEMEditor::merge_vertices(VertexHandle sourceVertex, VertexHandle targetVertex)
+    {
+        return topology_.merge_vertices(sourceVertex, targetVertex);
+    }
+
+    bool LEMEditor::merge_vertices_at_position(
+        VertexHandle sourceVertex,
+        VertexHandle targetVertex,
+        const glm::vec3& position)
+    {
+        return topology_.merge_vertices_at_position(sourceVertex, targetVertex, position);
+    }
+
+    std::size_t LEMEditor::merge_vertices_by_distance(float distance)
+    {
+        return topology_.merge_vertices_by_distance(distance);
+    }
+
+    std::size_t LEMEditor::weld_vertices(
+        const std::vector<VertexHandle>& vertices,
+        float distance)
+    {
+        return topology_.weld_vertices(vertices, distance);
+    }
+
     bool LEMEditor::dissolve_edge(EdgeHandle edge)
     {
         return topology_.dissolve_edge(edge);

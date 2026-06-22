@@ -14,7 +14,11 @@
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
+
+#include <glm/geometric.hpp>
+#include <glm/vec3.hpp>
 
 namespace locus::kernel::geometry::editing::topology {
 
@@ -32,6 +36,67 @@ namespace locus::kernel::geometry::editing::topology {
 
             for (VertexHandle vertexHandle : vertices) {
                 if (!contains_handle(result, vertexHandle)) {
+                    result.push_back(vertexHandle);
+                }
+            }
+
+            return result;
+        }
+
+        template <typename HandleT>
+        void append_unique(std::vector<HandleT>& handles, HandleT handle)
+        {
+            if (!contains_handle(handles, handle)) {
+                handles.push_back(handle);
+            }
+        }
+
+        bool has_duplicate_vertices(const std::vector<VertexHandle>& vertices)
+        {
+            for (std::size_t i = 0; i < vertices.size(); ++i) {
+                for (std::size_t j = i + 1; j < vertices.size(); ++j) {
+                    if (vertices[i] == vertices[j]) {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        std::vector<VertexHandle> replaced_face_vertices(
+            const std::vector<VertexHandle>& vertices,
+            VertexHandle sourceVertex,
+            VertexHandle targetVertex)
+        {
+            std::vector<VertexHandle> result;
+            result.reserve(vertices.size());
+
+            for (VertexHandle vertexHandle : vertices) {
+                result.push_back(vertexHandle == sourceVertex ? targetVertex : vertexHandle);
+            }
+
+            return result;
+        }
+
+        bool is_valid_merge_face(const std::vector<VertexHandle>& vertices)
+        {
+            if (vertices.size() < 3) {
+                return false;
+            }
+
+            return !has_duplicate_vertices(vertices);
+        }
+
+        std::vector<VertexHandle> active_vertices_from_set(
+            const LEM& mesh,
+            const std::vector<VertexHandle>& vertices)
+        {
+            std::vector<VertexHandle> result;
+            result.reserve(vertices.size());
+
+            for (VertexHandle vertexHandle : vertices) {
+                if (mesh.is_valid(vertexHandle) && !contains_handle(result, vertexHandle)) {
                     result.push_back(vertexHandle);
                 }
             }
@@ -124,6 +189,238 @@ namespace locus::kernel::geometry::editing::topology {
         refresh_vertex_incident_edge(mesh, diff, edge.vertexA);
 
         return true;
+    }
+
+    bool merge_vertices(
+        LEM& mesh,
+        LEMDiff& diff,
+        VertexHandle sourceVertex,
+        VertexHandle targetVertex)
+    {
+        if (!mesh.is_valid(sourceVertex) || !mesh.is_valid(targetVertex)) {
+            return false;
+        }
+
+        if (sourceVertex == targetVertex) {
+            return false;
+        }
+
+        return merge_vertices_at_position(
+            mesh,
+            diff,
+            sourceVertex,
+            targetVertex,
+            mesh.vertex(targetVertex).position);
+    }
+
+    bool merge_vertices_at_position(
+        LEM& mesh,
+        LEMDiff& diff,
+        VertexHandle sourceVertex,
+        VertexHandle targetVertex,
+        const glm::vec3& position)
+    {
+        if (!mesh.is_valid(sourceVertex) || !mesh.is_valid(targetVertex)) {
+            return false;
+        }
+
+        if (sourceVertex == targetVertex) {
+            return false;
+        }
+
+        mesh.vertex(targetVertex).position = position;
+        diff.record(LEMChangeType::VertexModified, targetVertex);
+
+        const std::vector<FaceHandle> affectedFaces =
+            TopologyTraversal::vertex_faces(mesh, sourceVertex);
+
+        const std::vector<EdgeHandle> sourceEdges =
+            TopologyTraversal::vertex_edges(mesh, sourceVertex);
+
+        std::vector<std::vector<VertexHandle>> rebuiltFaces;
+        rebuiltFaces.reserve(affectedFaces.size());
+
+        for (FaceHandle faceHandle : affectedFaces) {
+            if (!mesh.is_valid(faceHandle)) {
+                continue;
+            }
+
+            std::vector<VertexHandle> vertices =
+                replaced_face_vertices(
+                    TopologyTraversal::face_vertices(mesh, faceHandle),
+                    sourceVertex,
+                    targetVertex);
+
+            if (is_valid_merge_face(vertices)) {
+                rebuiltFaces.push_back(vertices);
+            }
+        }
+
+        for (FaceHandle faceHandle : affectedFaces) {
+            if (mesh.is_valid(faceHandle)) {
+                remove_face(mesh, diff, faceHandle);
+            }
+        }
+
+        for (EdgeHandle edgeHandle : sourceEdges) {
+            if (!mesh.is_valid(edgeHandle)) {
+                continue;
+            }
+
+            Edge& edge = mesh.edge(edgeHandle);
+
+            VertexHandle otherVertex{};
+            if (edge.vertexA == sourceVertex) {
+                otherVertex = edge.vertexB;
+            }
+            else if (edge.vertexB == sourceVertex) {
+                otherVertex = edge.vertexA;
+            }
+            else {
+                continue;
+            }
+
+            if (!mesh.is_valid(otherVertex) || otherVertex == targetVertex) {
+                kill_edge_only(mesh, diff, edgeHandle);
+                continue;
+            }
+
+            EdgeHandle existingEdge = mesh.find_edge(targetVertex, otherVertex);
+            if (mesh.is_valid(existingEdge) && existingEdge != edgeHandle) {
+                kill_edge_only(mesh, diff, edgeHandle);
+                continue;
+            }
+
+            if (edge.vertexA == sourceVertex) {
+                edge.vertexA = targetVertex;
+            }
+
+            if (edge.vertexB == sourceVertex) {
+                edge.vertexB = targetVertex;
+            }
+
+            diff.record(LEMChangeType::EdgeModified, edgeHandle);
+        }
+
+        for (const std::vector<VertexHandle>& vertices : rebuiltFaces) {
+            add_face(mesh, diff, vertices);
+        }
+
+        refresh_vertex_incident_edge(mesh, diff, targetVertex);
+
+        if (mesh.is_valid(sourceVertex)) {
+            Vertex& source = mesh.vertex(sourceVertex);
+            source.edge = {};
+            source.deleted = true;
+            diff.record(LEMChangeType::VertexModified, sourceVertex);
+        }
+
+        return true;
+    }
+
+    std::size_t merge_vertices_by_distance(
+        LEM& mesh,
+        LEMDiff& diff,
+        float distance)
+    {
+        if (distance < 0.0f) {
+            return 0;
+        }
+
+        const float distanceSquared = distance * distance;
+        std::vector<VertexHandle> vertices = TopologyTraversal::vertices(mesh);
+
+        std::size_t mergeCount = 0;
+
+        for (std::size_t i = 0; i < vertices.size(); ++i) {
+            VertexHandle targetVertex = vertices[i];
+
+            if (!mesh.is_valid(targetVertex)) {
+                continue;
+            }
+
+            for (std::size_t j = i + 1; j < vertices.size(); ++j) {
+                VertexHandle sourceVertex = vertices[j];
+
+                if (!mesh.is_valid(sourceVertex)) {
+                    continue;
+                }
+
+                const glm::vec3 delta =
+                    mesh.vertex(sourceVertex).position - mesh.vertex(targetVertex).position;
+
+                if (glm::dot(delta, delta) > distanceSquared) {
+                    continue;
+                }
+
+                const glm::vec3 mergedPosition =
+                    (mesh.vertex(sourceVertex).position + mesh.vertex(targetVertex).position) * 0.5f;
+
+                if (merge_vertices_at_position(
+                    mesh,
+                    diff,
+                    sourceVertex,
+                    targetVertex,
+                    mergedPosition)) {
+                    ++mergeCount;
+                }
+            }
+        }
+
+        return mergeCount;
+    }
+
+    std::size_t weld_vertices(
+        LEM& mesh,
+        LEMDiff& diff,
+        const std::vector<VertexHandle>& vertices,
+        float distance)
+    {
+        if (distance < 0.0f) {
+            return 0;
+        }
+
+        const float distanceSquared = distance * distance;
+        std::vector<VertexHandle> candidates = active_vertices_from_set(mesh, vertices);
+
+        std::size_t mergeCount = 0;
+
+        for (std::size_t i = 0; i < candidates.size(); ++i) {
+            VertexHandle targetVertex = candidates[i];
+
+            if (!mesh.is_valid(targetVertex)) {
+                continue;
+            }
+
+            for (std::size_t j = i + 1; j < candidates.size(); ++j) {
+                VertexHandle sourceVertex = candidates[j];
+
+                if (!mesh.is_valid(sourceVertex)) {
+                    continue;
+                }
+
+                const glm::vec3 delta =
+                    mesh.vertex(sourceVertex).position - mesh.vertex(targetVertex).position;
+
+                if (glm::dot(delta, delta) > distanceSquared) {
+                    continue;
+                }
+
+                const glm::vec3 mergedPosition =
+                    (mesh.vertex(sourceVertex).position + mesh.vertex(targetVertex).position) * 0.5f;
+
+                if (merge_vertices_at_position(
+                    mesh,
+                    diff,
+                    sourceVertex,
+                    targetVertex,
+                    mergedPosition)) {
+                    ++mergeCount;
+                }
+            }
+        }
+
+        return mergeCount;
     }
 
     bool dissolve_edge(LEM& mesh, LEMDiff& diff, EdgeHandle edgeHandle)
