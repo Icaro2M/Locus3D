@@ -191,7 +191,8 @@ source\kernel
 |   |   |       InsetFaceOp.cpp
 |   |   |       FlipFaceOp.h
 |   |   |       FlipFaceOp.cpp
-|   |   |       SolidifyOp.h [!]
+|   |   |       SolidifyOp.h
+|   |   |       SolidifyOp.cpp
 |   |   |
 |   |   +---edge
 |   |   |       BevelOp.h [!]
@@ -325,7 +326,6 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `modeling/operations/face/SolidifyOp.h`
 - [!] `modeling/operations/edge/BevelOp.h`
 - [!] `modeling/operations/edge/BevelOp.cpp`
 - [!] `modeling/operations/edge/EdgeSlideOp.h`

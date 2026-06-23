@@ -95,7 +95,11 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/operations/edge/CreaseOp.h"
     "modeling/operations/edge/CreaseOp.cpp"
     "modeling/operations/topology/FillHoleOp.h"
-    "modeling/operations/topology/FillHoleOp.cpp" "modeling/operations/topology/BridgeEdgeOp.h" "modeling/operations/topology/BridgeEdgeOp.cpp")
+    "modeling/operations/topology/FillHoleOp.cpp"
+    "modeling/operations/topology/BridgeEdgeOp.h"
+    "modeling/operations/topology/BridgeEdgeOp.cpp"
+    "modeling/operations/face/SolidifyOp.h"
+    "modeling/operations/face/SolidifyOp.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
