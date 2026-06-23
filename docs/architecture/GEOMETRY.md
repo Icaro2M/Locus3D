@@ -185,10 +185,10 @@ source\kernel
 |   |
 |   +---operations
 |   |   +---face
-|   |   |       ExtrudeFaceOp.h [!]
-|   |   |       ExtrudeFaceOp.cpp [!]
-|   |   |       InsetFaceOp.h [!]
-|   |   |       InsetFaceOp.cpp [!]
+|   |   |       ExtrudeFaceOp.h
+|   |   |       ExtrudeFaceOp.cpp
+|   |   |       InsetFaceOp.h
+|   |   |       InsetFaceOp.cpp
 |   |   |       FlipFaceOp.h
 |   |   |       FlipFaceOp.cpp
 |   |   |       SolidifyOp.h [!]
@@ -197,7 +197,8 @@ source\kernel
 |   |   |       BevelOp.h [!]
 |   |   |       BevelOp.cpp [!]
 |   |   |       EdgeSlideOp.h [!]
-|   |   |       CreaseOp.h [!]
+|   |   |       CreaseOp.h
+|   |   |       CreaseOp.cpp
 |   |   |
 |   |   +---topology
 |   |   |       LoopCutOp.h [!]
@@ -212,8 +213,10 @@ source\kernel
 |   |   \---transform
 |   |           TransformOp.h
 |   |           TransformOp.cpp
-|   |           ShrinkFattenOp.h [!]
-|   |           RandomizeOp.h [!]
+|   |           ShrinkFattenOp.h
+|   |           ShrinkFattenOp.cpp
+|   |           RandomizeOp.h
+|   |           RandomizeOp.cpp
 |   |
 |   \---preview
 |           IPreviewStrategy.h [!]
@@ -320,21 +323,14 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `modeling/operations/face/ExtrudeFaceOp.h`
-- [!] `modeling/operations/face/ExtrudeFaceOp.cpp`
-- [!] `modeling/operations/face/InsetFaceOp.h`
-- [!] `modeling/operations/face/InsetFaceOp.cpp`
 - [!] `modeling/operations/face/SolidifyOp.h`
 - [!] `modeling/operations/edge/BevelOp.h`
 - [!] `modeling/operations/edge/BevelOp.cpp`
 - [!] `modeling/operations/edge/EdgeSlideOp.h`
-- [!] `modeling/operations/edge/CreaseOp.h`
 - [!] `modeling/operations/topology/LoopCutOp.h`
 - [!] `modeling/operations/topology/LoopCutOp.cpp`
 - [!] `modeling/operations/topology/BridgeEdgeOp.h`
 - [!] `modeling/operations/topology/FillHoleOp.h`
-- [!] `modeling/operations/transform/ShrinkFattenOp.h`
-- [!] `modeling/operations/transform/RandomizeOp.h`
 - [!] `modeling/preview/IPreviewStrategy.h`
 - [!] `modeling/preview/OperationPreview.h`
 - [!] `modeling/preview/PreviewMesh.h`
