@@ -208,7 +208,8 @@ source\kernel
 |   |   |       MergeVerticesOp.h
 |   |   |       MergeVerticesOp.cpp
 |   |   |       BridgeEdgeOp.h [!]
-|   |   |       FillHoleOp.h [!]
+|   |   |       FillHoleOp.h
+|   |   |       FillHoleOp.cpp
 |   |   |
 |   |   \---transform
 |   |           TransformOp.h
@@ -330,7 +331,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/operations/topology/LoopCutOp.h`
 - [!] `modeling/operations/topology/LoopCutOp.cpp`
 - [!] `modeling/operations/topology/BridgeEdgeOp.h`
-- [!] `modeling/operations/topology/FillHoleOp.h`
 - [!] `modeling/preview/IPreviewStrategy.h`
 - [!] `modeling/preview/OperationPreview.h`
 - [!] `modeling/preview/PreviewMesh.h`

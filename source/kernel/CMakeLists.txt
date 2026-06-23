@@ -79,7 +79,23 @@ target_sources(locus3d_geometry PRIVATE
     "geometry/mesh/editing/attributes/AttributeShading.h"
     "geometry/mesh/editing/attributes/AttributeShading.cpp"
     "geometry/mesh/editing/attributes/AttributeTags.h"
-    "geometry/mesh/editing/attributes/AttributeTags.cpp" "modeling/operations/topology/MergeVerticesOp.h" "modeling/operations/topology/MergeVerticesOp.cpp" "modeling/operations/topology/SubdivideOp.h" "modeling/operations/topology/SubdivideOp.cpp" "modeling/operations/face/ExtrudeFaceOp.h" "modeling/operations/face/ExtrudeFaceOp.cpp" "modeling/operations/face/InsetFaceOp.h" "modeling/operations/face/InsetFaceOp.cpp" "modeling/operations/transform/ShrinkFattenOp.h" "modeling/operations/transform/ShrinkFattenOp.cpp" "modeling/operations/transform/RandomizeOp.h" "modeling/operations/transform/RandomizeOp.cpp" "modeling/operations/edge/CreaseOp.h" "modeling/operations/edge/CreaseOp.cpp")
+    "geometry/mesh/editing/attributes/AttributeTags.cpp"
+    "modeling/operations/topology/MergeVerticesOp.h"
+    "modeling/operations/topology/MergeVerticesOp.cpp"
+    "modeling/operations/topology/SubdivideOp.h"
+    "modeling/operations/topology/SubdivideOp.cpp"
+    "modeling/operations/face/ExtrudeFaceOp.h"
+    "modeling/operations/face/ExtrudeFaceOp.cpp"
+    "modeling/operations/face/InsetFaceOp.h"
+    "modeling/operations/face/InsetFaceOp.cpp"
+    "modeling/operations/transform/ShrinkFattenOp.h"
+    "modeling/operations/transform/ShrinkFattenOp.cpp"
+    "modeling/operations/transform/RandomizeOp.h"
+    "modeling/operations/transform/RandomizeOp.cpp"
+    "modeling/operations/edge/CreaseOp.h"
+    "modeling/operations/edge/CreaseOp.cpp"
+    "modeling/operations/topology/FillHoleOp.h"
+    "modeling/operations/topology/FillHoleOp.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
