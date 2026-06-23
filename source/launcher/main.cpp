@@ -1,6 +1,3 @@
-#define NOMINMAX
-
-#include "graphics/common/GraphicsConfig.h"
 #include "graphics/context/OpenGLContext.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/mesh/GpuMesh.h"
@@ -8,55 +5,59 @@
 #include "graphics/renderer/Renderer.h"
 #include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
+#include "graphics/viewport/Viewport.h"
 #include "graphics/window/Window.h"
 
-#include "kernel/common/Result.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/render/MeshTriangulator.h"
-#include "kernel/geometry/render/NormalBuilder.h"
 #include "kernel/geometry/render/RenderMesh.h"
 #include "kernel/geometry/render/WireframeBuilder.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
-#include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/face/FlipFaceOp.h"
-#include "kernel/modeling/operations/topology/MergeVerticesOp.h"
-#include "kernel/modeling/operations/topology/SubdivideOp.h"
+#include "kernel/modeling/operations/face/ExtrudeFaceOp.h"
+#include "kernel/modeling/operations/face/InsetFaceOp.h"
+#include "kernel/modeling/operations/transform/RandomizeOp.h"
+#include "kernel/modeling/operations/transform/ShrinkFattenOp.h"
 
-#include <glad/glad.h>
+#include <GLFW/glfw3.h>
 
-#include <glm/ext/matrix_clip_space.hpp>
-#include <glm/ext/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/vec3.hpp>
-#include <glm/vec4.hpp>
 
-#include <array>
-#include <chrono>
 #include <cstdlib>
-#include <iomanip>
+#include <cstdint>
 #include <iostream>
-#include <optional>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace {
 
     using namespace locus;
     using namespace locus::graphics;
-    using namespace locus::kernel;
     using namespace locus::kernel::geometry;
     using namespace locus::kernel::modeling;
 
-    const char* VisualVertexShader = R"(
+    struct VisualMesh {
+        GpuMesh solid;
+        GpuMesh wire;
+    };
+
+    struct DemoMesh {
+        LEM mesh;
+        std::string name;
+        glm::vec3 position{ 0.0f };
+    };
+
+    const char* solid_vertex_shader()
+    {
+        return R"(
 #version 450 core
 
-layout (location = 0) in vec3 a_Position;
-layout (location = 1) in vec3 a_Normal;
-layout (location = 2) in vec4 a_Color;
+layout(location = 0) in vec3 a_Position;
+layout(location = 1) in vec3 a_Normal;
+layout(location = 2) in vec4 a_Color;
 
 uniform mat4 u_Model;
 uniform mat4 u_MVP;
@@ -66,14 +67,16 @@ out vec4 v_Color;
 
 void main()
 {
-    mat3 normalMatrix = transpose(inverse(mat3(u_Model)));
-    v_Normal = normalize(normalMatrix * a_Normal);
+    v_Normal = mat3(transpose(inverse(u_Model))) * a_Normal;
     v_Color = a_Color;
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
+    }
 
-    const char* VisualFragmentShader = R"(
+    const char* solid_fragment_shader()
+    {
+        return R"(
 #version 450 core
 
 in vec3 v_Normal;
@@ -82,26 +85,40 @@ in vec4 v_Color;
 uniform vec4 u_BaseColor;
 uniform int u_UseVertexColor;
 
+uniform int u_ShadingMode;
+uniform vec4 u_AmbientColor;
+uniform float u_AmbientIntensity;
+uniform vec3 u_LightDirection;
+uniform vec4 u_LightColor;
+uniform float u_LightIntensity;
+
 out vec4 FragColor;
 
 void main()
 {
-    vec3 normal = normalize(v_Normal);
-    vec3 lightDirection = normalize(vec3(-0.35, -0.65, -0.75));
-    float diffuse = max(dot(normal, -lightDirection), 0.0);
-    float lighting = 0.30 + diffuse * 0.70;
+    vec4 baseColor = (u_UseVertexColor != 0) ? v_Color : u_BaseColor;
 
-    vec4 color = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
-    FragColor = vec4(color.rgb * lighting, color.a);
+    vec3 normal = normalize(v_Normal);
+    vec3 lightDir = normalize(-u_LightDirection);
+
+    float diffuse = max(dot(normal, lightDir), 0.0);
+    vec3 ambient = u_AmbientColor.rgb * u_AmbientIntensity;
+    vec3 light = u_LightColor.rgb * u_LightIntensity * diffuse;
+
+    vec3 color = baseColor.rgb * max(ambient + light, vec3(0.25));
+    FragColor = vec4(color, baseColor.a);
 }
 )";
+    }
 
-    const char* WireVertexShader = R"(
+    const char* wire_vertex_shader()
+    {
+        return R"(
 #version 450 core
 
-layout (location = 0) in vec3 a_Position;
-layout (location = 1) in vec3 a_Normal;
-layout (location = 2) in vec4 a_Color;
+layout(location = 0) in vec3 a_Position;
+layout(location = 1) in vec3 a_Normal;
+layout(location = 2) in vec4 a_Color;
 
 uniform mat4 u_Model;
 uniform mat4 u_MVP;
@@ -114,8 +131,11 @@ void main()
     gl_Position = u_MVP * vec4(a_Position, 1.0);
 }
 )";
+    }
 
-    const char* WireFragmentShader = R"(
+    const char* wire_fragment_shader()
+    {
+        return R"(
 #version 450 core
 
 in vec4 v_Color;
@@ -127,96 +147,32 @@ out vec4 FragColor;
 
 void main()
 {
-    FragColor = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
+    FragColor = (u_UseVertexColor != 0) ? v_Color : u_BaseColor;
 }
 )";
-
-    struct MeshFit {
-        glm::vec3 center{ 0.0f, 0.0f, 0.0f };
-        float scale = 1.0f;
-    };
-
-    struct VisualMesh {
-        std::string name;
-        LEM mesh;
-        RenderMesh solidRenderMesh;
-        RenderMesh wireRenderMesh;
-        MeshFit fit;
-        MeshUploadData solidUploadData;
-        MeshUploadData wireUploadData;
-        GpuMesh solidGpuMesh;
-        GpuMesh wireGpuMesh;
-        glm::vec3 position{ 0.0f };
-        glm::vec4 color{ 1.0f };
-    };
+    }
 
     void print_graphics_error(const std::string& label, const GraphicsError& error)
     {
-        std::cout << label << ": " << error.message << '\n';
+        std::cout << "[Graphics Error] " << label << ": " << error.message << '\n';
     }
 
-    const char* status_name(OperationStatus status)
+    void print_operation_warning(const std::string& label, const OperationResult& result)
     {
-        switch (status) {
-        case OperationStatus::Success:
-            return "Success";
-        case OperationStatus::Failed:
-            return "Failed";
-        case OperationStatus::NoChange:
-            return "NoChange";
-        case OperationStatus::Cancelled:
-            return "Cancelled";
+        if (result.is_success()) {
+            return;
         }
 
-        return "Unknown";
-    }
-
-    void print_operation_result(std::string_view label, const OperationResult& result)
-    {
-        std::cout << label
-            << " | status: " << status_name(result.status())
-            << " | changed: " << (result.changed() ? "true" : "false")
-            << " | diff: " << result.diff().size();
+        std::cout << "[WARN] " << label << " failed or produced no change";
 
         if (!result.message().empty()) {
-            std::cout << " | message: " << result.message();
-        }
-
-        if (result.has_validation_report()) {
-            const TopologyValidationReport& report = result.validation_report();
-            std::cout
-                << " | validation issues: " << report.issues.size()
-                << " | errors: " << report.error_count()
-                << " | warnings: " << report.warning_count();
+            std::cout << ": " << result.message();
         }
 
         std::cout << '\n';
     }
 
-    void print_mesh_summary(std::string_view label, const LEM& mesh)
-    {
-        std::cout << label
-            << " | vertices: " << TopologyTraversal::vertices(mesh).size()
-            << " | edges: " << TopologyTraversal::edges(mesh).size()
-            << " | loops: " << TopologyTraversal::loops(mesh).size()
-            << " | faces: " << TopologyTraversal::faces(mesh).size()
-            << '\n';
-    }
-
-    bool validate_mesh(std::string_view label, const LEM& mesh)
-    {
-        const TopologyValidationReport report = TopologyValidator::validate(mesh);
-
-        std::cout << label
-            << " | issues: " << report.issues.size()
-            << " | errors: " << report.error_count()
-            << " | warnings: " << report.warning_count()
-            << '\n';
-
-        return report.valid();
-    }
-
-    OperationContext make_context(LEM& mesh)
+    OperationContext make_operation_context(LEM& mesh)
     {
         OperationContext context;
         context.mesh = &mesh;
@@ -226,160 +182,301 @@ void main()
         return context;
     }
 
-    MeshFit compute_mesh_fit(const RenderMesh& renderMesh)
+    FaceHandle create_quad(LEMEditor& editor)
     {
-        if (renderMesh.vertices.empty()) {
+        const VertexHandle v0 = editor.add_vertex({ -1.0f, 0.0f, -1.0f });
+        const VertexHandle v1 = editor.add_vertex({ 1.0f, 0.0f, -1.0f });
+        const VertexHandle v2 = editor.add_vertex({ 1.0f, 0.0f,  1.0f });
+        const VertexHandle v3 = editor.add_vertex({ -1.0f, 0.0f,  1.0f });
+
+        const FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+        editor.rebuild_face_normals();
+
+        return face;
+    }
+
+    FaceHandle first_face(const LEM& mesh)
+    {
+        const std::vector<FaceHandle> faces = TopologyTraversal::faces(mesh);
+
+        if (faces.empty()) {
             return {};
         }
 
-        glm::vec3 minPoint{
-            std::numeric_limits<float>::max(),
-            std::numeric_limits<float>::max(),
-            std::numeric_limits<float>::max()
-        };
-
-        glm::vec3 maxPoint{
-            std::numeric_limits<float>::lowest(),
-            std::numeric_limits<float>::lowest(),
-            std::numeric_limits<float>::lowest()
-        };
-
-        for (const RenderVertex& vertex : renderMesh.vertices) {
-            minPoint = glm::min(minPoint, vertex.position);
-            maxPoint = glm::max(maxPoint, vertex.position);
-        }
-
-        const glm::vec3 size = maxPoint - minPoint;
-        const float maxDimension = std::max({ size.x, size.y, size.z });
-
-        MeshFit fit;
-        fit.center = (minPoint + maxPoint) * 0.5f;
-        fit.scale = maxDimension > 0.00001f ? 2.15f / maxDimension : 1.0f;
-
-        return fit;
+        return faces.front();
     }
 
-    MeshUploadData build_triangle_upload_data(
+    FaceHandle find_top_face(const LEM& mesh)
+    {
+        FaceHandle result;
+
+        for (FaceHandle face : TopologyTraversal::faces(mesh)) {
+            const std::vector<VertexHandle> vertices =
+                TopologyTraversal::face_vertices(mesh, face);
+
+            if (vertices.empty()) {
+                continue;
+            }
+
+            bool allTop = true;
+
+            for (VertexHandle vertex : vertices) {
+                if (!mesh.is_valid(vertex)) {
+                    allTop = false;
+                    break;
+                }
+
+                if (mesh.vertex(vertex).position.y < 0.99f) {
+                    allTop = false;
+                    break;
+                }
+            }
+
+            if (allTop) {
+                result = face;
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    DemoMesh make_original_mesh()
+    {
+        DemoMesh demo;
+        demo.name = "Original";
+        demo.position = { -4.5f, 0.0f, 0.0f };
+
+        LEMEditor editor(demo.mesh);
+        create_quad(editor);
+
+        return demo;
+    }
+
+    DemoMesh make_shrink_fatten_mesh()
+    {
+        DemoMesh demo;
+        demo.name = "Shrink/Fatten";
+        demo.position = { -1.5f, 0.0f, 0.0f };
+
+        LEMEditor editor(demo.mesh);
+        create_quad(editor);
+
+        OperationContext context = make_operation_context(demo.mesh);
+
+        const FaceHandle face = first_face(demo.mesh);
+
+        if (demo.mesh.is_valid(face)) {
+            ExtrudeFaceOp extrude(face, { 0.0f, 1.0f, 0.0f });
+            extrude.set_keep_source_face(false);
+
+            const OperationResult extrudeResult = extrude.execute(context);
+            print_operation_warning("Extrude in Shrink/Fatten mesh", extrudeResult);
+        }
+
+        ShrinkFattenOp shrinkFatten(0.25f);
+        const OperationResult shrinkFattenResult = shrinkFatten.execute(context);
+        print_operation_warning("Shrink/Fatten", shrinkFattenResult);
+
+        return demo;
+    }
+
+    DemoMesh make_randomized_mesh()
+    {
+        DemoMesh demo;
+        demo.name = "Randomize";
+        demo.position = { 1.5f, 0.0f, 0.0f };
+
+        LEMEditor editor(demo.mesh);
+        create_quad(editor);
+
+        OperationContext context = make_operation_context(demo.mesh);
+
+        const FaceHandle face = first_face(demo.mesh);
+
+        if (demo.mesh.is_valid(face)) {
+            ExtrudeFaceOp extrude(face, { 0.0f, 1.0f, 0.0f });
+            extrude.set_keep_source_face(false);
+
+            const OperationResult extrudeResult = extrude.execute(context);
+            print_operation_warning("Extrude in Randomize mesh", extrudeResult);
+        }
+
+        RandomizeOp randomize(0.20f);
+        randomize.set_seed(2026u);
+
+        const OperationResult randomizeResult = randomize.execute(context);
+        print_operation_warning("Randomize", randomizeResult);
+
+        return demo;
+    }
+
+    DemoMesh make_extrude_inset_mesh()
+    {
+        DemoMesh demo;
+        demo.name = "Extrude + Inset";
+        demo.position = { 4.5f, 0.0f, 0.0f };
+
+        LEMEditor editor(demo.mesh);
+        const FaceHandle baseFace = create_quad(editor);
+
+        OperationContext context = make_operation_context(demo.mesh);
+
+        if (demo.mesh.is_valid(baseFace)) {
+            ExtrudeFaceOp extrude(baseFace, { 0.0f, 1.0f, 0.0f });
+            extrude.set_keep_source_face(false);
+
+            const OperationResult extrudeResult = extrude.execute(context);
+            print_operation_warning("Extrude in Extrude + Inset mesh", extrudeResult);
+        }
+
+        const FaceHandle topFace = find_top_face(demo.mesh);
+
+        if (demo.mesh.is_valid(topFace)) {
+            InsetFaceOp inset(topFace, 0.35f);
+
+            const OperationResult insetResult = inset.execute(context);
+            print_operation_warning("Inset", insetResult);
+        }
+        else {
+            std::cout << "[WARN] Top face not found for inset\n";
+        }
+
+        return demo;
+    }
+
+    MeshUploadData make_solid_upload_data(
         const RenderMesh& renderMesh,
-        const MeshFit& fit,
-        const glm::vec4& color)
+        const ColorRGBA& color)
     {
         MeshUploadData uploadData;
         uploadData.topology = PrimitiveTopology::Triangles;
         uploadData.usage = BufferUsage::Static;
+
         uploadData.vertices.reserve(renderMesh.vertices.size());
         uploadData.indices.reserve(renderMesh.triangles.size() * 3);
 
-        for (const RenderVertex& renderVertex : renderMesh.vertices) {
-            const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+        for (const RenderVertex& vertex : renderMesh.vertices) {
+            MeshVertex gpuVertex;
 
-            MeshVertex vertex;
-            vertex.position[0] = fittedPosition.x;
-            vertex.position[1] = fittedPosition.y;
-            vertex.position[2] = fittedPosition.z;
+            gpuVertex.position[0] = vertex.position.x;
+            gpuVertex.position[1] = vertex.position.y;
+            gpuVertex.position[2] = vertex.position.z;
 
-            vertex.normal[0] = renderVertex.normal.x;
-            vertex.normal[1] = renderVertex.normal.y;
-            vertex.normal[2] = renderVertex.normal.z;
+            gpuVertex.normal[0] = vertex.normal.x;
+            gpuVertex.normal[1] = vertex.normal.y;
+            gpuVertex.normal[2] = vertex.normal.z;
 
-            vertex.color[0] = color.r;
-            vertex.color[1] = color.g;
-            vertex.color[2] = color.b;
-            vertex.color[3] = color.a;
+            gpuVertex.color[0] = color.r;
+            gpuVertex.color[1] = color.g;
+            gpuVertex.color[2] = color.b;
+            gpuVertex.color[3] = color.a;
 
-            uploadData.vertices.push_back(vertex);
+            uploadData.vertices.push_back(gpuVertex);
         }
 
         for (const RenderTriangle& triangle : renderMesh.triangles) {
-            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.a));
-            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.b));
-            uploadData.indices.push_back(static_cast<std::uint32_t>(triangle.c));
+            uploadData.indices.push_back(triangle.a);
+            uploadData.indices.push_back(triangle.b);
+            uploadData.indices.push_back(triangle.c);
         }
 
         return uploadData;
     }
 
-    MeshUploadData build_wire_upload_data(
-        const RenderMesh& wireRenderMesh,
-        const MeshFit& fit)
+    MeshUploadData make_wire_upload_data(
+        const RenderMesh& renderMesh,
+        const ColorRGBA& color)
     {
         MeshUploadData uploadData;
         uploadData.topology = PrimitiveTopology::Lines;
         uploadData.usage = BufferUsage::Static;
-        uploadData.vertices.reserve(wireRenderMesh.vertices.size());
-        uploadData.indices.reserve(wireRenderMesh.lines.size() * 2);
 
-        for (const RenderVertex& renderVertex : wireRenderMesh.vertices) {
-            const glm::vec3 fittedPosition = (renderVertex.position - fit.center) * fit.scale;
+        uploadData.vertices.reserve(renderMesh.vertices.size());
+        uploadData.indices.reserve(renderMesh.lines.size() * 2);
 
-            MeshVertex vertex;
-            vertex.position[0] = fittedPosition.x;
-            vertex.position[1] = fittedPosition.y;
-            vertex.position[2] = fittedPosition.z;
+        for (const RenderVertex& vertex : renderMesh.vertices) {
+            MeshVertex gpuVertex;
 
-            vertex.normal[0] = renderVertex.normal.x;
-            vertex.normal[1] = renderVertex.normal.y;
-            vertex.normal[2] = renderVertex.normal.z;
+            gpuVertex.position[0] = vertex.position.x;
+            gpuVertex.position[1] = vertex.position.y;
+            gpuVertex.position[2] = vertex.position.z;
 
-            vertex.color[0] = 0.02f;
-            vertex.color[1] = 0.02f;
-            vertex.color[2] = 0.025f;
-            vertex.color[3] = 1.0f;
+            gpuVertex.normal[0] = 0.0f;
+            gpuVertex.normal[1] = 1.0f;
+            gpuVertex.normal[2] = 0.0f;
 
-            uploadData.vertices.push_back(vertex);
+            gpuVertex.color[0] = color.r;
+            gpuVertex.color[1] = color.g;
+            gpuVertex.color[2] = color.b;
+            gpuVertex.color[3] = color.a;
+
+            uploadData.vertices.push_back(gpuVertex);
         }
 
-        for (const RenderLine& line : wireRenderMesh.lines) {
-            uploadData.indices.push_back(static_cast<std::uint32_t>(line.a));
-            uploadData.indices.push_back(static_cast<std::uint32_t>(line.b));
+        for (const RenderLine& line : renderMesh.lines) {
+            uploadData.indices.push_back(line.a);
+            uploadData.indices.push_back(line.b);
         }
 
         return uploadData;
     }
 
-    bool create_shader(
-        Shader& shader,
-        const char* vertexSource,
-        const char* fragmentSource,
-        const std::string& label)
+    bool upload_visual_mesh(const LEM& mesh, VisualMesh& output)
     {
-        GraphicsResult result = shader.create_from_source(vertexSource, fragmentSource);
+        const RenderMesh solidRenderMesh = MeshTriangulator::triangulate(mesh);
+        const RenderMesh wireRenderMesh = WireframeBuilder::build(mesh);
 
-        if (!result) {
-            print_graphics_error(label, result.error());
+        const MeshUploadData solidUploadData =
+            make_solid_upload_data(solidRenderMesh, { 0.65f, 0.78f, 1.0f, 1.0f });
+
+        const MeshUploadData wireUploadData =
+            make_wire_upload_data(wireRenderMesh, { 0.02f, 0.02f, 0.025f, 1.0f });
+
+        auto solidResult = output.solid.create(solidUploadData);
+        if (!solidResult) {
+            print_graphics_error("solid mesh upload", solidResult.error());
             return false;
         }
 
-        std::cout << "[OK] " << label << '\n';
-        return true;
-    }
-
-    bool create_gpu_mesh(
-        GpuMesh& mesh,
-        const MeshUploadData& uploadData,
-        const std::string& label)
-    {
-        GraphicsResult result = mesh.create(uploadData);
-
-        if (!result) {
-            print_graphics_error(label, result.error());
+        auto wireResult = output.wire.create(wireUploadData);
+        if (!wireResult) {
+            print_graphics_error("wire mesh upload", wireResult.error());
             return false;
         }
 
-        std::cout << "[OK] " << label << '\n';
         return true;
     }
 
-    bool initialize_graphics(Window& window, OpenGLContext& context)
+    RenderObject make_render_object(
+        std::uint64_t id,
+        const std::string& name,
+        const GpuMesh& mesh,
+        const Shader& shader,
+        const glm::vec3& position,
+        bool wireframe)
     {
-        std::cout << "\n=== Graphics setup ===\n";
+        RenderObject object;
+        object.id = id;
+        object.name = name;
+        object.mesh = &mesh;
+        object.shader = &shader;
+        object.transform.position = position;
+        object.wireframe = wireframe;
+        object.layer = RenderLayer::Default;
+        return object;
+    }
 
+    bool initialize_graphics(
+        Window& window,
+        OpenGLContext& context,
+        Viewport& viewport)
+    {
         WindowCreateInfo windowInfo;
         windowInfo.width = 1280;
         windowInfo.height = 720;
-        windowInfo.title = "Locus3D - Modeling Operations Visual Test";
+        windowInfo.title = "Locus3D - Visual Modeling Operations Test";
         windowInfo.resizable = true;
-        windowInfo.visible = true;
         windowInfo.requestOpenGLContext = true;
         windowInfo.openglMajorVersion = 4;
         windowInfo.openglMinorVersion = 5;
@@ -387,15 +484,13 @@ void main()
         windowInfo.openglForwardCompatible = true;
         windowInfo.openglDebugContext = true;
 
-        GraphicsResult windowResult = window.create(windowInfo);
-
+        auto windowResult = window.create(windowInfo);
         if (!windowResult) {
-            print_graphics_error("Window error", windowResult.error());
+            print_graphics_error("window.create", windowResult.error());
             return false;
         }
 
         GraphicsConfig config;
-        config.api = GraphicsApi::OpenGL;
         config.enableDebugOutput = true;
         config.enableVSync = true;
         config.requestedMajorVersion = 4;
@@ -403,340 +498,125 @@ void main()
         config.coreProfile = true;
         config.forwardCompatible = true;
 
-        GraphicsResult contextResult = context.initialize(window, config);
-
+        auto contextResult = context.initialize(window, config);
         if (!contextResult) {
-            print_graphics_error("OpenGL context error", contextResult.error());
+            print_graphics_error("context.initialize", contextResult.error());
             return false;
         }
 
         context.make_current();
         context.set_vsync(true);
 
-        glEnable(GL_DEPTH_TEST);
-        glDepthFunc(GL_LESS);
-        glDisable(GL_CULL_FACE);
-        glLineWidth(2.0f);
-        glViewport(0, 0, window.framebuffer_width(), window.framebuffer_height());
-
-        std::cout << "[OK] janela e contexto OpenGL inicializados\n";
-        std::cout << "Framebuffer: "
-            << window.framebuffer_width()
-            << "x"
-            << window.framebuffer_height()
-            << '\n';
+        viewport.sync_with_window(window);
+        viewport.set_clear_color({ 0.08f, 0.08f, 0.09f, 1.0f });
+        viewport.set_depth_test_enabled(true);
+        viewport.camera().look_at(
+            { 0.0f, 4.0f, 9.0f },
+            { 0.0f, 0.45f, 0.0f },
+            { 0.0f, 1.0f, 0.0f });
 
         return true;
-    }
-
-    VisualMesh build_merge_visual_mesh()
-    {
-        VisualMesh visual;
-        visual.name = "MergeVerticesOp";
-        visual.position = { -3.0f, 0.0f, 0.0f };
-        visual.color = { 0.80f, 0.88f, 1.0f, 1.0f };
-
-        LEMEditor editor(visual.mesh);
-
-        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
-        VertexHandle v4 = editor.add_vertex({ -1.08f, 1.08f, 0.0f });
-
-        editor.add_face({ v0, v1, v2, v3 });
-        editor.clear_diff();
-
-        print_mesh_summary("Merge antes", visual.mesh);
-
-        OperationContext context = make_context(visual.mesh);
-        MergeVerticesOp op(v4, v3, { -1.0f, 1.0f, 0.0f });
-        OperationResult result = op.execute(context);
-
-        print_operation_result("MergeVerticesOp", result);
-        print_mesh_summary("Merge depois", visual.mesh);
-        validate_mesh("Validacao MergeVerticesOp", visual.mesh);
-
-        return visual;
-    }
-
-    VisualMesh build_flip_visual_mesh()
-    {
-        VisualMesh visual;
-        visual.name = "FlipFaceOp";
-        visual.position = { 0.0f, 0.0f, 0.0f };
-        visual.color = { 1.0f, 0.82f, 0.72f, 1.0f };
-
-        LEMEditor editor(visual.mesh);
-
-        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
-        editor.clear_diff();
-
-        print_mesh_summary("Flip antes", visual.mesh);
-
-        OperationContext context = make_context(visual.mesh);
-        FlipFaceOp op(face);
-        OperationResult result = op.execute(context);
-
-        print_operation_result("FlipFaceOp", result);
-        print_mesh_summary("Flip depois", visual.mesh);
-        validate_mesh("Validacao FlipFaceOp", visual.mesh);
-
-        return visual;
-    }
-
-    VisualMesh build_subdivide_visual_mesh()
-    {
-        VisualMesh visual;
-        visual.name = "SubdivideOp";
-        visual.position = { 3.0f, 0.0f, 0.0f };
-        visual.color = { 0.78f, 1.0f, 0.82f, 1.0f };
-
-        LEMEditor editor(visual.mesh);
-
-        VertexHandle v0 = editor.add_vertex({ -1.0f, -1.0f, 0.0f });
-        VertexHandle v1 = editor.add_vertex({ 1.0f, -1.0f, 0.0f });
-        VertexHandle v2 = editor.add_vertex({ 1.0f, 1.0f, 0.0f });
-        VertexHandle v3 = editor.add_vertex({ -1.0f, 1.0f, 0.0f });
-
-        FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
-        editor.clear_diff();
-
-        print_mesh_summary("Subdivide antes", visual.mesh);
-
-        OperationContext context = make_context(visual.mesh);
-        SubdivideOp op = SubdivideOp::face(face);
-        OperationResult result = op.execute(context);
-
-        print_operation_result("SubdivideOp", result);
-        print_mesh_summary("Subdivide depois", visual.mesh);
-        validate_mesh("Validacao SubdivideOp", visual.mesh);
-
-        return visual;
-    }
-
-    bool prepare_visual_mesh(VisualMesh& visual)
-    {
-        visual.solidRenderMesh = MeshTriangulator::triangulate(visual.mesh);
-        NormalBuilder::rebuild_normals(visual.solidRenderMesh, NormalBuildMode::Flat);
-        visual.wireRenderMesh = WireframeBuilder::build(visual.mesh);
-
-        if (visual.solidRenderMesh.vertex_count() == 0 || visual.solidRenderMesh.triangle_count() == 0) {
-            std::cout << "[FAIL] RenderMesh solido vazio para " << visual.name << '\n';
-            return false;
-        }
-
-        if (visual.wireRenderMesh.line_count() == 0) {
-            std::cout << "[FAIL] WireRenderMesh vazio para " << visual.name << '\n';
-            return false;
-        }
-
-        visual.fit = compute_mesh_fit(visual.solidRenderMesh);
-        visual.solidUploadData = build_triangle_upload_data(
-            visual.solidRenderMesh,
-            visual.fit,
-            visual.color);
-        visual.wireUploadData = build_wire_upload_data(
-            visual.wireRenderMesh,
-            visual.fit);
-
-        std::cout << "[OK] RenderMesh preparado para " << visual.name
-            << " | triangles: " << visual.solidRenderMesh.triangle_count()
-            << " | wire lines: " << visual.wireRenderMesh.line_count()
-            << '\n';
-
-        return true;
-    }
-
-    bool upload_visual_mesh(VisualMesh& visual)
-    {
-        if (!create_gpu_mesh(
-            visual.solidGpuMesh,
-            visual.solidUploadData,
-            visual.name + " solid GpuMesh")) {
-            return false;
-        }
-
-        if (!create_gpu_mesh(
-            visual.wireGpuMesh,
-            visual.wireUploadData,
-            visual.name + " wire GpuMesh")) {
-            return false;
-        }
-
-        return true;
-    }
-
-    void add_visual_mesh_to_scene(
-        RenderScene& scene,
-        const VisualMesh& visual,
-        const Shader& solidShader,
-        const Shader& wireShader,
-        std::uint64_t& nextId,
-        const glm::quat& rotation)
-    {
-        RenderObject solidObject;
-        solidObject.id = nextId++;
-        solidObject.name = visual.name + " Solid";
-        solidObject.mesh = &visual.solidGpuMesh;
-        solidObject.shader = &solidShader;
-        solidObject.transform.position = visual.position;
-        solidObject.transform.rotation = rotation;
-        solidObject.transform.scale = { 1.0f, 1.0f, 1.0f };
-        solidObject.layer = RenderLayer::Default;
-
-        RenderObject wireObject;
-        wireObject.id = nextId++;
-        wireObject.name = visual.name + " Wire";
-        wireObject.mesh = &visual.wireGpuMesh;
-        wireObject.shader = &wireShader;
-        wireObject.transform = solidObject.transform;
-        wireObject.layer = RenderLayer::Overlay;
-
-        scene.add_object(solidObject);
-        scene.add_object(wireObject);
-    }
-
-    void render_loop(
-        Window& window,
-        Renderer& renderer,
-        const std::array<VisualMesh, 3>& visuals,
-        const Shader& solidShader,
-        const Shader& wireShader)
-    {
-        const auto start = std::chrono::steady_clock::now();
-
-        while (!window.should_close()) {
-            window.poll_events();
-
-            const int framebufferWidth = window.framebuffer_width();
-            const int framebufferHeight = window.framebuffer_height();
-
-            if (framebufferWidth <= 0 || framebufferHeight <= 0) {
-                continue;
-            }
-
-            const auto now = std::chrono::steady_clock::now();
-            const float time = std::chrono::duration<float>(now - start).count();
-
-            glViewport(0, 0, framebufferWidth, framebufferHeight);
-            glClearColor(0.075f, 0.075f, 0.085f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-            const float aspect =
-                static_cast<float>(framebufferWidth)
-                / static_cast<float>(framebufferHeight);
-
-            const glm::mat4 projection = glm::perspective(
-                glm::radians(45.0f),
-                aspect,
-                0.1f,
-                100.0f);
-
-            const glm::mat4 view = glm::lookAt(
-                glm::vec3{ 0.0f, 2.5f, 8.0f },
-                glm::vec3{ 0.0f, 0.0f, 0.0f },
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-            const glm::quat rotation =
-                glm::angleAxis(time * 0.35f, glm::vec3{ 0.0f, 1.0f, 0.0f })
-                * glm::angleAxis(glm::radians(18.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
-
-            RenderScene scene;
-            scene.reserve(6);
-
-            std::uint64_t nextId = 1;
-
-            for (const VisualMesh& visual : visuals) {
-                add_visual_mesh_to_scene(
-                    scene,
-                    visual,
-                    solidShader,
-                    wireShader,
-                    nextId,
-                    rotation);
-            }
-
-            renderer.set_view_matrix(view);
-            renderer.set_projection_matrix(projection);
-            renderer.render(scene);
-
-            window.swap_buffers();
-        }
     }
 
 }
 
 int main()
 {
-    std::cout << std::fixed << std::setprecision(3);
-    std::cout << "=== Locus3D Modeling Operations Visual Test ===\n";
-
-    std::array<VisualMesh, 3> visuals{
-        build_merge_visual_mesh(),
-        build_flip_visual_mesh(),
-        build_subdivide_visual_mesh()
-    };
-
-    for (VisualMesh& visual : visuals) {
-        if (!prepare_visual_mesh(visual)) {
-            std::cout << "\nResultado final: FAIL\n";
-            return EXIT_FAILURE;
-        }
-    }
+    std::cout << "=== Locus3D Visual Modeling Operations Test ===\n";
 
     Window window;
     OpenGLContext context;
+    Viewport viewport;
 
-    if (!initialize_graphics(window, context)) {
-        std::cout << "\nResultado final: FAIL\n";
+    if (!initialize_graphics(window, context, viewport)) {
         return EXIT_FAILURE;
     }
 
     Shader solidShader;
     Shader wireShader;
 
-    if (!create_shader(
-        solidShader,
-        VisualVertexShader,
-        VisualFragmentShader,
-        "shader solido criado")) {
-        std::cout << "\nResultado final: FAIL\n";
+    auto solidShaderResult = solidShader.create_from_source(
+        solid_vertex_shader(),
+        solid_fragment_shader());
+
+    if (!solidShaderResult) {
+        print_graphics_error("solid shader", solidShaderResult.error());
         return EXIT_FAILURE;
     }
 
-    if (!create_shader(
-        wireShader,
-        WireVertexShader,
-        WireFragmentShader,
-        "shader wire criado")) {
-        std::cout << "\nResultado final: FAIL\n";
+    auto wireShaderResult = wireShader.create_from_source(
+        wire_vertex_shader(),
+        wire_fragment_shader());
+
+    if (!wireShaderResult) {
+        print_graphics_error("wire shader", wireShaderResult.error());
         return EXIT_FAILURE;
     }
 
-    for (VisualMesh& visual : visuals) {
-        if (!upload_visual_mesh(visual)) {
-            std::cout << "\nResultado final: FAIL\n";
+    std::vector<DemoMesh> demos;
+    demos.push_back(make_original_mesh());
+    demos.push_back(make_shrink_fatten_mesh());
+    demos.push_back(make_randomized_mesh());
+    demos.push_back(make_extrude_inset_mesh());
+
+    std::vector<VisualMesh> visualMeshes;
+    visualMeshes.resize(demos.size());
+
+    for (std::size_t i = 0; i < demos.size(); ++i) {
+        if (!upload_visual_mesh(demos[i].mesh, visualMeshes[i])) {
             return EXIT_FAILURE;
         }
+
+        std::cout
+            << "[OK] " << demos[i].name
+            << " | vertices=" << TopologyTraversal::vertices(demos[i].mesh).size()
+            << " edges=" << TopologyTraversal::edges(demos[i].mesh).size()
+            << " faces=" << TopologyTraversal::faces(demos[i].mesh).size()
+            << '\n';
     }
 
     Renderer renderer;
+    RenderScene scene;
 
-    std::cout << "\n=== Visual result ===\n";
-    std::cout << "Esquerda: MergeVerticesOp\n";
-    std::cout << "Centro: FlipFaceOp\n";
-    std::cout << "Direita: SubdivideOp\n";
-    std::cout << "Cada objeto aparece com wireframe topologico por cima.\n";
+    scene.reserve(demos.size() * 2);
+
+    for (std::size_t i = 0; i < demos.size(); ++i) {
+        scene.add_object(make_render_object(
+            static_cast<std::uint64_t>(i * 2 + 1),
+            demos[i].name + " Solid",
+            visualMeshes[i].solid,
+            solidShader,
+            demos[i].position,
+            false));
+
+        scene.add_object(make_render_object(
+            static_cast<std::uint64_t>(i * 2 + 2),
+            demos[i].name + " Wire",
+            visualMeshes[i].wire,
+            wireShader,
+            demos[i].position + glm::vec3{ 0.0f, 0.01f, 0.0f },
+            true));
+    }
+
+    std::cout << "[OK] Cena visual criada\n";
+    std::cout << "Objetos: Original | Shrink/Fatten | Randomize | Extrude + Inset\n";
     std::cout << "Feche a janela para encerrar o teste.\n";
 
-    render_loop(window, renderer, visuals, solidShader, wireShader);
+    while (!window.should_close()) {
+        window.poll_events();
 
-    std::cout << "\nResultado final: PASS\n";
+        viewport.sync_with_window(window);
+        viewport.begin_frame();
+
+        renderer.set_view_matrix(viewport.camera().view_matrix());
+        renderer.set_projection_matrix(viewport.camera().projection_matrix());
+        renderer.render(scene);
+
+        window.swap_buffers();
+    }
+
+    context.shutdown();
+    window.destroy();
+
     return EXIT_SUCCESS;
 }
