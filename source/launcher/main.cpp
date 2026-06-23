@@ -4,7 +4,7 @@
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/topology/LoopCutOp.h"
+#include "kernel/modeling/operations/edge/BevelOp.h"
 
 #include <glm/glm.hpp>
 
@@ -65,6 +65,32 @@ static void print_vertices(const geometry::LEM& mesh)
 
         std::cout << "v" << vertexHandle.id.value << ": ";
         print_vec3(vertex.position);
+
+        if (vertex.selected) {
+            std::cout << " | selected";
+        }
+
+        std::cout << '\n';
+    }
+}
+
+static void print_edges(const geometry::LEM& mesh)
+{
+    const auto edges = geometry::TopologyTraversal::edges(mesh);
+
+    std::cout << "\n=== Edges ===\n";
+
+    for (geometry::EdgeHandle edgeHandle : edges) {
+        const geometry::Edge& edge = mesh.edge(edgeHandle);
+
+        std::cout << "e" << edgeHandle.id.value
+            << ": v" << edge.vertexA.id.value
+            << " -> v" << edge.vertexB.id.value;
+
+        if (edge.selected) {
+            std::cout << " | selected";
+        }
+
         std::cout << '\n';
     }
 }
@@ -116,7 +142,7 @@ static bool expect(bool condition, std::string_view message)
 
 int main()
 {
-    std::cout << "=== Locus3D LoopCutOp Regression Test ===\n\n";
+    std::cout << "=== Locus3D BevelOp Regression Test ===\n\n";
 
     bool ok = true;
 
@@ -130,22 +156,22 @@ int main()
 
     geometry::FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
     editor.rebuild_face_normals();
-    editor.clear_diff();
 
-    geometry::EdgeHandle bottomEdge = mesh.find_edge(v0, v1);
-    geometry::EdgeHandle topEdge = mesh.find_edge(v2, v3);
+    geometry::EdgeHandle targetEdge = mesh.find_edge(v0, v1);
 
     ok &= expect(mesh.is_valid(v0), "v0 valido");
     ok &= expect(mesh.is_valid(v1), "v1 valido");
     ok &= expect(mesh.is_valid(v2), "v2 valido");
     ok &= expect(mesh.is_valid(v3), "v3 valido");
-    ok &= expect(mesh.is_valid(face), "face quad criada");
-    ok &= expect(mesh.is_valid(bottomEdge), "edge inferior encontrada");
-    ok &= expect(mesh.is_valid(topEdge), "edge superior encontrada");
+    ok &= expect(mesh.is_valid(face), "quad criado");
+    ok &= expect(mesh.is_valid(targetEdge), "edge alvo encontrada");
 
-    std::cout << "\n=== Antes do LoopCutOp ===\n";
+    editor.clear_diff();
+
+    std::cout << "\n=== Antes do BevelOp ===\n";
     print_counts(mesh);
     print_vertices(mesh);
+    print_edges(mesh);
     print_faces(mesh);
 
     geometry::TopologyValidationReport beforeReport =
@@ -155,10 +181,7 @@ int main()
     print_validation_report(beforeReport);
     ok &= expect(beforeReport.valid(), "malha inicial valida");
 
-    modeling::LoopCutOp op({ bottomEdge, topEdge });
-    op.set_cuts(1);
-    op.set_factor(0.5f);
-    op.set_even_spacing(true);
+    modeling::BevelOp op(targetEdge, 0.25f);
 
     modeling::OperationContext context;
     context.mesh = &mesh;
@@ -168,28 +191,31 @@ int main()
 
     modeling::OperationResult result = op.execute(context);
 
-    std::cout << "\n=== Resultado do LoopCutOp por edges explicitas ===\n";
+    std::cout << "\n=== Resultado do BevelOp por edge explicita ===\n";
     std::cout << "status: " << status_name(result.status()) << '\n';
 
     if (!result.message().empty()) {
         std::cout << "message: " << result.message() << '\n';
     }
 
-    ok &= expect(result.is_success(), "LoopCutOp terminou com sucesso");
-    ok &= expect(result.changed(), "LoopCutOp gerou diff");
+    ok &= expect(result.is_success(), "BevelOp terminou com sucesso");
+    ok &= expect(result.changed(), "BevelOp gerou diff");
 
-    std::cout << "\n=== Depois do LoopCutOp ===\n";
+    std::cout << "\n=== Depois do BevelOp ===\n";
     print_counts(mesh);
     print_vertices(mesh);
+    print_edges(mesh);
     print_faces(mesh);
 
     const auto verticesAfter = geometry::TopologyTraversal::vertices(mesh);
-    const auto facesAfter = geometry::TopologyTraversal::faces(mesh);
+    const auto edgesAfter = geometry::TopologyTraversal::edges(mesh);
     const auto loopsAfter = geometry::TopologyTraversal::loops(mesh);
+    const auto facesAfter = geometry::TopologyTraversal::faces(mesh);
 
-    ok &= expect(verticesAfter.size() == 6, "loop cut criou 2 vertices novos");
-    ok &= expect(facesAfter.size() == 2, "loop cut dividiu o quad em 2 faces");
-    ok &= expect(loopsAfter.size() == 8, "duas faces quad possuem 8 loops no total");
+    ok &= expect(verticesAfter.size() == 8, "bevel criou 4 vertices novos");
+    ok &= expect(facesAfter.size() == 3, "bevel criou face principal e 2 faces de chanfro");
+    ok &= expect(edgesAfter.size() >= 8, "bevel criou novas edges");
+    ok &= expect(loopsAfter.size() >= 10, "bevel criou novos loops");
 
     geometry::TopologyValidationReport afterReport =
         geometry::TopologyValidator::validate(mesh);
@@ -198,7 +224,29 @@ int main()
     print_validation_report(afterReport);
     ok &= expect(afterReport.valid(), "malha final valida");
 
-    std::cout << "\n=== Teste de selected_edges sem selecao ===\n";
+    std::cout << "\n=== Teste com largura zero ===\n";
+
+    modeling::BevelOp zeroOp(targetEdge, 0.0f);
+
+    modeling::OperationContext zeroContext;
+    zeroContext.mesh = &mesh;
+    zeroContext.validateAfterExecute = true;
+    zeroContext.rebuildNormals = true;
+    zeroContext.allowNonManifold = true;
+
+    modeling::OperationResult zeroResult = zeroOp.execute(zeroContext);
+
+    std::cout << "status: " << status_name(zeroResult.status()) << '\n';
+
+    if (!zeroResult.message().empty()) {
+        std::cout << "message: " << zeroResult.message() << '\n';
+    }
+
+    ok &= expect(
+        zeroResult.status() == modeling::OperationStatus::NoChange,
+        "largura zero retorna NoChange");
+
+    std::cout << "\n=== Teste selected_edges sem selecao ===\n";
 
     geometry::LEM noSelectionMesh;
     geometry::LEMEditor noSelectionEditor(noSelectionMesh);
@@ -212,7 +260,7 @@ int main()
     noSelectionEditor.rebuild_face_normals();
     noSelectionEditor.clear_diff();
 
-    modeling::LoopCutOp selectedOp = modeling::LoopCutOp::selected_edges();
+    modeling::BevelOp selectedOp = modeling::BevelOp::selected_edges(0.25f);
 
     modeling::OperationContext noSelectionContext;
     noSelectionContext.mesh = &noSelectionMesh;

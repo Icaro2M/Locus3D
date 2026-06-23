@@ -99,7 +99,13 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/operations/topology/BridgeEdgeOp.h"
     "modeling/operations/topology/BridgeEdgeOp.cpp"
     "modeling/operations/face/SolidifyOp.h"
-    "modeling/operations/face/SolidifyOp.cpp" "modeling/operations/topology/LoopCutOp.h" "modeling/operations/topology/LoopCutOp.cpp")
+    "modeling/operations/face/SolidifyOp.cpp"
+    "modeling/operations/topology/LoopCutOp.h"
+    "modeling/operations/topology/LoopCutOp.cpp"
+    "modeling/operations/edge/EdgeSlideOp.h"
+    "modeling/operations/edge/EdgeSlideOp.cpp"
+    "modeling/operations/edge/BevelOp.h"
+    "modeling/operations/edge/BevelOp.cpp")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
