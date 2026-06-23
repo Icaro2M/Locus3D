@@ -4,7 +4,7 @@
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/topology/FillHoleOp.h"
+#include "kernel/modeling/operations/topology/BridgeEdgeOp.h"
 
 #include <glm/glm.hpp>
 
@@ -91,258 +91,327 @@ namespace {
         return report.valid();
     }
 
-    std::vector<geometry::VertexHandle> make_square_vertices(geometry::LEMEditor& editor, float offsetX = 0.0f) {
+    modeling::OperationContext make_context(geometry::LEM& mesh) {
+        modeling::OperationContext context;
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+        context.allowNonManifold = true;
+        return context;
+    }
+
+    std::vector<geometry::VertexHandle> make_square_cycle(
+        geometry::LEMEditor& editor,
+        float z,
+        float size = 1.0f) {
         std::vector<geometry::VertexHandle> vertices;
 
-        vertices.push_back(editor.add_vertex(glm::vec3{ offsetX + 0.0f, 0.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ offsetX + 1.0f, 0.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ offsetX + 1.0f, 1.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ offsetX + 0.0f, 1.0f, 0.0f }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ -size, -size, z }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ size, -size, z }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ size,  size, z }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ -size,  size, z }));
 
         return vertices;
     }
 
-    std::vector<geometry::EdgeHandle> make_square_edges(
+    std::vector<geometry::VertexHandle> make_triangle_cycle(
+        geometry::LEMEditor& editor,
+        float z,
+        float size = 1.0f) {
+        std::vector<geometry::VertexHandle> vertices;
+
+        vertices.push_back(editor.add_vertex(glm::vec3{ 0.0f,  size, z }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ size, -size, z }));
+        vertices.push_back(editor.add_vertex(glm::vec3{ -size, -size, z }));
+
+        return vertices;
+    }
+
+    std::vector<geometry::EdgeHandle> make_cycle_edges(
         geometry::LEMEditor& editor,
         const std::vector<geometry::VertexHandle>& vertices) {
         std::vector<geometry::EdgeHandle> edges;
 
-        edges.push_back(editor.find_or_create_edge(vertices[0], vertices[1]));
-        edges.push_back(editor.find_or_create_edge(vertices[1], vertices[2]));
-        edges.push_back(editor.find_or_create_edge(vertices[2], vertices[3]));
-        edges.push_back(editor.find_or_create_edge(vertices[3], vertices[0]));
+        for (std::size_t i = 0; i < vertices.size(); ++i) {
+            const std::size_t next = (i + 1) % vertices.size();
+            edges.push_back(editor.find_or_create_edge(vertices[i], vertices[next]));
+        }
 
         return edges;
     }
 
-    void test_fill_from_vertex_cycle(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: vertex cycle ===\n";
+    std::vector<geometry::EdgeHandle> make_open_chain_edges(
+        geometry::LEMEditor& editor,
+        const std::vector<geometry::VertexHandle>& vertices) {
+        std::vector<geometry::EdgeHandle> edges;
 
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
+        for (std::size_t i = 0; i + 1 < vertices.size(); ++i) {
+            edges.push_back(editor.find_or_create_edge(vertices[i], vertices[i + 1]));
+        }
 
-        std::vector<geometry::VertexHandle> vertices = make_square_vertices(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op(vertices);
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "operacao por vertices terminou com sucesso");
-        check(stats, result.changed(), "operacao por vertices gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 4, "malha manteve 4 vertices");
-        check(stats, geometry::TopologyTraversal::edges(mesh).size() == 4, "malha criou 4 edges");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 4, "malha criou 4 loops");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "malha criou 1 face");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
+        return edges;
     }
 
-    void test_fill_from_edge_cycle(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: edge cycle ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        std::vector<geometry::VertexHandle> vertices = make_square_vertices(editor);
-        std::vector<geometry::EdgeHandle> edges = make_square_edges(editor, vertices);
-        editor.clear_diff();
-
-        std::vector<geometry::EdgeHandle> shuffledEdges;
-        shuffledEdges.push_back(edges[2]);
-        shuffledEdges.push_back(edges[0]);
-        shuffledEdges.push_back(edges[3]);
-        shuffledEdges.push_back(edges[1]);
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op = modeling::FillHoleOp::edges(shuffledEdges);
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "operacao por edges terminou com sucesso");
-        check(stats, result.changed(), "operacao por edges gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 4, "malha manteve 4 vertices");
-        check(stats, geometry::TopologyTraversal::edges(mesh).size() == 4, "malha manteve 4 edges");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 4, "malha criou 4 loops");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "malha criou 1 face");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_fill_from_selected_boundary_edges(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: selected boundary edges ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        std::vector<geometry::VertexHandle> vertices = make_square_vertices(editor);
-        std::vector<geometry::EdgeHandle> edges = make_square_edges(editor, vertices);
-
+    void select_edges(
+        TestStats& stats,
+        geometry::LEMEditor& editor,
+        const std::vector<geometry::EdgeHandle>& edges) {
         for (geometry::EdgeHandle edge : edges) {
             const bool selected = editor.set_selected(edge, true);
             check(stats, selected, "edge selecionada para teste");
         }
-
-        editor.clear_diff();
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op = modeling::FillHoleOp::selected_boundary_edges();
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "operacao por edges selecionadas terminou com sucesso");
-        check(stats, result.changed(), "operacao por edges selecionadas gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 4, "malha manteve 4 vertices");
-        check(stats, geometry::TopologyTraversal::edges(mesh).size() == 4, "malha manteve 4 edges");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 4, "malha criou 4 loops");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "malha criou 1 face");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
     }
 
-    void test_invalid_duplicate_vertex_cycle(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: invalid duplicate vertex cycle ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        std::vector<geometry::VertexHandle> vertices = make_square_vertices(editor);
-        editor.clear_diff();
-
-        std::vector<geometry::VertexHandle> invalidCycle;
-        invalidCycle.push_back(vertices[0]);
-        invalidCycle.push_back(vertices[1]);
-        invalidCycle.push_back(vertices[1]);
-        invalidCycle.push_back(vertices[3]);
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op(invalidCycle);
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_failure(), "ciclo com vertice duplicado falhou corretamente");
-        check(stats, geometry::TopologyTraversal::faces(mesh).empty(), "nenhuma face foi criada no caso invalido");
-        check(stats, geometry::TopologyTraversal::loops(mesh).empty(), "nenhum loop foi criado no caso invalido");
-        check(stats, validate_mesh(mesh), "malha continuou valida apos falha");
-    }
-
-    void test_invalid_open_edge_chain(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: invalid open edge chain ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        std::vector<geometry::VertexHandle> vertices;
-
-        vertices.push_back(editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f }));
-
-        std::vector<geometry::EdgeHandle> edges;
-
-        edges.push_back(editor.find_or_create_edge(vertices[0], vertices[1]));
-        edges.push_back(editor.find_or_create_edge(vertices[1], vertices[2]));
-        edges.push_back(editor.find_or_create_edge(vertices[2], vertices[3]));
-
-        editor.clear_diff();
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op = modeling::FillHoleOp::edges(edges);
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.status() == modeling::OperationStatus::NoChange, "cadeia aberta retornou NoChange");
-        check(stats, geometry::TopologyTraversal::faces(mesh).empty(), "nenhuma face foi criada para cadeia aberta");
-        check(stats, geometry::TopologyTraversal::loops(mesh).empty(), "nenhum loop foi criado para cadeia aberta");
-        check(stats, validate_mesh(mesh), "malha continuou valida apos cadeia aberta");
-    }
-
-    void test_flip_winding(TestStats& stats) {
-        std::cout << "\n=== FillHoleOp: flip winding ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        std::vector<geometry::VertexHandle> vertices = make_square_vertices(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-
-        modeling::FillHoleOp op(vertices);
-        op.set_flip_winding(true);
-
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "operacao com flip_winding terminou com sucesso");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "flip_winding criou 1 face");
-        check(stats, validate_mesh(mesh), "malha com flip_winding passou na validacao");
-
+    void print_face_normals(const geometry::LEM& mesh) {
         const std::vector<geometry::FaceHandle> faces = geometry::TopologyTraversal::faces(mesh);
 
-        if (!faces.empty()) {
-            const glm::vec3 normal = mesh.face(faces.front()).normal;
+        for (std::size_t i = 0; i < faces.size(); ++i) {
+            const glm::vec3 normal = mesh.face(faces[i]).normal;
+
             std::cout
-                << "normal: "
+                << "face " << i
+                << " normal: "
                 << normal.x << ", "
                 << normal.y << ", "
                 << normal.z << '\n';
         }
     }
 
+    void test_bridge_from_vertex_cycles(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: vertex cycles ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> bottom = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> top = make_square_cycle(editor, 1.0f);
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op(bottom, top);
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+        print_face_normals(mesh);
+
+        check(stats, result.is_success(), "bridge por vertices terminou com sucesso");
+        check(stats, result.changed(), "bridge por vertices gerou diff");
+        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "malha manteve 8 vertices");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 4, "bridge fechado criou 4 faces laterais");
+        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 16, "bridge fechado criou 16 loops");
+        check(stats, validate_mesh(mesh), "malha final passou na validacao");
+    }
+
+    void test_bridge_from_edge_cycles(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: edge cycles ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> bottom = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> top = make_square_cycle(editor, 1.0f);
+
+        std::vector<geometry::EdgeHandle> bottomEdges = make_cycle_edges(editor, bottom);
+        std::vector<geometry::EdgeHandle> topEdges = make_cycle_edges(editor, top);
+
+        std::vector<geometry::EdgeHandle> shuffledBottomEdges;
+        shuffledBottomEdges.push_back(bottomEdges[2]);
+        shuffledBottomEdges.push_back(bottomEdges[0]);
+        shuffledBottomEdges.push_back(bottomEdges[3]);
+        shuffledBottomEdges.push_back(bottomEdges[1]);
+
+        std::vector<geometry::EdgeHandle> shuffledTopEdges;
+        shuffledTopEdges.push_back(topEdges[1]);
+        shuffledTopEdges.push_back(topEdges[3]);
+        shuffledTopEdges.push_back(topEdges[0]);
+        shuffledTopEdges.push_back(topEdges[2]);
+
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op = modeling::BridgeEdgeOp::edges(
+            shuffledBottomEdges,
+            shuffledTopEdges);
+
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+
+        check(stats, result.is_success(), "bridge por edges terminou com sucesso");
+        check(stats, result.changed(), "bridge por edges gerou diff");
+        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "malha manteve 8 vertices");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 4, "bridge por edges criou 4 faces laterais");
+        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 16, "bridge por edges criou 16 loops");
+        check(stats, validate_mesh(mesh), "malha final passou na validacao");
+    }
+
+    void test_bridge_from_selected_boundary_edges(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: selected boundary edges ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> bottom = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> top = make_square_cycle(editor, 1.0f);
+
+        std::vector<geometry::EdgeHandle> bottomEdges = make_cycle_edges(editor, bottom);
+        std::vector<geometry::EdgeHandle> topEdges = make_cycle_edges(editor, top);
+
+        select_edges(stats, editor, bottomEdges);
+        select_edges(stats, editor, topEdges);
+
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op = modeling::BridgeEdgeOp::selected_boundary_edges();
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+
+        check(stats, result.is_success(), "bridge por edges selecionadas terminou com sucesso");
+        check(stats, result.changed(), "bridge por edges selecionadas gerou diff");
+        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "malha manteve 8 vertices");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 4, "bridge por selecao criou 4 faces laterais");
+        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 16, "bridge por selecao criou 16 loops");
+        check(stats, validate_mesh(mesh), "malha final passou na validacao");
+    }
+
+    void test_open_bridge_from_edges(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: open edge chains ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> firstChain;
+        firstChain.push_back(editor.add_vertex(glm::vec3{ -1.0f, 0.0f, 0.0f }));
+        firstChain.push_back(editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f }));
+        firstChain.push_back(editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f }));
+
+        std::vector<geometry::VertexHandle> secondChain;
+        secondChain.push_back(editor.add_vertex(glm::vec3{ -1.0f, 0.0f, 1.0f }));
+        secondChain.push_back(editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 1.0f }));
+        secondChain.push_back(editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 1.0f }));
+
+        std::vector<geometry::EdgeHandle> firstEdges = make_open_chain_edges(editor, firstChain);
+        std::vector<geometry::EdgeHandle> secondEdges = make_open_chain_edges(editor, secondChain);
+
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op = modeling::BridgeEdgeOp::edges(firstEdges, secondEdges);
+        op.set_closed(false);
+
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+
+        check(stats, result.is_success(), "bridge aberto terminou com sucesso");
+        check(stats, result.changed(), "bridge aberto gerou diff");
+        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 6, "malha aberta manteve 6 vertices");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 2, "bridge aberto criou 2 faces");
+        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 8, "bridge aberto criou 8 loops");
+        check(stats, validate_mesh(mesh), "malha aberta final passou na validacao");
+    }
+
+    void test_flip_second_cycle(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: flip second cycle ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> bottom = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> top = make_square_cycle(editor, 1.0f);
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op(bottom, top);
+        op.set_flip_second_cycle(true);
+
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+        print_face_normals(mesh);
+
+        check(stats, result.is_success(), "bridge com flip_second_cycle terminou com sucesso");
+        check(stats, result.changed(), "bridge com flip_second_cycle gerou diff");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 4, "bridge com flip criou 4 faces");
+        check(stats, validate_mesh(mesh), "malha com flip passou na validacao");
+    }
+
+    void test_twist_offset(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: twist offset ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> bottom = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> top = make_square_cycle(editor, 1.0f);
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op(bottom, top);
+        op.set_twist_offset(1);
+
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+
+        check(stats, result.is_success(), "bridge com twist_offset terminou com sucesso");
+        check(stats, result.changed(), "bridge com twist_offset gerou diff");
+        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 4, "bridge com twist criou 4 faces");
+        check(stats, validate_mesh(mesh), "malha com twist passou na validacao");
+    }
+
+    void test_invalid_incompatible_cycles(TestStats& stats) {
+        std::cout << "\n=== BridgeEdgeOp: invalid incompatible cycles ===\n";
+
+        geometry::LEM mesh;
+        geometry::LEMEditor editor(mesh);
+
+        std::vector<geometry::VertexHandle> square = make_square_cycle(editor, 0.0f);
+        std::vector<geometry::VertexHandle> triangle = make_triangle_cycle(editor, 1.0f);
+        editor.clear_diff();
+
+        modeling::OperationContext context = make_context(mesh);
+
+        modeling::BridgeEdgeOp op(square, triangle);
+        modeling::OperationResult result = op.execute(context);
+
+        print_result(result);
+        print_mesh_counts(mesh);
+
+        check(stats, result.is_failure(), "ciclos incompatíveis falharam corretamente");
+        check(stats, geometry::TopologyTraversal::faces(mesh).empty(), "nenhuma face foi criada no caso invalido");
+        check(stats, geometry::TopologyTraversal::loops(mesh).empty(), "nenhum loop foi criado no caso invalido");
+        check(stats, validate_mesh(mesh), "malha continuou valida apos falha");
+    }
+
 }
 
 int main() {
-    std::cout << "=== Locus3D FillHoleOp Regression Test ===\n";
+    std::cout << "=== Locus3D BridgeEdgeOp Regression Test ===\n";
 
     TestStats stats;
 
-    test_fill_from_vertex_cycle(stats);
-    test_fill_from_edge_cycle(stats);
-    test_fill_from_selected_boundary_edges(stats);
-    test_invalid_duplicate_vertex_cycle(stats);
-    test_invalid_open_edge_chain(stats);
-    test_flip_winding(stats);
+    test_bridge_from_vertex_cycles(stats);
+    test_bridge_from_edge_cycles(stats);
+    test_bridge_from_selected_boundary_edges(stats);
+    test_open_bridge_from_edges(stats);
+    test_flip_second_cycle(stats);
+    test_twist_offset(stats);
+    test_invalid_incompatible_cycles(stats);
 
     std::cout << "\n=== Summary ===\n";
     std::cout << "passed: " << stats.passed << '\n';
