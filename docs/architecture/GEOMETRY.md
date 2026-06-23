@@ -202,8 +202,8 @@ source\kernel
 |   |   |       CreaseOp.cpp
 |   |   |
 |   |   +---topology
-|   |   |       LoopCutOp.h [!]
-|   |   |       LoopCutOp.cpp [!]
+|   |   |       LoopCutOp.h
+|   |   |       LoopCutOp.cpp
 |   |   |       SubdivideOp.h
 |   |   |       SubdivideOp.cpp
 |   |   |       MergeVerticesOp.h
@@ -329,8 +329,6 @@ The files marked with `[!]` in the tree are planned or incomplete parts of the g
 - [!] `modeling/operations/edge/BevelOp.h`
 - [!] `modeling/operations/edge/BevelOp.cpp`
 - [!] `modeling/operations/edge/EdgeSlideOp.h`
-- [!] `modeling/operations/topology/LoopCutOp.h`
-- [!] `modeling/operations/topology/LoopCutOp.cpp`
 - [!] `modeling/preview/IPreviewStrategy.h`
 - [!] `modeling/preview/OperationPreview.h`
 - [!] `modeling/preview/PreviewMesh.h`

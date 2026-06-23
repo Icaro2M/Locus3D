@@ -4,368 +4,241 @@
 #include "kernel/geometry/topology/TopologyValidator.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/face/SolidifyOp.h"
+#include "kernel/modeling/operations/topology/LoopCutOp.h"
 
 #include <glm/glm.hpp>
 
+#include <cstdlib>
+#include <iomanip>
 #include <iostream>
-#include <string>
+#include <string_view>
 #include <vector>
 
 namespace geometry = locus::kernel::geometry;
 namespace modeling = locus::kernel::modeling;
 
-namespace {
-
-    struct TestStats {
-        int passed = 0;
-        int failed = 0;
-    };
-
-    void check(TestStats& stats, bool condition, const std::string& message) {
-        if (condition) {
-            ++stats.passed;
-            std::cout << "[OK] " << message << '\n';
-        }
-        else {
-            ++stats.failed;
-            std::cout << "[FAIL] " << message << '\n';
-        }
+static std::string_view status_name(modeling::OperationStatus status)
+{
+    switch (status) {
+    case modeling::OperationStatus::Success:
+        return "Success";
+    case modeling::OperationStatus::Failed:
+        return "Failed";
+    case modeling::OperationStatus::NoChange:
+        return "NoChange";
+    case modeling::OperationStatus::Cancelled:
+        return "Cancelled";
     }
 
-    std::string status_name(modeling::OperationStatus status) {
-        switch (status) {
-        case modeling::OperationStatus::Success:
-            return "Success";
-        case modeling::OperationStatus::Failed:
-            return "Failed";
-        case modeling::OperationStatus::NoChange:
-            return "NoChange";
-        case modeling::OperationStatus::Cancelled:
-            return "Cancelled";
-        }
-
-        return "Unknown";
-    }
-
-    void print_result(const modeling::OperationResult& result) {
-        std::cout << "status: " << status_name(result.status()) << '\n';
-
-        if (!result.message().empty()) {
-            std::cout << "message: " << result.message() << '\n';
-        }
-
-        if (result.is_failure()) {
-            std::cout << "error: " << result.error().message << '\n';
-        }
-
-        if (result.has_validation_report()) {
-            const geometry::TopologyValidationReport& report = result.validation_report();
-
-            std::cout
-                << "validation issues: " << report.issues.size()
-                << " | errors: " << report.error_count()
-                << " | warnings: " << report.warning_count()
-                << '\n';
-        }
-    }
-
-    void print_mesh_counts(const geometry::LEM& mesh) {
-        std::cout
-            << "vertices: " << geometry::TopologyTraversal::vertices(mesh).size()
-            << " | edges: " << geometry::TopologyTraversal::edges(mesh).size()
-            << " | loops: " << geometry::TopologyTraversal::loops(mesh).size()
-            << " | faces: " << geometry::TopologyTraversal::faces(mesh).size()
-            << '\n';
-    }
-
-    bool validate_mesh(const geometry::LEM& mesh) {
-        const geometry::TopologyValidationReport report =
-            geometry::TopologyValidator::validate(mesh);
-
-        std::cout
-            << "manual validation issues: " << report.issues.size()
-            << " | errors: " << report.error_count()
-            << " | warnings: " << report.warning_count()
-            << '\n';
-
-        return report.valid();
-    }
-
-    modeling::OperationContext make_context(geometry::LEM& mesh) {
-        modeling::OperationContext context;
-        context.mesh = &mesh;
-        context.validateAfterExecute = true;
-        context.rebuildNormals = true;
-        context.allowNonManifold = true;
-        return context;
-    }
-
-    std::vector<geometry::VertexHandle> make_quad_vertices(geometry::LEMEditor& editor) {
-        std::vector<geometry::VertexHandle> vertices;
-
-        vertices.push_back(editor.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ 1.0f,  1.0f, 0.0f }));
-        vertices.push_back(editor.add_vertex(glm::vec3{ -1.0f,  1.0f, 0.0f }));
-
-        return vertices;
-    }
-
-    geometry::FaceHandle make_quad_face(geometry::LEMEditor& editor) {
-        return editor.add_face(make_quad_vertices(editor));
-    }
-
-    void print_face_normals(const geometry::LEM& mesh) {
-        const std::vector<geometry::FaceHandle> faces =
-            geometry::TopologyTraversal::faces(mesh);
-
-        for (std::size_t i = 0; i < faces.size(); ++i) {
-            const glm::vec3 normal = mesh.face(faces[i]).normal;
-
-            std::cout
-                << "face " << i
-                << " normal: "
-                << normal.x << ", "
-                << normal.y << ", "
-                << normal.z << '\n';
-        }
-    }
-
-    void test_solidify_single_face_explicit_offset(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: single face explicit offset ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, glm::vec3{ 0.0f, 0.0f, 1.0f });
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-        print_face_normals(mesh);
-
-        check(stats, result.is_success(), "solidify por offset explicito terminou com sucesso");
-        check(stats, result.changed(), "solidify por offset explicito gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "solidify criou 4 vertices duplicados");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 6, "solidify manteve face original, criou cap e 4 rims");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 24, "solidify criou total de 24 loops");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_single_face_thickness(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: single face thickness ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, 0.5f);
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-        print_face_normals(mesh);
-
-        check(stats, result.is_success(), "solidify por thickness terminou com sucesso");
-        check(stats, result.changed(), "solidify por thickness gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "solidify por thickness criou 4 vertices duplicados");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 6, "solidify por thickness criou 6 faces totais");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 24, "solidify por thickness criou 24 loops");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_selected_face(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: selected face ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        const bool selected = editor.set_selected(face, true);
-        check(stats, selected, "face selecionada para teste");
-
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op = modeling::SolidifyOp::selected(glm::vec3{ 0.0f, 0.0f, 1.0f });
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "solidify por face selecionada terminou com sucesso");
-        check(stats, result.changed(), "solidify por face selecionada gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "solidify selecionado criou 4 vertices duplicados");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 6, "solidify selecionado criou 6 faces totais");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_rims_only(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: rims only ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, glm::vec3{ 0.0f, 0.0f, 1.0f });
-        op.set_create_caps(false);
-        op.set_create_rims(true);
-
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "solidify rims only terminou com sucesso");
-        check(stats, result.changed(), "solidify rims only gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "rims only criou 4 vertices duplicados");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 5, "rims only manteve original e criou 4 rims");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 20, "rims only criou 20 loops totais");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_caps_only(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: caps only ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, glm::vec3{ 0.0f, 0.0f, 1.0f });
-        op.set_create_caps(true);
-        op.set_create_rims(false);
-
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "solidify caps only terminou com sucesso");
-        check(stats, result.changed(), "solidify caps only gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "caps only criou 4 vertices duplicados");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 2, "caps only manteve original e criou 1 cap");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 8, "caps only criou 8 loops totais");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_remove_source_face(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: remove source face ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, glm::vec3{ 0.0f, 0.0f, 1.0f });
-        op.set_keep_source_faces(false);
-
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.is_success(), "solidify removendo origem terminou com sucesso");
-        check(stats, result.changed(), "solidify removendo origem gerou diff");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 8, "remove source manteve 8 vertices");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 5, "remove source deixou cap e 4 rims");
-        check(stats, geometry::TopologyTraversal::loops(mesh).size() == 20, "remove source deixou 20 loops");
-        check(stats, validate_mesh(mesh), "malha final passou na validacao");
-    }
-
-    void test_solidify_no_selected_faces(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: no selected faces ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op = modeling::SolidifyOp::selected(glm::vec3{ 0.0f, 0.0f, 1.0f });
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.status() == modeling::OperationStatus::NoChange, "sem faces selecionadas retornou NoChange");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 4, "sem selecao manteve 4 vertices");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "sem selecao manteve 1 face");
-        check(stats, validate_mesh(mesh), "malha continuou valida");
-    }
-
-    void test_solidify_disabled_outputs(TestStats& stats) {
-        std::cout << "\n=== SolidifyOp: disabled outputs ===\n";
-
-        geometry::LEM mesh;
-        geometry::LEMEditor editor(mesh);
-
-        const geometry::FaceHandle face = make_quad_face(editor);
-        editor.clear_diff();
-
-        modeling::OperationContext context = make_context(mesh);
-
-        modeling::SolidifyOp op(face, glm::vec3{ 0.0f, 0.0f, 1.0f });
-        op.set_create_caps(false);
-        op.set_create_rims(false);
-
-        modeling::OperationResult result = op.execute(context);
-
-        print_result(result);
-        print_mesh_counts(mesh);
-
-        check(stats, result.status() == modeling::OperationStatus::NoChange, "caps e rims desligados retornou NoChange");
-        check(stats, geometry::TopologyTraversal::vertices(mesh).size() == 4, "disabled outputs manteve 4 vertices");
-        check(stats, geometry::TopologyTraversal::faces(mesh).size() == 1, "disabled outputs manteve 1 face");
-        check(stats, validate_mesh(mesh), "malha continuou valida");
-    }
-
+    return "Unknown";
 }
 
-int main() {
-    std::cout << "=== Locus3D SolidifyOp Regression Test ===\n";
+static void print_vec3(const glm::vec3& value)
+{
+    std::cout
+        << std::fixed << std::setprecision(3)
+        << value.x << ", " << value.y << ", " << value.z;
+}
 
-    TestStats stats;
+static void print_counts(const geometry::LEM& mesh)
+{
+    const auto vertices = geometry::TopologyTraversal::vertices(mesh);
+    const auto edges = geometry::TopologyTraversal::edges(mesh);
+    const auto loops = geometry::TopologyTraversal::loops(mesh);
+    const auto faces = geometry::TopologyTraversal::faces(mesh);
 
-    test_solidify_single_face_explicit_offset(stats);
-    test_solidify_single_face_thickness(stats);
-    test_solidify_selected_face(stats);
-    test_solidify_rims_only(stats);
-    test_solidify_caps_only(stats);
-    test_solidify_remove_source_face(stats);
-    test_solidify_no_selected_faces(stats);
-    test_solidify_disabled_outputs(stats);
+    std::cout << "vertices: " << vertices.size()
+        << " | edges: " << edges.size()
+        << " | loops: " << loops.size()
+        << " | faces: " << faces.size()
+        << '\n';
+}
 
-    std::cout << "\n=== Summary ===\n";
-    std::cout << "passed: " << stats.passed << '\n';
-    std::cout << "failed: " << stats.failed << '\n';
+static void print_vertices(const geometry::LEM& mesh)
+{
+    const auto vertices = geometry::TopologyTraversal::vertices(mesh);
 
-    if (stats.failed > 0) {
-        return 1;
+    std::cout << "\n=== Vertices ===\n";
+
+    for (geometry::VertexHandle vertexHandle : vertices) {
+        const geometry::Vertex& vertex = mesh.vertex(vertexHandle);
+
+        std::cout << "v" << vertexHandle.id.value << ": ";
+        print_vec3(vertex.position);
+        std::cout << '\n';
+    }
+}
+
+static void print_faces(const geometry::LEM& mesh)
+{
+    const auto faces = geometry::TopologyTraversal::faces(mesh);
+
+    std::cout << "\n=== Faces ===\n";
+
+    for (geometry::FaceHandle faceHandle : faces) {
+        const geometry::Face& face = mesh.face(faceHandle);
+        const auto vertices = geometry::TopologyTraversal::face_vertices(mesh, faceHandle);
+
+        std::cout << "f" << faceHandle.id.value << " vertices:";
+
+        for (geometry::VertexHandle vertexHandle : vertices) {
+            std::cout << " v" << vertexHandle.id.value;
+        }
+
+        std::cout << " | normal: ";
+        print_vec3(face.normal);
+        std::cout << '\n';
+    }
+}
+
+static void print_validation_report(const geometry::TopologyValidationReport& report)
+{
+    std::cout << "validation issues: " << report.issues.size()
+        << " | errors: " << report.error_count()
+        << " | warnings: " << report.warning_count()
+        << '\n';
+
+    for (const geometry::TopologyIssue& issue : report.issues) {
+        std::cout << "- " << issue.message << '\n';
+    }
+}
+
+static bool expect(bool condition, std::string_view message)
+{
+    if (condition) {
+        std::cout << "[OK] " << message << '\n';
+        return true;
     }
 
-    return 0;
+    std::cout << "[FAIL] " << message << '\n';
+    return false;
+}
+
+int main()
+{
+    std::cout << "=== Locus3D LoopCutOp Regression Test ===\n\n";
+
+    bool ok = true;
+
+    geometry::LEM mesh;
+    geometry::LEMEditor editor(mesh);
+
+    geometry::VertexHandle v0 = editor.add_vertex(glm::vec3(-1.0f, 0.0f, -1.0f));
+    geometry::VertexHandle v1 = editor.add_vertex(glm::vec3(1.0f, 0.0f, -1.0f));
+    geometry::VertexHandle v2 = editor.add_vertex(glm::vec3(1.0f, 0.0f, 1.0f));
+    geometry::VertexHandle v3 = editor.add_vertex(glm::vec3(-1.0f, 0.0f, 1.0f));
+
+    geometry::FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
+    editor.rebuild_face_normals();
+    editor.clear_diff();
+
+    geometry::EdgeHandle bottomEdge = mesh.find_edge(v0, v1);
+    geometry::EdgeHandle topEdge = mesh.find_edge(v2, v3);
+
+    ok &= expect(mesh.is_valid(v0), "v0 valido");
+    ok &= expect(mesh.is_valid(v1), "v1 valido");
+    ok &= expect(mesh.is_valid(v2), "v2 valido");
+    ok &= expect(mesh.is_valid(v3), "v3 valido");
+    ok &= expect(mesh.is_valid(face), "face quad criada");
+    ok &= expect(mesh.is_valid(bottomEdge), "edge inferior encontrada");
+    ok &= expect(mesh.is_valid(topEdge), "edge superior encontrada");
+
+    std::cout << "\n=== Antes do LoopCutOp ===\n";
+    print_counts(mesh);
+    print_vertices(mesh);
+    print_faces(mesh);
+
+    geometry::TopologyValidationReport beforeReport =
+        geometry::TopologyValidator::validate(mesh);
+
+    std::cout << "\n=== Validacao antes ===\n";
+    print_validation_report(beforeReport);
+    ok &= expect(beforeReport.valid(), "malha inicial valida");
+
+    modeling::LoopCutOp op({ bottomEdge, topEdge });
+    op.set_cuts(1);
+    op.set_factor(0.5f);
+    op.set_even_spacing(true);
+
+    modeling::OperationContext context;
+    context.mesh = &mesh;
+    context.validateAfterExecute = true;
+    context.rebuildNormals = true;
+    context.allowNonManifold = true;
+
+    modeling::OperationResult result = op.execute(context);
+
+    std::cout << "\n=== Resultado do LoopCutOp por edges explicitas ===\n";
+    std::cout << "status: " << status_name(result.status()) << '\n';
+
+    if (!result.message().empty()) {
+        std::cout << "message: " << result.message() << '\n';
+    }
+
+    ok &= expect(result.is_success(), "LoopCutOp terminou com sucesso");
+    ok &= expect(result.changed(), "LoopCutOp gerou diff");
+
+    std::cout << "\n=== Depois do LoopCutOp ===\n";
+    print_counts(mesh);
+    print_vertices(mesh);
+    print_faces(mesh);
+
+    const auto verticesAfter = geometry::TopologyTraversal::vertices(mesh);
+    const auto facesAfter = geometry::TopologyTraversal::faces(mesh);
+    const auto loopsAfter = geometry::TopologyTraversal::loops(mesh);
+
+    ok &= expect(verticesAfter.size() == 6, "loop cut criou 2 vertices novos");
+    ok &= expect(facesAfter.size() == 2, "loop cut dividiu o quad em 2 faces");
+    ok &= expect(loopsAfter.size() == 8, "duas faces quad possuem 8 loops no total");
+
+    geometry::TopologyValidationReport afterReport =
+        geometry::TopologyValidator::validate(mesh);
+
+    std::cout << "\n=== Validacao depois ===\n";
+    print_validation_report(afterReport);
+    ok &= expect(afterReport.valid(), "malha final valida");
+
+    std::cout << "\n=== Teste de selected_edges sem selecao ===\n";
+
+    geometry::LEM noSelectionMesh;
+    geometry::LEMEditor noSelectionEditor(noSelectionMesh);
+
+    geometry::VertexHandle a = noSelectionEditor.add_vertex(glm::vec3(0.0f, 0.0f, 0.0f));
+    geometry::VertexHandle b = noSelectionEditor.add_vertex(glm::vec3(1.0f, 0.0f, 0.0f));
+    geometry::VertexHandle c = noSelectionEditor.add_vertex(glm::vec3(1.0f, 0.0f, 1.0f));
+    geometry::VertexHandle d = noSelectionEditor.add_vertex(glm::vec3(0.0f, 0.0f, 1.0f));
+
+    noSelectionEditor.add_face({ a, b, c, d });
+    noSelectionEditor.rebuild_face_normals();
+    noSelectionEditor.clear_diff();
+
+    modeling::LoopCutOp selectedOp = modeling::LoopCutOp::selected_edges();
+
+    modeling::OperationContext noSelectionContext;
+    noSelectionContext.mesh = &noSelectionMesh;
+    noSelectionContext.validateAfterExecute = true;
+    noSelectionContext.rebuildNormals = true;
+    noSelectionContext.allowNonManifold = true;
+
+    modeling::OperationResult noSelectionResult = selectedOp.execute(noSelectionContext);
+
+    std::cout << "status: " << status_name(noSelectionResult.status()) << '\n';
+
+    if (!noSelectionResult.message().empty()) {
+        std::cout << "message: " << noSelectionResult.message() << '\n';
+    }
+
+    ok &= expect(
+        noSelectionResult.status() == modeling::OperationStatus::NoChange,
+        "selected_edges sem selecao retorna NoChange");
+
+    std::cout << "\n=== Resultado final ===\n";
+
+    if (ok) {
+        std::cout << "Todos os testes passaram.\n";
+        return EXIT_SUCCESS;
+    }
+
+    std::cout << "Algum teste falhou.\n";
+    return EXIT_FAILURE;
 }
