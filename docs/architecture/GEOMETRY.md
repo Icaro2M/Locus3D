@@ -223,10 +223,10 @@ source\kernel
 |   |           RandomizeOp.cpp
 |   |
 |   \---preview
-|           IPreviewStrategy.h [!]
-|           OperationPreview.h [!]
-|           PreviewMesh.h [!]
-|           GhostMeshBuilder.h [!]
+|           IPreviewStrategy.h
+|           OperationPreview.h
+|           PreviewMesh.h
+|           GhostMeshBuilder.h
 |
 +---io
 |       IExporter.h
@@ -327,10 +327,6 @@ source\kernel
 
 The files marked with `[!]` in the tree are planned or incomplete parts of the geometry layer that are not present in the current `source/kernel/` tree yet.
 
-- [!] `modeling/preview/IPreviewStrategy.h`
-- [!] `modeling/preview/OperationPreview.h`
-- [!] `modeling/preview/PreviewMesh.h`
-- [!] `modeling/preview/GhostMeshBuilder.h`
 - [!] `io/ThreeMFExporter.h`
 - [!] `validation/checks/topology/TopologyCacheCheck.h`
 - [!] `manufacturing/core/IAnalyzer.h`
