@@ -1,9 +1,5 @@
-#include "kernel/geometry/mesh/LEM.h"
-#include "kernel/geometry/mesh/LEMEditor.h"
-#include "kernel/modeling/operations/face/ExtrudeFaceOp.h"
-#include "kernel/modeling/preview/GhostMeshBuilder.h"
-#include "kernel/modeling/preview/OperationPreview.h"
-#include "kernel/modeling/preview/PreviewMesh.h"
+#include "kernel/kernel.h"
+
 
 #include <glm/glm.hpp>
 

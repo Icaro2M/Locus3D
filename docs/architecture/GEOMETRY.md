@@ -66,6 +66,17 @@ Legend:
 
 ```txt
 source\kernel
+|   Common.h
+|   Math.h
+|   EditableMesh.h
+|   Geometry.h
+|   Modeling.h
+|   Operations.h
+|   Preview.h
+|   IO.h
+|   Validation.h
+|   Kernel.h
+|
 +---common
 |       Id.h
 |       Result.h
