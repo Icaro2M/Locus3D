@@ -1,292 +1,230 @@
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
-#include "kernel/geometry/topology/TopologyTraversal.h"
-#include "kernel/geometry/topology/TopologyValidator.h"
-#include "kernel/modeling/core/OperationContext.h"
-#include "kernel/modeling/core/OperationResult.h"
-#include "kernel/modeling/operations/edge/BevelOp.h"
+#include "kernel/modeling/operations/face/ExtrudeFaceOp.h"
+#include "kernel/modeling/preview/GhostMeshBuilder.h"
+#include "kernel/modeling/preview/OperationPreview.h"
+#include "kernel/modeling/preview/PreviewMesh.h"
 
 #include <glm/glm.hpp>
 
 #include <cstdlib>
-#include <iomanip>
 #include <iostream>
-#include <string_view>
-#include <vector>
+#include <string>
 
 namespace geometry = locus::kernel::geometry;
 namespace modeling = locus::kernel::modeling;
 
-static std::string_view status_name(modeling::OperationStatus status)
-{
-    switch (status) {
-    case modeling::OperationStatus::Success:
-        return "Success";
-    case modeling::OperationStatus::Failed:
-        return "Failed";
-    case modeling::OperationStatus::NoChange:
-        return "NoChange";
-    case modeling::OperationStatus::Cancelled:
-        return "Cancelled";
-    }
+namespace {
 
-    return "Unknown";
-}
+	int failures = 0;
 
-static void print_vec3(const glm::vec3& value)
-{
-    std::cout
-        << std::fixed << std::setprecision(3)
-        << value.x << ", " << value.y << ", " << value.z;
-}
+	void check(bool condition, const std::string& message)
+	{
+		if (condition) {
+			std::cout << "[OK] " << message << '\n';
+			return;
+		}
 
-static void print_counts(const geometry::LEM& mesh)
-{
-    const auto vertices = geometry::TopologyTraversal::vertices(mesh);
-    const auto edges = geometry::TopologyTraversal::edges(mesh);
-    const auto loops = geometry::TopologyTraversal::loops(mesh);
-    const auto faces = geometry::TopologyTraversal::faces(mesh);
+		std::cout << "[FAIL] " << message << '\n';
+		++failures;
+	}
 
-    std::cout << "vertices: " << vertices.size()
-        << " | edges: " << edges.size()
-        << " | loops: " << loops.size()
-        << " | faces: " << faces.size()
-        << '\n';
-}
+	void print_mesh_counts(const std::string& label, const geometry::LEM& mesh)
+	{
+		std::cout << label << '\n';
+		std::cout << "  vertices: " << mesh.vertex_count() << '\n';
+		std::cout << "  edges:    " << mesh.edge_count() << '\n';
+		std::cout << "  loops:    " << mesh.loop_count() << '\n';
+		std::cout << "  faces:    " << mesh.face_count() << '\n';
+	}
 
-static void print_vertices(const geometry::LEM& mesh)
-{
-    const auto vertices = geometry::TopologyTraversal::vertices(mesh);
+	void print_preview_counts(
+		const std::string& label,
+		const modeling::OperationPreview& preview)
+	{
+		const modeling::PreviewMesh& mesh = preview.mesh();
 
-    std::cout << "\n=== Vertices ===\n";
+		std::cout << label << '\n';
+		std::cout << "  ready:           " << (preview.is_ready() ? "true" : "false") << '\n';
+		std::cout << "  empty:           " << (preview.is_empty() ? "true" : "false") << '\n';
+		std::cout << "  failure:         " << (preview.is_failure() ? "true" : "false") << '\n';
+		std::cout << "  invalidated:     " << (preview.is_invalidated() ? "true" : "false") << '\n';
+		std::cout << "  solid vertices:  " << mesh.solid_vertex_count() << '\n';
+		std::cout << "  solid triangles: " << mesh.solid_triangle_count() << '\n';
+		std::cout << "  wire vertices:   " << mesh.wire_vertex_count() << '\n';
+		std::cout << "  wire lines:      " << mesh.wire_line_count() << '\n';
+		std::cout << "  changed:         " << (mesh.changed() ? "true" : "false") << '\n';
+		std::cout << "  diff size:       " << mesh.diff().size() << '\n';
 
-    for (geometry::VertexHandle vertexHandle : vertices) {
-        const geometry::Vertex& vertex = mesh.vertex(vertexHandle);
+		if (!preview.message().empty()) {
+			std::cout << "  preview message: " << preview.message() << '\n';
+		}
 
-        std::cout << "v" << vertexHandle.id.value << ": ";
-        print_vec3(vertex.position);
+		if (!mesh.message().empty()) {
+			std::cout << "  mesh message:    " << mesh.message() << '\n';
+		}
+	}
 
-        if (vertex.selected) {
-            std::cout << " | selected";
-        }
+	geometry::FaceHandle build_quad(geometry::LEM& mesh)
+	{
+		geometry::LEMEditor editor(mesh);
 
-        std::cout << '\n';
-    }
-}
+		const geometry::VertexHandle v0 = editor.add_vertex(glm::vec3{ -1.0f, 0.0f, -1.0f });
+		const geometry::VertexHandle v1 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f, -1.0f });
+		const geometry::VertexHandle v2 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f,  1.0f });
+		const geometry::VertexHandle v3 = editor.add_vertex(glm::vec3{ -1.0f, 0.0f,  1.0f });
 
-static void print_edges(const geometry::LEM& mesh)
-{
-    const auto edges = geometry::TopologyTraversal::edges(mesh);
+		return editor.add_face({ v0, v1, v2, v3 });
+	}
 
-    std::cout << "\n=== Edges ===\n";
+	void test_direct_preview()
+	{
+		std::cout << "\n=== GhostMeshBuilder: preview direto ===\n";
 
-    for (geometry::EdgeHandle edgeHandle : edges) {
-        const geometry::Edge& edge = mesh.edge(edgeHandle);
+		geometry::LEM mesh;
+		const geometry::FaceHandle face = build_quad(mesh);
 
-        std::cout << "e" << edgeHandle.id.value
-            << ": v" << edge.vertexA.id.value
-            << " -> v" << edge.vertexB.id.value;
+		check(mesh.is_valid(face), "quad inicial criou face valida");
+		check(mesh.vertex_count() == 4, "quad inicial possui 4 vertices");
+		check(mesh.edge_count() == 4, "quad inicial possui 4 edges");
+		check(mesh.loop_count() == 4, "quad inicial possui 4 loops");
+		check(mesh.face_count() == 1, "quad inicial possui 1 face");
 
-        if (edge.selected) {
-            std::cout << " | selected";
-        }
+		modeling::GhostMeshBuildOptions options;
+		options.buildWireframe = true;
+		options.normalMode = geometry::NormalBuildMode::Flat;
 
-        std::cout << '\n';
-    }
-}
+		const modeling::OperationPreview preview =
+			modeling::GhostMeshBuilder::build_preview(mesh, options);
 
-static void print_faces(const geometry::LEM& mesh)
-{
-    const auto faces = geometry::TopologyTraversal::faces(mesh);
+		print_mesh_counts("malha original", mesh);
+		print_preview_counts("preview direto", preview);
 
-    std::cout << "\n=== Faces ===\n";
+		check(preview.is_ready(), "preview direto ficou pronto");
+		check(preview.mesh().valid(), "preview direto possui payload valido");
+		check(!preview.mesh().empty(), "preview direto nao esta vazio");
+		check(preview.mesh().solid_triangle_count() == 2, "quad triangulou em 2 triangulos");
+		check(preview.mesh().wire_line_count() == 4, "quad gerou 4 linhas de wireframe");
+		check(!preview.mesh().changed(), "preview direto nao possui diff de operacao");
+	}
 
-    for (geometry::FaceHandle faceHandle : faces) {
-        const geometry::Face& face = mesh.face(faceHandle);
-        const auto vertices = geometry::TopologyTraversal::face_vertices(mesh, faceHandle);
+	void test_operation_preview()
+	{
+		std::cout << "\n=== GhostMeshBuilder: preview com ExtrudeFaceOp ===\n";
 
-        std::cout << "f" << faceHandle.id.value << " vertices:";
+		geometry::LEM sourceMesh;
+		const geometry::FaceHandle face = build_quad(sourceMesh);
 
-        for (geometry::VertexHandle vertexHandle : vertices) {
-            std::cout << " v" << vertexHandle.id.value;
-        }
+		check(sourceMesh.is_valid(face), "malha fonte criou face valida");
 
-        std::cout << " | normal: ";
-        print_vec3(face.normal);
-        std::cout << '\n';
-    }
-}
+		const std::size_t sourceVertexCount = sourceMesh.vertex_count();
+		const std::size_t sourceEdgeCount = sourceMesh.edge_count();
+		const std::size_t sourceLoopCount = sourceMesh.loop_count();
+		const std::size_t sourceFaceCount = sourceMesh.face_count();
 
-static void print_validation_report(const geometry::TopologyValidationReport& report)
-{
-    std::cout << "validation issues: " << report.issues.size()
-        << " | errors: " << report.error_count()
-        << " | warnings: " << report.warning_count()
-        << '\n';
+		modeling::ExtrudeFaceOp operation(face, glm::vec3{ 0.0f, 1.0f, 0.0f });
+		operation.set_keep_source_face(false);
 
-    for (const geometry::TopologyIssue& issue : report.issues) {
-        std::cout << "- " << issue.message << '\n';
-    }
-}
+		modeling::GhostMeshBuildOptions options;
+		options.buildWireframe = true;
+		options.normalMode = geometry::NormalBuildMode::Flat;
+		options.validateAfterPreview = true;
+		options.rebuildNormals = true;
+		options.allowNonManifold = true;
 
-static bool expect(bool condition, std::string_view message)
-{
-    if (condition) {
-        std::cout << "[OK] " << message << '\n';
-        return true;
-    }
+		const modeling::OperationPreview preview =
+			modeling::GhostMeshBuilder::build_operation_preview(
+				sourceMesh,
+				operation,
+				options
+			);
 
-    std::cout << "[FAIL] " << message << '\n';
-    return false;
+		print_mesh_counts("malha fonte apos preview", sourceMesh);
+		print_preview_counts("preview extrude", preview);
+
+		check(preview.is_ready(), "preview da extrusao ficou pronto");
+		check(!preview.is_failure(), "preview da extrusao nao falhou");
+		check(preview.mesh().valid(), "preview da extrusao possui payload valido");
+		check(!preview.mesh().empty(), "preview da extrusao nao esta vazio");
+		check(preview.mesh().changed(), "preview da extrusao possui diff");
+		check(preview.mesh().diff().size() > 0, "preview da extrusao registrou alteracoes no diff");
+
+		check(
+			preview.mesh().solid_triangle_count() == 10,
+			"extrusao de quad sem face fonte gerou 10 triangulos"
+		);
+
+		check(
+			preview.mesh().wire_line_count() == 12,
+			"extrusao de quad sem face fonte gerou 12 linhas de wireframe"
+		);
+
+		check(
+			sourceMesh.vertex_count() == sourceVertexCount,
+			"preview preservou quantidade de vertices da malha fonte"
+		);
+
+		check(
+			sourceMesh.edge_count() == sourceEdgeCount,
+			"preview preservou quantidade de edges da malha fonte"
+		);
+
+		check(
+			sourceMesh.loop_count() == sourceLoopCount,
+			"preview preservou quantidade de loops da malha fonte"
+		);
+
+		check(
+			sourceMesh.face_count() == sourceFaceCount,
+			"preview preservou quantidade de faces da malha fonte"
+		);
+	}
+
+	void test_failed_operation_preview()
+	{
+		std::cout << "\n=== GhostMeshBuilder: preview com operacao sem alvo valido ===\n";
+
+		geometry::LEM sourceMesh;
+		build_quad(sourceMesh);
+
+		modeling::ExtrudeFaceOp operation;
+		operation.set_faces({ geometry::FaceHandle{} });
+
+		modeling::GhostMeshBuildOptions options;
+		options.buildWireframe = true;
+		options.validateAfterPreview = true;
+
+		const modeling::OperationPreview preview =
+			modeling::GhostMeshBuilder::build_operation_preview(
+				sourceMesh,
+				operation,
+				options
+			);
+
+		print_preview_counts("preview sem alvo valido", preview);
+
+		check(preview.is_empty(), "operacao sem face valida retornou preview vazio");
+		check(!preview.is_failure(), "operacao sem face valida nao e falha fatal");
+		check(!preview.message().empty(), "preview vazio trouxe mensagem de no-change");
+	}
+
 }
 
 int main()
 {
-    std::cout << "=== Locus3D BevelOp Regression Test ===\n\n";
+	std::cout << "=== Locus3D Operation Preview Regression Test ===\n";
 
-    bool ok = true;
+	test_direct_preview();
+	test_operation_preview();
+	test_failed_operation_preview();
 
-    geometry::LEM mesh;
-    geometry::LEMEditor editor(mesh);
+	std::cout << "\n=== Resultado ===\n";
 
-    geometry::VertexHandle v0 = editor.add_vertex(glm::vec3(-1.0f, 0.0f, -1.0f));
-    geometry::VertexHandle v1 = editor.add_vertex(glm::vec3(1.0f, 0.0f, -1.0f));
-    geometry::VertexHandle v2 = editor.add_vertex(glm::vec3(1.0f, 0.0f, 1.0f));
-    geometry::VertexHandle v3 = editor.add_vertex(glm::vec3(-1.0f, 0.0f, 1.0f));
+	if (failures == 0) {
+		std::cout << "Todos os testes passaram.\n";
+		return EXIT_SUCCESS;
+	}
 
-    geometry::FaceHandle face = editor.add_face({ v0, v1, v2, v3 });
-    editor.rebuild_face_normals();
-
-    geometry::EdgeHandle targetEdge = mesh.find_edge(v0, v1);
-
-    ok &= expect(mesh.is_valid(v0), "v0 valido");
-    ok &= expect(mesh.is_valid(v1), "v1 valido");
-    ok &= expect(mesh.is_valid(v2), "v2 valido");
-    ok &= expect(mesh.is_valid(v3), "v3 valido");
-    ok &= expect(mesh.is_valid(face), "quad criado");
-    ok &= expect(mesh.is_valid(targetEdge), "edge alvo encontrada");
-
-    editor.clear_diff();
-
-    std::cout << "\n=== Antes do BevelOp ===\n";
-    print_counts(mesh);
-    print_vertices(mesh);
-    print_edges(mesh);
-    print_faces(mesh);
-
-    geometry::TopologyValidationReport beforeReport =
-        geometry::TopologyValidator::validate(mesh);
-
-    std::cout << "\n=== Validacao antes ===\n";
-    print_validation_report(beforeReport);
-    ok &= expect(beforeReport.valid(), "malha inicial valida");
-
-    modeling::BevelOp op(targetEdge, 0.25f);
-
-    modeling::OperationContext context;
-    context.mesh = &mesh;
-    context.validateAfterExecute = true;
-    context.rebuildNormals = true;
-    context.allowNonManifold = true;
-
-    modeling::OperationResult result = op.execute(context);
-
-    std::cout << "\n=== Resultado do BevelOp por edge explicita ===\n";
-    std::cout << "status: " << status_name(result.status()) << '\n';
-
-    if (!result.message().empty()) {
-        std::cout << "message: " << result.message() << '\n';
-    }
-
-    ok &= expect(result.is_success(), "BevelOp terminou com sucesso");
-    ok &= expect(result.changed(), "BevelOp gerou diff");
-
-    std::cout << "\n=== Depois do BevelOp ===\n";
-    print_counts(mesh);
-    print_vertices(mesh);
-    print_edges(mesh);
-    print_faces(mesh);
-
-    const auto verticesAfter = geometry::TopologyTraversal::vertices(mesh);
-    const auto edgesAfter = geometry::TopologyTraversal::edges(mesh);
-    const auto loopsAfter = geometry::TopologyTraversal::loops(mesh);
-    const auto facesAfter = geometry::TopologyTraversal::faces(mesh);
-
-    ok &= expect(verticesAfter.size() == 8, "bevel criou 4 vertices novos");
-    ok &= expect(facesAfter.size() == 3, "bevel criou face principal e 2 faces de chanfro");
-    ok &= expect(edgesAfter.size() >= 8, "bevel criou novas edges");
-    ok &= expect(loopsAfter.size() >= 10, "bevel criou novos loops");
-
-    geometry::TopologyValidationReport afterReport =
-        geometry::TopologyValidator::validate(mesh);
-
-    std::cout << "\n=== Validacao depois ===\n";
-    print_validation_report(afterReport);
-    ok &= expect(afterReport.valid(), "malha final valida");
-
-    std::cout << "\n=== Teste com largura zero ===\n";
-
-    modeling::BevelOp zeroOp(targetEdge, 0.0f);
-
-    modeling::OperationContext zeroContext;
-    zeroContext.mesh = &mesh;
-    zeroContext.validateAfterExecute = true;
-    zeroContext.rebuildNormals = true;
-    zeroContext.allowNonManifold = true;
-
-    modeling::OperationResult zeroResult = zeroOp.execute(zeroContext);
-
-    std::cout << "status: " << status_name(zeroResult.status()) << '\n';
-
-    if (!zeroResult.message().empty()) {
-        std::cout << "message: " << zeroResult.message() << '\n';
-    }
-
-    ok &= expect(
-        zeroResult.status() == modeling::OperationStatus::NoChange,
-        "largura zero retorna NoChange");
-
-    std::cout << "\n=== Teste selected_edges sem selecao ===\n";
-
-    geometry::LEM noSelectionMesh;
-    geometry::LEMEditor noSelectionEditor(noSelectionMesh);
-
-    geometry::VertexHandle a = noSelectionEditor.add_vertex(glm::vec3(0.0f, 0.0f, 0.0f));
-    geometry::VertexHandle b = noSelectionEditor.add_vertex(glm::vec3(1.0f, 0.0f, 0.0f));
-    geometry::VertexHandle c = noSelectionEditor.add_vertex(glm::vec3(1.0f, 0.0f, 1.0f));
-    geometry::VertexHandle d = noSelectionEditor.add_vertex(glm::vec3(0.0f, 0.0f, 1.0f));
-
-    noSelectionEditor.add_face({ a, b, c, d });
-    noSelectionEditor.rebuild_face_normals();
-    noSelectionEditor.clear_diff();
-
-    modeling::BevelOp selectedOp = modeling::BevelOp::selected_edges(0.25f);
-
-    modeling::OperationContext noSelectionContext;
-    noSelectionContext.mesh = &noSelectionMesh;
-    noSelectionContext.validateAfterExecute = true;
-    noSelectionContext.rebuildNormals = true;
-    noSelectionContext.allowNonManifold = true;
-
-    modeling::OperationResult noSelectionResult = selectedOp.execute(noSelectionContext);
-
-    std::cout << "status: " << status_name(noSelectionResult.status()) << '\n';
-
-    if (!noSelectionResult.message().empty()) {
-        std::cout << "message: " << noSelectionResult.message() << '\n';
-    }
-
-    ok &= expect(
-        noSelectionResult.status() == modeling::OperationStatus::NoChange,
-        "selected_edges sem selecao retorna NoChange");
-
-    std::cout << "\n=== Resultado final ===\n";
-
-    if (ok) {
-        std::cout << "Todos os testes passaram.\n";
-        return EXIT_SUCCESS;
-    }
-
-    std::cout << "Algum teste falhou.\n";
-    return EXIT_FAILURE;
+	std::cout << failures << " teste(s) falharam.\n";
+	return EXIT_FAILURE;
 }
