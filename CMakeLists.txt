@@ -21,6 +21,10 @@ set(LOCUS3D_SOURCE_DIR ${LOCUS3D_ROOT_DIR}/source)
 set(LOCUS3D_ASSETS_DIR ${LOCUS3D_ROOT_DIR}/assets)
 set(LOCUS3D_EXTERN_DIR ${LOCUS3D_ROOT_DIR}/extern)
 
+# Build options
+
+option(LOCUS3D_BUILD_TESTS "Build Locus3D tests" ON)
+
 # External dependencies
 
 set(GLAD_DIR     ${LOCUS3D_EXTERN_DIR}/glad)
@@ -43,6 +47,11 @@ endif()
 # Subdirectories
 
 add_subdirectory(source)
+
+if(LOCUS3D_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # Documentation
 
