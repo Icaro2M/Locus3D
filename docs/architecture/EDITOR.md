@@ -61,28 +61,28 @@ Legend:
 - `[!]`: planned or incomplete file/directory, not present in the current tree yet.
 
 ```txt
-source\editor [!]
-|   Editor.h [!]
-|   Editor.cpp [!]
-|   EditorTypes.h [!]
-|   EditorContext.h [!]
-|   EditorState.h [!]
+source\editor 
+|   Editor.h 
+|   Editor.cpp 
+|   EditorTypes.h 
+|   EditorContext.h 
+|   EditorState.h
 |
-+---scene [!]
-|       EditorScene.h [!]
-|       EditorScene.cpp [!]
-|       SceneNode.h [!]
-|       SceneNode.cpp [!]
-|       SceneTree.h [!]
-|       SceneTree.cpp [!]
-|       SceneNodeId.h [!]
-|       NodeTransform.h [!]
-|       NodeTransform.cpp [!]
-|       NodePivot.h [!]
-|       NodeMetadata.h [!]
-|       NodeType.h [!]
-|       EmptyNode.h [!]
-|       MeshNode.h [!]
++---scene 
+|       EditorScene.h 
+|       EditorScene.cpp 
+|       SceneNode.h 
+|       SceneNode.cpp 
+|       SceneTree.h 
+|       SceneTree.cpp 
+|       SceneNodeId.h 
+|       NodeTransform.h 
+|       NodeTransform.cpp 
+|       NodePivot.h 
+|       NodeMetadata.h 
+|       NodeType.h 
+|       EmptyNode.h 
+|       MeshNode.h
 |
 +---selection [!]
 |       SelectionState.h [!]
@@ -220,25 +220,6 @@ Every file in the tree is marked with `[!]` because the editor layer has not bee
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `Editor.h`
-- [!] `Editor.cpp`
-- [!] `EditorTypes.h`
-- [!] `EditorContext.h`
-- [!] `EditorState.h`
-- [!] `scene/EditorScene.h`
-- [!] `scene/EditorScene.cpp`
-- [!] `scene/SceneNode.h`
-- [!] `scene/SceneNode.cpp`
-- [!] `scene/SceneTree.h`
-- [!] `scene/SceneTree.cpp`
-- [!] `scene/SceneNodeId.h`
-- [!] `scene/NodeTransform.h`
-- [!] `scene/NodeTransform.cpp`
-- [!] `scene/NodePivot.h`
-- [!] `scene/NodeMetadata.h`
-- [!] `scene/NodeType.h`
-- [!] `scene/EmptyNode.h`
-- [!] `scene/MeshNode.h`
 - [!] `selection/SelectionState.h`
 - [!] `selection/SelectionState.cpp`
 - [!] `selection/ObjectSelection.h`

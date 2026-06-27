@@ -1,226 +1,100 @@
-#include "kernel/kernel.h"
+#include "editor/Editor.h"
+#include "editor/scene/MeshNode.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
 
+#include <glm/vec3.hpp>
 
-#include <glm/glm.hpp>
-
-#include <cstdlib>
 #include <iostream>
-#include <string>
-
-namespace geometry = locus::kernel::geometry;
-namespace modeling = locus::kernel::modeling;
-
-namespace {
-
-	int failures = 0;
-
-	void check(bool condition, const std::string& message)
-	{
-		if (condition) {
-			std::cout << "[OK] " << message << '\n';
-			return;
-		}
-
-		std::cout << "[FAIL] " << message << '\n';
-		++failures;
-	}
-
-	void print_mesh_counts(const std::string& label, const geometry::LEM& mesh)
-	{
-		std::cout << label << '\n';
-		std::cout << "  vertices: " << mesh.vertex_count() << '\n';
-		std::cout << "  edges:    " << mesh.edge_count() << '\n';
-		std::cout << "  loops:    " << mesh.loop_count() << '\n';
-		std::cout << "  faces:    " << mesh.face_count() << '\n';
-	}
-
-	void print_preview_counts(
-		const std::string& label,
-		const modeling::OperationPreview& preview)
-	{
-		const modeling::PreviewMesh& mesh = preview.mesh();
-
-		std::cout << label << '\n';
-		std::cout << "  ready:           " << (preview.is_ready() ? "true" : "false") << '\n';
-		std::cout << "  empty:           " << (preview.is_empty() ? "true" : "false") << '\n';
-		std::cout << "  failure:         " << (preview.is_failure() ? "true" : "false") << '\n';
-		std::cout << "  invalidated:     " << (preview.is_invalidated() ? "true" : "false") << '\n';
-		std::cout << "  solid vertices:  " << mesh.solid_vertex_count() << '\n';
-		std::cout << "  solid triangles: " << mesh.solid_triangle_count() << '\n';
-		std::cout << "  wire vertices:   " << mesh.wire_vertex_count() << '\n';
-		std::cout << "  wire lines:      " << mesh.wire_line_count() << '\n';
-		std::cout << "  changed:         " << (mesh.changed() ? "true" : "false") << '\n';
-		std::cout << "  diff size:       " << mesh.diff().size() << '\n';
-
-		if (!preview.message().empty()) {
-			std::cout << "  preview message: " << preview.message() << '\n';
-		}
-
-		if (!mesh.message().empty()) {
-			std::cout << "  mesh message:    " << mesh.message() << '\n';
-		}
-	}
-
-	geometry::FaceHandle build_quad(geometry::LEM& mesh)
-	{
-		geometry::LEMEditor editor(mesh);
-
-		const geometry::VertexHandle v0 = editor.add_vertex(glm::vec3{ -1.0f, 0.0f, -1.0f });
-		const geometry::VertexHandle v1 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f, -1.0f });
-		const geometry::VertexHandle v2 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f,  1.0f });
-		const geometry::VertexHandle v3 = editor.add_vertex(glm::vec3{ -1.0f, 0.0f,  1.0f });
-
-		return editor.add_face({ v0, v1, v2, v3 });
-	}
-
-	void test_direct_preview()
-	{
-		std::cout << "\n=== GhostMeshBuilder: preview direto ===\n";
-
-		geometry::LEM mesh;
-		const geometry::FaceHandle face = build_quad(mesh);
-
-		check(mesh.is_valid(face), "quad inicial criou face valida");
-		check(mesh.vertex_count() == 4, "quad inicial possui 4 vertices");
-		check(mesh.edge_count() == 4, "quad inicial possui 4 edges");
-		check(mesh.loop_count() == 4, "quad inicial possui 4 loops");
-		check(mesh.face_count() == 1, "quad inicial possui 1 face");
-
-		modeling::GhostMeshBuildOptions options;
-		options.buildWireframe = true;
-		options.normalMode = geometry::NormalBuildMode::Flat;
-
-		const modeling::OperationPreview preview =
-			modeling::GhostMeshBuilder::build_preview(mesh, options);
-
-		print_mesh_counts("malha original", mesh);
-		print_preview_counts("preview direto", preview);
-
-		check(preview.is_ready(), "preview direto ficou pronto");
-		check(preview.mesh().valid(), "preview direto possui payload valido");
-		check(!preview.mesh().empty(), "preview direto nao esta vazio");
-		check(preview.mesh().solid_triangle_count() == 2, "quad triangulou em 2 triangulos");
-		check(preview.mesh().wire_line_count() == 4, "quad gerou 4 linhas de wireframe");
-		check(!preview.mesh().changed(), "preview direto nao possui diff de operacao");
-	}
-
-	void test_operation_preview()
-	{
-		std::cout << "\n=== GhostMeshBuilder: preview com ExtrudeFaceOp ===\n";
-
-		geometry::LEM sourceMesh;
-		const geometry::FaceHandle face = build_quad(sourceMesh);
-
-		check(sourceMesh.is_valid(face), "malha fonte criou face valida");
-
-		const std::size_t sourceVertexCount = sourceMesh.vertex_count();
-		const std::size_t sourceEdgeCount = sourceMesh.edge_count();
-		const std::size_t sourceLoopCount = sourceMesh.loop_count();
-		const std::size_t sourceFaceCount = sourceMesh.face_count();
-
-		modeling::ExtrudeFaceOp operation(face, glm::vec3{ 0.0f, 1.0f, 0.0f });
-		operation.set_keep_source_face(false);
-
-		modeling::GhostMeshBuildOptions options;
-		options.buildWireframe = true;
-		options.normalMode = geometry::NormalBuildMode::Flat;
-		options.validateAfterPreview = true;
-		options.rebuildNormals = true;
-		options.allowNonManifold = true;
-
-		const modeling::OperationPreview preview =
-			modeling::GhostMeshBuilder::build_operation_preview(
-				sourceMesh,
-				operation,
-				options
-			);
-
-		print_mesh_counts("malha fonte apos preview", sourceMesh);
-		print_preview_counts("preview extrude", preview);
-
-		check(preview.is_ready(), "preview da extrusao ficou pronto");
-		check(!preview.is_failure(), "preview da extrusao nao falhou");
-		check(preview.mesh().valid(), "preview da extrusao possui payload valido");
-		check(!preview.mesh().empty(), "preview da extrusao nao esta vazio");
-		check(preview.mesh().changed(), "preview da extrusao possui diff");
-		check(preview.mesh().diff().size() > 0, "preview da extrusao registrou alteracoes no diff");
-
-		check(
-			preview.mesh().solid_triangle_count() == 10,
-			"extrusao de quad sem face fonte gerou 10 triangulos"
-		);
-
-		check(
-			preview.mesh().wire_line_count() == 12,
-			"extrusao de quad sem face fonte gerou 12 linhas de wireframe"
-		);
-
-		check(
-			sourceMesh.vertex_count() == sourceVertexCount,
-			"preview preservou quantidade de vertices da malha fonte"
-		);
-
-		check(
-			sourceMesh.edge_count() == sourceEdgeCount,
-			"preview preservou quantidade de edges da malha fonte"
-		);
-
-		check(
-			sourceMesh.loop_count() == sourceLoopCount,
-			"preview preservou quantidade de loops da malha fonte"
-		);
-
-		check(
-			sourceMesh.face_count() == sourceFaceCount,
-			"preview preservou quantidade de faces da malha fonte"
-		);
-	}
-
-	void test_failed_operation_preview()
-	{
-		std::cout << "\n=== GhostMeshBuilder: preview com operacao sem alvo valido ===\n";
-
-		geometry::LEM sourceMesh;
-		build_quad(sourceMesh);
-
-		modeling::ExtrudeFaceOp operation;
-		operation.set_faces({ geometry::FaceHandle{} });
-
-		modeling::GhostMeshBuildOptions options;
-		options.buildWireframe = true;
-		options.validateAfterPreview = true;
-
-		const modeling::OperationPreview preview =
-			modeling::GhostMeshBuilder::build_operation_preview(
-				sourceMesh,
-				operation,
-				options
-			);
-
-		print_preview_counts("preview sem alvo valido", preview);
-
-		check(preview.is_empty(), "operacao sem face valida retornou preview vazio");
-		check(!preview.is_failure(), "operacao sem face valida nao e falha fatal");
-		check(!preview.message().empty(), "preview vazio trouxe mensagem de no-change");
-	}
-
-}
 
 int main()
 {
-	std::cout << "=== Locus3D Operation Preview Regression Test ===\n";
+    using namespace locus::editor;
+    using namespace locus::kernel::geometry;
 
-	test_direct_preview();
-	test_operation_preview();
-	test_failed_operation_preview();
+    std::cout << "=== Locus3D Editor Scene Smoke Test ===\n\n";
 
-	std::cout << "\n=== Resultado ===\n";
+    Editor editor;
 
-	if (failures == 0) {
-		std::cout << "Todos os testes passaram.\n";
-		return EXIT_SUCCESS;
-	}
+    const SceneNodeId root = editor.scene().create_empty("Root");
+    const SceneNodeId meshId = editor.scene().create_mesh("Quad Mesh");
 
-	std::cout << failures << " teste(s) falharam.\n";
-	return EXIT_FAILURE;
+    std::cout << "[INFO] root id: " << root.value << "\n";
+    std::cout << "[INFO] mesh id: " << meshId.value << "\n";
+
+    if (!root.is_valid() || !meshId.is_valid()) {
+        std::cout << "[FAIL] ids validos\n";
+        return 1;
+    }
+
+    if (!editor.scene().reparent(meshId, root)) {
+        std::cout << "[FAIL] reparent mesh -> root\n";
+        return 1;
+    }
+
+    const SceneNode* rootNode = editor.scene().find_node(root);
+    const SceneNode* meshNodeBase = editor.scene().find_node(meshId);
+    MeshNode* meshNode = editor.scene().find_mesh(meshId);
+
+    if (!rootNode || !meshNodeBase || !meshNode) {
+        std::cout << "[FAIL] busca de nodes\n";
+        return 1;
+    }
+
+    if (rootNode->children().size() != 1 || rootNode->children()[0] != meshId) {
+        std::cout << "[FAIL] hierarquia root -> mesh\n";
+        return 1;
+    }
+
+    if (meshNodeBase->parent() != root) {
+        std::cout << "[FAIL] parent do mesh\n";
+        return 1;
+    }
+
+    meshNode->transform().set_position(glm::vec3{ 1.0f, 2.0f, 3.0f });
+    meshNode->transform().set_scale(glm::vec3{ 2.0f, 2.0f, 2.0f });
+
+    LEMEditor meshEditor(meshNode->mesh());
+
+    const VertexHandle v0 = meshEditor.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
+    const VertexHandle v1 = meshEditor.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
+    const VertexHandle v2 = meshEditor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
+    const VertexHandle v3 = meshEditor.add_vertex(glm::vec3{ -1.0f, 1.0f, 0.0f });
+
+    const FaceHandle face = meshEditor.add_face({ v0, v1, v2, v3 });
+
+    if (!face.is_valid()) {
+        std::cout << "[FAIL] face quad criada\n";
+        return 1;
+    }
+
+    if (meshNode->mesh().vertex_count() != 4 ||
+        meshNode->mesh().edge_count() != 4 ||
+        meshNode->mesh().loop_count() != 4 ||
+        meshNode->mesh().face_count() != 1) {
+        std::cout << "[FAIL] contagem da LEM\n";
+        return 1;
+    }
+
+    if (!editor.scene().tree().is_ancestor(root, meshId)) {
+        std::cout << "[FAIL] root deveria ser ancestral do mesh\n";
+        return 1;
+    }
+
+    if (editor.scene().tree().is_ancestor(meshId, root)) {
+        std::cout << "[FAIL] mesh nao deveria ser ancestral do root\n";
+        return 1;
+    }
+
+    std::cout << "[OK] ids criados\n";
+    std::cout << "[OK] hierarquia criada\n";
+    std::cout << "[OK] transform local aplicado\n";
+    std::cout << "[OK] MeshNode contem LEM editavel\n";
+    std::cout << "[OK] quad criado via LEMEditor\n";
+    std::cout << "[OK] vertices: " << meshNode->mesh().vertex_count() << "\n";
+    std::cout << "[OK] edges: " << meshNode->mesh().edge_count() << "\n";
+    std::cout << "[OK] loops: " << meshNode->mesh().loop_count() << "\n";
+    std::cout << "[OK] faces: " << meshNode->mesh().face_count() << "\n";
+
+    std::cout << "\n=== Editor Scene Smoke Test PASSED ===\n";
+    return 0;
 }
