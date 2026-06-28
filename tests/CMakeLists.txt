@@ -9,6 +9,31 @@ enable_testing()
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
+add_executable(Locus3DKernelTests
+    unit/kernel/geometry/mesh/LEMAttributeTests.cpp
+    unit/kernel/geometry/mesh/LEMEditorDiffTests.cpp
+    unit/kernel/geometry/mesh/LEMGeometryTests.cpp
+    unit/kernel/geometry/mesh/LEMTestMain.cpp
+    unit/kernel/geometry/mesh/LEMTopologyTests.cpp
+)
+
+target_include_directories(Locus3DKernelTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DKernelTests
+    PRIVATE
+        Locus3D::Geometry
+)
+
+add_test(NAME kernel.unit.geometry.mesh COMMAND Locus3DKernelTests)
+set_tests_properties(kernel.unit.geometry.mesh PROPERTIES
+    LABELS "unit;kernel;geometry;mesh"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp
