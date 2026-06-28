@@ -9,12 +9,36 @@ enable_testing()
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
+add_executable(Locus3DEditorTests
+    unit/editor/scene/EditorSceneTestMain.cpp
+    unit/editor/scene/EditorSceneTests.cpp
+    unit/editor/scene/MeshNodeTests.cpp
+    unit/editor/scene/NodeTransformTests.cpp
+    unit/editor/scene/SceneNodeTests.cpp
+    unit/editor/scene/SceneTreeTests.cpp
+)
+
+target_include_directories(Locus3DEditorTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.scene COMMAND Locus3DEditorTests)
+set_tests_properties(editor.unit.scene PROPERTIES
+    LABELS "unit;editor;scene"
+)
+
 # Future test executables will be registered here as the manual test suites are
 # added. Expected target groups include:
 #
-#   Locus3DKernelTests
 #   Locus3DGraphicsTests
-#   Locus3DEditorTests
 #   Locus3DIntegrationTests
 #   Locus3DVisualTests
 #
