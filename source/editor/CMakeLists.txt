@@ -45,7 +45,10 @@ target_sources(locus3d_editor
         "command/CommandDispatcher.h"
         "command/CommandDispatcher.cpp"
         "command/CommandRegistry.h"
-        "command/CommandRegistry.cpp")
+        "command/CommandRegistry.cpp"
+        "history/HistoryEntry.h"
+        "history/HistoryStack.h"
+        "history/HistoryStack.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

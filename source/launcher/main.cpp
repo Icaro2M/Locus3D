@@ -1,7 +1,7 @@
 #include "editor/Editor.h"
 #include "editor/command/CommandDispatcher.h"
-#include "editor/command/CommandRegistry.h"
 #include "editor/command/ICommand.h"
+#include "editor/history/HistoryStack.h"
 
 #include <iostream>
 #include <memory>
@@ -9,104 +9,80 @@
 
 namespace {
 
-	class FakeSceneCommand final : public locus::editor::ICommand {
+	class CountingCommand final : public locus::editor::ICommand {
 	public:
+		explicit CountingCommand(int& value, int delta, std::string_view commandName = "Counting Command")
+			: value_(&value)
+			, delta_(delta)
+			, name_(commandName)
+		{
+		}
+
 		[[nodiscard]] std::string_view name() const override
 		{
-			return "Fake Scene Command";
+			return name_;
 		}
 
 		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
 		{
-			++executeCount_;
+			(void)context;
 
-			context.scene().create_empty("Command Empty");
+			*value_ += delta_;
+			++executeCount_;
 
 			return locus::editor::CommandResult::ok(
 				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render |
-				locus::editor::EditorDirtyFlags::Picking,
-				"Fake scene command executed.");
+				locus::editor::EditorDirtyFlags::Render,
+				"Counting command executed.");
 		}
 
 		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
 		{
 			(void)context;
 
+			*value_ -= delta_;
 			++undoCount_;
 
 			return locus::editor::CommandResult::ok(
 				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render |
-				locus::editor::EditorDirtyFlags::Picking,
-				"Fake scene command undone.");
+				locus::editor::EditorDirtyFlags::Render,
+				"Counting command undone.");
 		}
 
 		locus::editor::CommandResult redo(locus::editor::CommandContext& context) override
 		{
 			(void)context;
 
+			*value_ += delta_;
 			++redoCount_;
 
 			return locus::editor::CommandResult::ok(
 				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render |
-				locus::editor::EditorDirtyFlags::Picking,
-				"Fake scene command redone.");
-		}
-
-		[[nodiscard]] int execute_count() const
-		{
-			return executeCount_;
-		}
-
-		[[nodiscard]] int undo_count() const
-		{
-			return undoCount_;
-		}
-
-		[[nodiscard]] int redo_count() const
-		{
-			return redoCount_;
+				locus::editor::EditorDirtyFlags::Render,
+				"Counting command redone.");
 		}
 
 	private:
+		int* value_ = nullptr;
+		int delta_ = 0;
+		std::string_view name_{};
+
 		int executeCount_ = 0;
 		int undoCount_ = 0;
 		int redoCount_ = 0;
 	};
 
-	class FakeSelectionCommand final : public locus::editor::ICommand {
+	class NonUndoableCountingCommand final : public locus::editor::ICommand {
 	public:
+		explicit NonUndoableCountingCommand(int& value, int delta)
+			: value_(&value)
+			, delta_(delta)
+		{
+		}
+
 		[[nodiscard]] std::string_view name() const override
 		{
-			return "Fake Selection Command";
-		}
-
-		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
-		{
-			context.selection().clear();
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Selection,
-				"Fake selection command executed.");
-		}
-
-		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
-		{
-			context.selection().clear();
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Selection,
-				"Fake selection command undone.");
-		}
-	};
-
-	class NonUndoableCommand final : public locus::editor::ICommand {
-	public:
-		[[nodiscard]] std::string_view name() const override
-		{
-			return "Non Undoable Command";
+			return "Non Undoable Counting Command";
 		}
 
 		[[nodiscard]] bool is_undoable() const override
@@ -118,9 +94,11 @@ namespace {
 		{
 			(void)context;
 
+			*value_ += delta_;
+
 			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::None,
-				"Non undoable command executed.");
+				locus::editor::EditorDirtyFlags::Selection,
+				"Non undoable counting command executed.");
 		}
 
 		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
@@ -128,7 +106,33 @@ namespace {
 			(void)context;
 
 			return locus::editor::CommandResult::fail(
-				"Non undoable command cannot be undone.");
+				"Non undoable counting command cannot be undone.");
+		}
+
+	private:
+		int* value_ = nullptr;
+		int delta_ = 0;
+	};
+
+	class FailingCommand final : public locus::editor::ICommand {
+	public:
+		[[nodiscard]] std::string_view name() const override
+		{
+			return "Failing Command";
+		}
+
+		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			return locus::editor::CommandResult::fail("Intentional execute failure.");
+		}
+
+		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			return locus::editor::CommandResult::fail("Intentional undo failure.");
 		}
 	};
 
@@ -149,12 +153,11 @@ int main()
 {
 	using namespace locus::editor;
 
-	std::cout << "=== Locus3D Editor Command Smoke Test ===\n\n";
+	std::cout << "=== Locus3D Editor History Smoke Test ===\n\n";
 
 	Editor editor;
 	CommandDispatcher dispatcher(editor);
-
-	const Editor& constEditor = editor;
+	HistoryStack history{};
 
 	if (!check(editor.dirty_flags() == EditorDirtyFlags::All, "editor comeca com dirty flags All")) {
 		return 1;
@@ -162,222 +165,330 @@ int main()
 
 	editor.clear_dirty();
 
-	if (!check(editor.dirty_flags() == EditorDirtyFlags::None, "clear_dirty deixa editor sem dirty flags")) {
+	if (!check(history.empty(), "history comeca vazio")) {
 		return 1;
 	}
 
-	if (!check(&dispatcher.context().editor() == &editor, "dispatcher aponta para o editor correto")) {
+	if (!check(!history.can_undo(), "history comeca sem undo")) {
 		return 1;
 	}
 
-	FakeSceneCommand sceneCommand{};
-
-	const CommandResult executeResult = dispatcher.execute(sceneCommand);
-
-	if (!check(executeResult.success, "execute retornou sucesso")) {
+	if (!check(!history.can_redo(), "history comeca sem redo")) {
 		return 1;
 	}
 
-	if (!check(sceneCommand.execute_count() == 1, "execute chamado uma vez")) {
+	if (!check(history.undo_size() == 0, "undo_size inicial 0")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().tree().size() == 1, "comando criou um node na cena")) {
+	if (!check(history.redo_size() == 0, "redo_size inicial 0")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "dirty flag Scene marcada")) {
+	if (!check(history.undo_name().empty(), "undo_name inicial vazio")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "dirty flag Render marcada")) {
+	if (!check(history.redo_name().empty(), "redo_name inicial vazio")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "dirty flag Picking marcada")) {
+	const CommandResult emptyUndoResult = history.undo(dispatcher);
+
+	if (!check(!emptyUndoResult.success, "undo vazio falha corretamente")) {
 		return 1;
 	}
 
-	if (!check(dispatcher.last_result().message == "Fake scene command executed.", "last_result guarda mensagem do execute")) {
+	const CommandResult emptyRedoResult = history.redo(dispatcher);
+
+	if (!check(!emptyRedoResult.success, "redo vazio falha corretamente")) {
 		return 1;
 	}
 
-	editor.clear_dirty();
+	int value = 0;
 
-	if (!check(editor.dirty_flags() == EditorDirtyFlags::None, "clear_dirty limpou flags")) {
+	const CommandResult executeA = history.execute(
+		dispatcher,
+		std::make_unique<CountingCommand>(value, 10, "Add Ten"));
+
+	if (!check(executeA.success, "execute Add Ten retornou sucesso")) {
 		return 1;
 	}
 
-	const CommandResult undoResult = dispatcher.undo(sceneCommand);
-
-	if (!check(undoResult.success, "undo retornou sucesso")) {
+	if (!check(value == 10, "execute Add Ten alterou valor para 10")) {
 		return 1;
 	}
 
-	if (!check(sceneCommand.undo_count() == 1, "undo chamado uma vez")) {
+	if (!check(history.can_undo(), "history tem undo depois de execute undoable")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo marcou dirty flag Scene")) {
+	if (!check(!history.can_redo(), "history nao tem redo depois de execute novo")) {
 		return 1;
 	}
 
-	editor.clear_dirty();
-
-	const CommandResult redoResult = dispatcher.redo(sceneCommand);
-
-	if (!check(redoResult.success, "redo retornou sucesso")) {
+	if (!check(history.undo_size() == 1, "undo_size 1 depois de execute undoable")) {
 		return 1;
 	}
 
-	if (!check(sceneCommand.redo_count() == 1, "redo chamado uma vez")) {
+	if (!check(history.redo_size() == 0, "redo_size 0 depois de execute undoable")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "redo marcou dirty flag Scene")) {
+	if (!check(history.undo_name() == "Add Ten", "undo_name aponta para Add Ten")) {
 		return 1;
 	}
 
-	editor.clear_dirty();
-
-	auto ownedSelectionCommand = std::make_unique<FakeSelectionCommand>();
-	const CommandResult ownedExecuteResult = dispatcher.execute(std::move(ownedSelectionCommand));
-
-	if (!check(ownedExecuteResult.success, "execute com unique_ptr retornou sucesso")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "execute marcou dirty Scene")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "comando owned marcou Selection")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "execute marcou dirty Render")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult nullExecuteResult = dispatcher.execute(std::unique_ptr<ICommand>{});
+	const CommandResult undoA = history.undo(dispatcher);
 
-	if (!check(!nullExecuteResult.success, "execute com comando nulo falha corretamente")) {
+	if (!check(undoA.success, "undo Add Ten retornou sucesso")) {
 		return 1;
 	}
 
-	if (!check(!nullExecuteResult.message.empty(), "falha de comando nulo tem mensagem")) {
+	if (!check(value == 0, "undo Add Ten voltou valor para 0")) {
 		return 1;
 	}
 
-	NonUndoableCommand nonUndoableCommand{};
-	const CommandResult nonUndoableExecuteResult = dispatcher.execute(nonUndoableCommand);
-
-	if (!check(nonUndoableExecuteResult.success, "comando nao undoable executa normalmente")) {
+	if (!check(!history.can_undo(), "history ficou sem undo apos desfazer unico comando")) {
 		return 1;
 	}
 
-	const CommandResult nonUndoableUndoResult = dispatcher.undo(nonUndoableCommand);
-
-	if (!check(!nonUndoableUndoResult.success, "undo de comando nao undoable falha")) {
+	if (!check(history.can_redo(), "history tem redo apos undo")) {
 		return 1;
 	}
 
-	CommandRegistry registry{};
-
-	if (!check(registry.empty(), "registry comeca vazio")) {
+	if (!check(history.undo_size() == 0, "undo_size 0 apos undo")) {
 		return 1;
 	}
 
-	const bool registered = registry.register_command(
-		"test.fake_selection",
-		[]() {
-			return std::make_unique<FakeSelectionCommand>();
-		});
-
-	if (!check(registered, "registry registra comando")) {
+	if (!check(history.redo_size() == 1, "redo_size 1 apos undo")) {
 		return 1;
 	}
 
-	if (!check(registry.contains("test.fake_selection"), "registry contem id registrado")) {
+	if (!check(history.redo_name() == "Add Ten", "redo_name aponta para Add Ten")) {
 		return 1;
 	}
 
-	if (!check(registry.size() == 1, "registry size 1")) {
-		return 1;
-	}
-
-	auto createdCommand = registry.create("test.fake_selection");
-
-	if (!check(createdCommand != nullptr, "registry cria comando registrado")) {
-		return 1;
-	}
-
-	if (!check(createdCommand->name() == "Fake Selection Command", "comando criado tem nome esperado")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo marcou dirty Scene")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult registryExecuteResult = dispatcher.execute(*createdCommand);
+	const CommandResult redoA = history.redo(dispatcher);
 
-	if (!check(registryExecuteResult.success, "comando criado pelo registry executa")) {
+	if (!check(redoA.success, "redo Add Ten retornou sucesso")) {
 		return 1;
 	}
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "comando criado pelo registry marcou Selection")) {
+	if (!check(value == 10, "redo Add Ten voltou valor para 10")) {
 		return 1;
 	}
 
-	const bool duplicateRegistered = registry.register_command(
-		"test.fake_selection",
-		[]() {
-			return std::make_unique<FakeSceneCommand>();
-		});
-
-	if (!check(!duplicateRegistered, "registry rejeita id duplicado em register_command")) {
+	if (!check(history.can_undo(), "history tem undo apos redo")) {
 		return 1;
 	}
 
-	const bool replaced = registry.replace_command(
-		"test.fake_selection",
-		[]() {
-			return std::make_unique<FakeSceneCommand>();
-		});
-
-	if (!check(replaced, "registry substitui comando")) {
+	if (!check(!history.can_redo(), "history ficou sem redo apos redo")) {
 		return 1;
 	}
 
-	auto replacedCommand = registry.create("test.fake_selection");
-
-	if (!check(replacedCommand != nullptr, "registry cria comando substituido")) {
+	if (!check(history.undo_size() == 1, "undo_size 1 apos redo")) {
 		return 1;
 	}
 
-	if (!check(replacedCommand->name() == "Fake Scene Command", "comando substituido tem nome esperado")) {
+	if (!check(history.redo_size() == 0, "redo_size 0 apos redo")) {
 		return 1;
 	}
 
-	const auto ids = registry.command_ids();
+	editor.clear_dirty();
 
-	if (!check(ids.size() == 1, "registry lista um id")) {
+	const CommandResult executeB = history.execute(
+		dispatcher,
+		std::make_unique<CountingCommand>(value, 5, "Add Five"));
+
+	if (!check(executeB.success, "execute Add Five retornou sucesso")) {
 		return 1;
 	}
 
-	const bool removed = registry.unregister_command("test.fake_selection");
-
-	if (!check(removed, "registry remove comando")) {
+	if (!check(value == 15, "execute Add Five alterou valor para 15")) {
 		return 1;
 	}
 
-	if (!check(!registry.contains("test.fake_selection"), "registry nao contem id removido")) {
+	if (!check(history.undo_size() == 2, "undo_size 2 depois de dois comandos")) {
 		return 1;
 	}
 
-	if (!check(registry.create("test.fake_selection") == nullptr, "registry retorna nullptr para id inexistente")) {
+	if (!check(history.undo_name() == "Add Five", "undo_name aponta para comando mais recente")) {
 		return 1;
 	}
 
-	registry.clear();
+	const CommandResult undoB = history.undo(dispatcher);
 
-	if (!check(registry.empty(), "registry clear deixa vazio")) {
+	if (!check(undoB.success, "undo Add Five retornou sucesso")) {
 		return 1;
 	}
 
-	std::cout << "\n=== Editor Command Smoke Test PASSED ===\n";
+	if (!check(value == 10, "undo Add Five voltou valor para 10")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 1, "undo_size 1 apos desfazer Add Five")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 1, "redo_size 1 apos desfazer Add Five")) {
+		return 1;
+	}
+
+	const CommandResult executeC = history.execute(
+		dispatcher,
+		std::make_unique<CountingCommand>(value, 20, "Add Twenty"));
+
+	if (!check(executeC.success, "execute Add Twenty retornou sucesso")) {
+		return 1;
+	}
+
+	if (!check(value == 30, "execute Add Twenty alterou valor para 30")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 2, "undo_size 2 apos novo comando")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 0, "novo comando limpou redo")) {
+		return 1;
+	}
+
+	const CommandResult nonUndoableResult = history.execute(
+		dispatcher,
+		std::make_unique<NonUndoableCountingCommand>(value, 7));
+
+	if (!check(nonUndoableResult.success, "execute nao undoable retornou sucesso")) {
+		return 1;
+	}
+
+	if (!check(value == 37, "comando nao undoable alterou valor para 37")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 2, "comando nao undoable nao entrou no undo")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 0, "comando nao undoable manteve redo vazio")) {
+		return 1;
+	}
+
+	const CommandResult failingResult = history.execute(
+		dispatcher,
+		std::make_unique<FailingCommand>());
+
+	if (!check(!failingResult.success, "execute com comando falho retorna falha")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 2, "comando falho nao entrou no undo")) {
+		return 1;
+	}
+
+	const CommandResult nullResult = history.execute(dispatcher, std::unique_ptr<ICommand>{});
+
+	if (!check(!nullResult.success, "execute com comando nulo falha corretamente")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 2, "comando nulo nao entrou no undo")) {
+		return 1;
+	}
+
+	history.set_max_entries(1);
+
+	if (!check(history.max_entries() == 1, "max_entries configurado para 1")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 1, "set_max_entries aparou undo para 1")) {
+		return 1;
+	}
+
+	if (!check(history.undo_name() == "Add Twenty", "apos trim, undo_name manteve comando mais recente")) {
+		return 1;
+	}
+
+	const CommandResult executeD = history.execute(
+		dispatcher,
+		std::make_unique<CountingCommand>(value, 3, "Add Three"));
+
+	if (!check(executeD.success, "execute Add Three retornou sucesso")) {
+		return 1;
+	}
+
+	if (!check(value == 40, "execute Add Three alterou valor para 40")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 1, "max_entries manteve undo_size em 1")) {
+		return 1;
+	}
+
+	if (!check(history.undo_name() == "Add Three", "undo_name aponta para Add Three apos limite")) {
+		return 1;
+	}
+
+	const CommandResult undoD = history.undo(dispatcher);
+
+	if (!check(undoD.success, "undo Add Three retornou sucesso")) {
+		return 1;
+	}
+
+	if (!check(value == 37, "undo Add Three voltou valor para 37")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 0, "undo_size 0 apos undo com limite 1")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 1, "redo_size 1 apos undo com limite 1")) {
+		return 1;
+	}
+
+	history.clear_redo();
+
+	if (!check(!history.can_redo(), "clear_redo remove redo")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 0, "redo_size 0 apos clear_redo")) {
+		return 1;
+	}
+
+	history.clear();
+
+	if (!check(history.empty(), "clear remove todo historico")) {
+		return 1;
+	}
+
+	if (!check(history.undo_size() == 0, "undo_size 0 apos clear")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 0, "redo_size 0 apos clear")) {
+		return 1;
+	}
+
+	std::cout << "\n=== Editor History Smoke Test PASSED ===\n";
 	return 0;
 }
