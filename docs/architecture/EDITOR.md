@@ -99,12 +99,14 @@ source\editor
 |       SelectionController.cpp
 |       SelectionSerializer.h
 |
-+---command [!]
-|   |   ICommand.h [!]
-|   |   CommandContext.h [!]
-|   |   CommandDispatcher.h [!]
-|   |   CommandDispatcher.cpp [!]
-|   |   CommandRegistry.h [!]
++---command
+|   |   ICommand.h
+|   |   CommandContext.h 
+|   |   CommandDispatcher.h 
+|   |   CommandDispatcher.cpp 
+|   |   CommandRegistry.h 
+|   |   CommandRegistry.cpp
+|   |   CommandResult.h
 |   |
 |   \---commands [!]
 |           TransformCommand.h [!]
@@ -124,10 +126,10 @@ source\editor
 |           BooleanCommand.h [!]
 |           BooleanCommand.cpp [!]
 |
-+---history [!]
-|       HistoryStack.h [!]
-|       HistoryStack.cpp [!]
-|       HistoryEntry.h [!]
++---history
+|       HistoryStack.h
+|       HistoryStack.cpp
+|       HistoryEntry.h
 |       HistoryConfig.h [!]
 |
 +---tools [!]
@@ -216,15 +218,8 @@ source\editor
 
 ## Planned Or Incomplete Editor Files
 
-Every file in the tree is marked with `[!]` because the editor layer has not been started yet.
-
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `command/ICommand.h`
-- [!] `command/CommandContext.h`
-- [!] `command/CommandDispatcher.h`
-- [!] `command/CommandDispatcher.cpp`
-- [!] `command/CommandRegistry.h`
 - [!] `command/commands/TransformCommand.h`
 - [!] `command/commands/TransformCommand.cpp`
 - [!] `command/commands/ReparentCommand.h`
@@ -241,9 +236,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `command/commands/MeshOperationCommand.cpp`
 - [!] `command/commands/BooleanCommand.h`
 - [!] `command/commands/BooleanCommand.cpp`
-- [!] `history/HistoryStack.h`
-- [!] `history/HistoryStack.cpp`
-- [!] `history/HistoryEntry.h`
 - [!] `history/HistoryConfig.h`
 - [!] `tools/ITool.h`
 - [!] `tools/ToolRegistry.h`
