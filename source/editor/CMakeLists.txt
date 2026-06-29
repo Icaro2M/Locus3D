@@ -39,7 +39,13 @@ target_sources(locus3d_editor
         "selection/SelectionSet.h"
         "selection/SelectionState.cpp"
         "selection/SelectionState.h"
-)
+        "command/CommandResult.h"
+        "command/CommandContext.h"
+        "command/ICommand.h"
+        "command/CommandDispatcher.h"
+        "command/CommandDispatcher.cpp"
+        "command/CommandRegistry.h"
+        "command/CommandRegistry.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

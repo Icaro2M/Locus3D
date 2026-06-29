@@ -1,170 +1,383 @@
 #include "editor/Editor.h"
-#include "editor/selection/SelectionSerializer.h"
-#include "kernel/geometry/mesh/LEMEditor.h"
-
-#include <glm/vec3.hpp>
+#include "editor/command/CommandDispatcher.h"
+#include "editor/command/CommandRegistry.h"
+#include "editor/command/ICommand.h"
 
 #include <iostream>
+#include <memory>
+#include <string_view>
+
+namespace {
+
+	class FakeSceneCommand final : public locus::editor::ICommand {
+	public:
+		[[nodiscard]] std::string_view name() const override
+		{
+			return "Fake Scene Command";
+		}
+
+		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
+		{
+			++executeCount_;
+
+			context.scene().create_empty("Command Empty");
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::Scene |
+				locus::editor::EditorDirtyFlags::Render |
+				locus::editor::EditorDirtyFlags::Picking,
+				"Fake scene command executed.");
+		}
+
+		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			++undoCount_;
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::Scene |
+				locus::editor::EditorDirtyFlags::Render |
+				locus::editor::EditorDirtyFlags::Picking,
+				"Fake scene command undone.");
+		}
+
+		locus::editor::CommandResult redo(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			++redoCount_;
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::Scene |
+				locus::editor::EditorDirtyFlags::Render |
+				locus::editor::EditorDirtyFlags::Picking,
+				"Fake scene command redone.");
+		}
+
+		[[nodiscard]] int execute_count() const
+		{
+			return executeCount_;
+		}
+
+		[[nodiscard]] int undo_count() const
+		{
+			return undoCount_;
+		}
+
+		[[nodiscard]] int redo_count() const
+		{
+			return redoCount_;
+		}
+
+	private:
+		int executeCount_ = 0;
+		int undoCount_ = 0;
+		int redoCount_ = 0;
+	};
+
+	class FakeSelectionCommand final : public locus::editor::ICommand {
+	public:
+		[[nodiscard]] std::string_view name() const override
+		{
+			return "Fake Selection Command";
+		}
+
+		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
+		{
+			context.selection().clear();
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::Selection,
+				"Fake selection command executed.");
+		}
+
+		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
+		{
+			context.selection().clear();
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::Selection,
+				"Fake selection command undone.");
+		}
+	};
+
+	class NonUndoableCommand final : public locus::editor::ICommand {
+	public:
+		[[nodiscard]] std::string_view name() const override
+		{
+			return "Non Undoable Command";
+		}
+
+		[[nodiscard]] bool is_undoable() const override
+		{
+			return false;
+		}
+
+		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			return locus::editor::CommandResult::ok(
+				locus::editor::EditorDirtyFlags::None,
+				"Non undoable command executed.");
+		}
+
+		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
+		{
+			(void)context;
+
+			return locus::editor::CommandResult::fail(
+				"Non undoable command cannot be undone.");
+		}
+	};
+
+	bool check(bool condition, const char* message)
+	{
+		if (condition) {
+			std::cout << "[OK] " << message << '\n';
+			return true;
+		}
+
+		std::cout << "[FAIL] " << message << '\n';
+		return false;
+	}
+
+}
 
 int main()
 {
-    using namespace locus::editor;
-    using namespace locus::kernel::geometry;
+	using namespace locus::editor;
 
-    std::cout << "=== Locus3D Editor Selection Smoke Test ===\n\n";
+	std::cout << "=== Locus3D Editor Command Smoke Test ===\n\n";
 
-    Editor editor;
+	Editor editor;
+	CommandDispatcher dispatcher(editor);
 
-    const SceneNodeId root = editor.scene().create_empty("Root");
-    const SceneNodeId meshId = editor.scene().create_mesh("Quad Mesh");
-    const SceneNodeId emptyId = editor.scene().create_empty("Empty Helper");
+	const Editor& constEditor = editor;
 
-    if (!root.is_valid() || !meshId.is_valid() || !emptyId.is_valid()) {
-        std::cout << "[FAIL] ids validos\n";
-        return 1;
-    }
+	if (!check(editor.dirty_flags() == EditorDirtyFlags::All, "editor comeca com dirty flags All")) {
+		return 1;
+	}
 
-    if (!editor.scene().reparent(meshId, root)) {
-        std::cout << "[FAIL] reparent mesh -> root\n";
-        return 1;
-    }
+	editor.clear_dirty();
 
-    MeshNode* meshNode = editor.scene().find_mesh(meshId);
-    if (!meshNode) {
-        std::cout << "[FAIL] mesh node encontrado\n";
-        return 1;
-    }
+	if (!check(editor.dirty_flags() == EditorDirtyFlags::None, "clear_dirty deixa editor sem dirty flags")) {
+		return 1;
+	}
 
-    LEMEditor meshEditor(meshNode->mesh());
+	if (!check(&dispatcher.context().editor() == &editor, "dispatcher aponta para o editor correto")) {
+		return 1;
+	}
 
-    const VertexHandle v0 = meshEditor.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
-    const VertexHandle v1 = meshEditor.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
-    const VertexHandle v2 = meshEditor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
-    const VertexHandle v3 = meshEditor.add_vertex(glm::vec3{ -1.0f, 1.0f, 0.0f });
+	FakeSceneCommand sceneCommand{};
 
-    const FaceHandle face = meshEditor.add_face({ v0, v1, v2, v3 });
+	const CommandResult executeResult = dispatcher.execute(sceneCommand);
 
-    if (!face.is_valid()) {
-        std::cout << "[FAIL] face criada\n";
-        return 1;
-    }
+	if (!check(executeResult.success, "execute retornou sucesso")) {
+		return 1;
+	}
 
-    SelectionController& selection = editor.selection_controller();
+	if (!check(sceneCommand.execute_count() == 1, "execute chamado uma vez")) {
+		return 1;
+	}
 
-    if (!selection.select_object(meshId)) {
-        std::cout << "[FAIL] select object mesh\n";
-        return 1;
-    }
+	if (!check(constEditor.scene().tree().size() == 1, "comando criou um node na cena")) {
+		return 1;
+	}
 
-    if (editor.selection().objects().active() != meshId) {
-        std::cout << "[FAIL] active object mesh\n";
-        return 1;
-    }
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "dirty flag Scene marcada")) {
+		return 1;
+	}
 
-    if (!selection.add_object(emptyId)) {
-        std::cout << "[FAIL] add object empty\n";
-        return 1;
-    }
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "dirty flag Render marcada")) {
+		return 1;
+	}
 
-    if (editor.selection().objects().size() != 2) {
-        std::cout << "[FAIL] object selection size 2\n";
-        return 1;
-    }
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "dirty flag Picking marcada")) {
+		return 1;
+	}
 
-    const bool emptySelectedAfterToggle = selection.toggle_object(emptyId);
-    if (emptySelectedAfterToggle) {
-        std::cout << "[FAIL] empty deveria ser removido no toggle\n";
-        return 1;
-    }
+	if (!check(dispatcher.last_result().message == "Fake scene command executed.", "last_result guarda mensagem do execute")) {
+		return 1;
+	}
 
-    if (editor.selection().objects().contains(emptyId)) {
-        std::cout << "[FAIL] empty removido da selecao\n";
-        return 1;
-    }
+	editor.clear_dirty();
 
-    const bool emptySelectedAfterSecondToggle = selection.toggle_object(emptyId);
-    if (!emptySelectedAfterSecondToggle) {
-        std::cout << "[FAIL] empty deveria ser selecionado no segundo toggle\n";
-        return 1;
-    }
+	if (!check(editor.dirty_flags() == EditorDirtyFlags::None, "clear_dirty limpou flags")) {
+		return 1;
+	}
 
-    if (!editor.selection().objects().contains(emptyId)) {
-        std::cout << "[FAIL] empty selecionado novamente\n";
-        return 1;
-    }
+	const CommandResult undoResult = dispatcher.undo(sceneCommand);
 
-    if (!selection.set_active_mesh(meshId)) {
-        std::cout << "[FAIL] set active mesh\n";
-        return 1;
-    }
+	if (!check(undoResult.success, "undo retornou sucesso")) {
+		return 1;
+	}
 
-    if (!selection.select_vertex(v0)) {
-        std::cout << "[FAIL] select vertex v0\n";
-        return 1;
-    }
+	if (!check(sceneCommand.undo_count() == 1, "undo chamado uma vez")) {
+		return 1;
+	}
 
-    if (!selection.toggle_vertex(v1)) {
-        std::cout << "[FAIL] toggle vertex v1\n";
-        return 1;
-    }
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo marcou dirty flag Scene")) {
+		return 1;
+	}
 
-    if (editor.selection().mesh().vertices().size() != 2) {
-        std::cout << "[FAIL] vertex selection size 2\n";
-        return 1;
-    }
+	editor.clear_dirty();
 
-    if (!selection.select_face(face)) {
-        std::cout << "[FAIL] select face\n";
-        return 1;
-    }
+	const CommandResult redoResult = dispatcher.redo(sceneCommand);
 
-    if (editor.selection().granularity() != SelectionGranularity::Face) {
-        std::cout << "[FAIL] granularity face\n";
-        return 1;
-    }
+	if (!check(redoResult.success, "redo retornou sucesso")) {
+		return 1;
+	}
 
-    if (editor.selection().scope() != SelectionScope::ActiveMesh) {
-        std::cout << "[FAIL] scope active mesh\n";
-        return 1;
-    }
+	if (!check(sceneCommand.redo_count() == 1, "redo chamado uma vez")) {
+		return 1;
+	}
 
-    const SelectionSnapshot snapshot =
-        SelectionSerializer::capture(editor.selection());
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "redo marcou dirty flag Scene")) {
+		return 1;
+	}
 
-    editor.selection().clear();
+	editor.clear_dirty();
 
-    if (!editor.selection().objects().empty() ||
-        !editor.selection().mesh().empty()) {
-        std::cout << "[FAIL] selection clear\n";
-        return 1;
-    }
+	auto ownedSelectionCommand = std::make_unique<FakeSelectionCommand>();
+	const CommandResult ownedExecuteResult = dispatcher.execute(std::move(ownedSelectionCommand));
 
-    SelectionSerializer::restore(snapshot, editor.selection());
+	if (!check(ownedExecuteResult.success, "execute com unique_ptr retornou sucesso")) {
+		return 1;
+	}
 
-    if (editor.selection().mesh().faces().size() != 1) {
-        std::cout << "[FAIL] snapshot restore face\n";
-        return 1;
-    }
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "comando owned marcou Selection")) {
+		return 1;
+	}
 
-    if (editor.selection().mesh().active_mesh() != meshId) {
-        std::cout << "[FAIL] snapshot restore active mesh\n";
-        return 1;
-    }
+	editor.clear_dirty();
 
-    if (!editor.selection().objects().contains(emptyId)) {
-        std::cout << "[FAIL] snapshot restore object empty\n";
-        return 1;
-    }
+	const CommandResult nullExecuteResult = dispatcher.execute(std::unique_ptr<ICommand>{});
 
-    std::cout << "[OK] object selection\n";
-    std::cout << "[OK] active object\n";
-    std::cout << "[OK] object toggle remove/add\n";
-    std::cout << "[OK] active mesh\n";
-    std::cout << "[OK] vertex selection\n";
-    std::cout << "[OK] face selection\n";
-    std::cout << "[OK] selection granularity/scope\n";
-    std::cout << "[OK] selection snapshot restore\n";
+	if (!check(!nullExecuteResult.success, "execute com comando nulo falha corretamente")) {
+		return 1;
+	}
 
-    std::cout << "\n=== Editor Selection Smoke Test PASSED ===\n";
-    return 0;
+	if (!check(!nullExecuteResult.message.empty(), "falha de comando nulo tem mensagem")) {
+		return 1;
+	}
+
+	NonUndoableCommand nonUndoableCommand{};
+	const CommandResult nonUndoableExecuteResult = dispatcher.execute(nonUndoableCommand);
+
+	if (!check(nonUndoableExecuteResult.success, "comando nao undoable executa normalmente")) {
+		return 1;
+	}
+
+	const CommandResult nonUndoableUndoResult = dispatcher.undo(nonUndoableCommand);
+
+	if (!check(!nonUndoableUndoResult.success, "undo de comando nao undoable falha")) {
+		return 1;
+	}
+
+	CommandRegistry registry{};
+
+	if (!check(registry.empty(), "registry comeca vazio")) {
+		return 1;
+	}
+
+	const bool registered = registry.register_command(
+		"test.fake_selection",
+		[]() {
+			return std::make_unique<FakeSelectionCommand>();
+		});
+
+	if (!check(registered, "registry registra comando")) {
+		return 1;
+	}
+
+	if (!check(registry.contains("test.fake_selection"), "registry contem id registrado")) {
+		return 1;
+	}
+
+	if (!check(registry.size() == 1, "registry size 1")) {
+		return 1;
+	}
+
+	auto createdCommand = registry.create("test.fake_selection");
+
+	if (!check(createdCommand != nullptr, "registry cria comando registrado")) {
+		return 1;
+	}
+
+	if (!check(createdCommand->name() == "Fake Selection Command", "comando criado tem nome esperado")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	const CommandResult registryExecuteResult = dispatcher.execute(*createdCommand);
+
+	if (!check(registryExecuteResult.success, "comando criado pelo registry executa")) {
+		return 1;
+	}
+
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "comando criado pelo registry marcou Selection")) {
+		return 1;
+	}
+
+	const bool duplicateRegistered = registry.register_command(
+		"test.fake_selection",
+		[]() {
+			return std::make_unique<FakeSceneCommand>();
+		});
+
+	if (!check(!duplicateRegistered, "registry rejeita id duplicado em register_command")) {
+		return 1;
+	}
+
+	const bool replaced = registry.replace_command(
+		"test.fake_selection",
+		[]() {
+			return std::make_unique<FakeSceneCommand>();
+		});
+
+	if (!check(replaced, "registry substitui comando")) {
+		return 1;
+	}
+
+	auto replacedCommand = registry.create("test.fake_selection");
+
+	if (!check(replacedCommand != nullptr, "registry cria comando substituido")) {
+		return 1;
+	}
+
+	if (!check(replacedCommand->name() == "Fake Scene Command", "comando substituido tem nome esperado")) {
+		return 1;
+	}
+
+	const auto ids = registry.command_ids();
+
+	if (!check(ids.size() == 1, "registry lista um id")) {
+		return 1;
+	}
+
+	const bool removed = registry.unregister_command("test.fake_selection");
+
+	if (!check(removed, "registry remove comando")) {
+		return 1;
+	}
+
+	if (!check(!registry.contains("test.fake_selection"), "registry nao contem id removido")) {
+		return 1;
+	}
+
+	if (!check(registry.create("test.fake_selection") == nullptr, "registry retorna nullptr para id inexistente")) {
+		return 1;
+	}
+
+	registry.clear();
+
+	if (!check(registry.empty(), "registry clear deixa vazio")) {
+		return 1;
+	}
+
+	std::cout << "\n=== Editor Command Smoke Test PASSED ===\n";
+	return 0;
 }
