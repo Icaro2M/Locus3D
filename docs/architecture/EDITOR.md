@@ -84,20 +84,20 @@ source\editor
 |       EmptyNode.h 
 |       MeshNode.h
 |
-+---selection [!]
-|       SelectionState.h [!]
-|       SelectionState.cpp [!]
-|       ObjectSelection.h [!]
-|       ObjectSelection.cpp [!]
-|       MeshSelection.h [!]
-|       MeshSelection.cpp [!]
-|       SelectionSet.h [!]
-|       SelectionSet.cpp [!]
-|       SelectionGranularity.h [!]
-|       SelectionScope.h [!]
-|       SelectionController.h [!]
-|       SelectionController.cpp [!]
-|       SelectionSerializer.h [!]
++---selection
+|       SelectionState.h
+|       SelectionState.cpp
+|       ObjectSelection.h
+|       ObjectSelection.cpp
+|       MeshSelection.h
+|       MeshSelection.cpp
+|       SelectionSet.h
+|       SelectionSet.cpp
+|       SelectionGranularity.h
+|       SelectionScope.h
+|       SelectionController.h
+|       SelectionController.cpp
+|       SelectionSerializer.h
 |
 +---command [!]
 |   |   ICommand.h [!]
@@ -220,19 +220,6 @@ Every file in the tree is marked with `[!]` because the editor layer has not bee
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `selection/SelectionState.h`
-- [!] `selection/SelectionState.cpp`
-- [!] `selection/ObjectSelection.h`
-- [!] `selection/ObjectSelection.cpp`
-- [!] `selection/MeshSelection.h`
-- [!] `selection/MeshSelection.cpp`
-- [!] `selection/SelectionSet.h`
-- [!] `selection/SelectionSet.cpp`
-- [!] `selection/SelectionGranularity.h`
-- [!] `selection/SelectionScope.h`
-- [!] `selection/SelectionController.h`
-- [!] `selection/SelectionController.cpp`
-- [!] `selection/SelectionSerializer.h`
 - [!] `command/ICommand.h`
 - [!] `command/CommandContext.h`
 - [!] `command/CommandDispatcher.h`

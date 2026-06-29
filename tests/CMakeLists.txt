@@ -60,6 +60,32 @@ set_tests_properties(editor.unit.scene PROPERTIES
     LABELS "unit;editor;scene"
 )
 
+add_executable(Locus3DEditorSelectionTests
+    unit/editor/selection/MeshSelectionTests.cpp
+    unit/editor/selection/ObjectSelectionTests.cpp
+    unit/editor/selection/SelectionControllerTests.cpp
+    unit/editor/selection/SelectionSetTests.cpp
+    unit/editor/selection/SelectionStateTests.cpp
+    unit/editor/selection/SelectionTestMain.cpp
+)
+
+target_include_directories(Locus3DEditorSelectionTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorSelectionTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.selection COMMAND Locus3DEditorSelectionTests)
+set_tests_properties(editor.unit.selection PROPERTIES
+    LABELS "unit;editor;selection"
+)
+
 # Future test executables will be registered here as the manual test suites are
 # added. Expected target groups include:
 #
