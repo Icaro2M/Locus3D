@@ -7,6 +7,7 @@
 
 #include "editor/EditorTypes.h"
 #include "editor/scene/EditorScene.h"
+#include "editor/selection/SelectionState.h"
 
 namespace locus::editor {
 
@@ -18,6 +19,11 @@ namespace locus::editor {
          * @brief Editable scene hierarchy and object data.
          */
         EditorScene scene;
+
+        /**
+         * @brief Object and mesh component selection state.
+         */
+        SelectionState selection;
 
         /**
          * @brief Current high-level editor interaction mode.

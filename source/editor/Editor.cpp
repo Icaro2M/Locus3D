@@ -7,12 +7,18 @@
 
 namespace locus::editor {
 
-    Editor::Editor() = default;
+    Editor::Editor()
+    {
+        rebuild_controllers();
+    }
 
     Editor::Editor(EditorContext context)
         : context_(context)
     {
+        rebuild_controllers();
     }
+
+    Editor::~Editor() = default;
 
     EditorState& Editor::state()
     {
@@ -45,6 +51,28 @@ namespace locus::editor {
         return state_.scene;
     }
 
+    SelectionState& Editor::selection()
+    {
+        mark_dirty(EditorDirtyFlags::Selection);
+        return state_.selection;
+    }
+
+    const SelectionState& Editor::selection() const
+    {
+        return state_.selection;
+    }
+
+    SelectionController& Editor::selection_controller()
+    {
+        mark_dirty(EditorDirtyFlags::Selection);
+        return *selectionController_;
+    }
+
+    const SelectionController& Editor::selection_controller() const
+    {
+        return *selectionController_;
+    }
+
     void Editor::set_mode(EditorMode mode)
     {
         if (state_.mode == mode) {
@@ -75,6 +103,12 @@ namespace locus::editor {
     EditorDirtyFlags Editor::dirty_flags() const
     {
         return state_.dirtyFlags;
+    }
+
+    void Editor::rebuild_controllers()
+    {
+        selectionController_ =
+            std::make_unique<SelectionController>(state_.scene, state_.selection);
     }
 
 }

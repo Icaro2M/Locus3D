@@ -11,7 +11,6 @@ target_sources(locus3d_editor
         "EditorContext.h"
         "EditorState.h"
         "EditorTypes.h"
-
         "scene/EditorScene.cpp"
         "scene/EditorScene.h"
         "scene/EmptyNode.h"
@@ -26,6 +25,20 @@ target_sources(locus3d_editor
         "scene/SceneNodeId.h"
         "scene/SceneTree.cpp"
         "scene/SceneTree.h"
+        "selection/MeshSelection.cpp"
+        "selection/SelectionGranularity.h"
+        "selection/MeshSelection.h"
+        "selection/ObjectSelection.cpp"
+        "selection/ObjectSelection.h"
+        "selection/SelectionController.cpp"
+        "selection/SelectionController.h"
+        "selection/SelectionGranularity.h"
+        "selection/SelectionScope.h"
+        "selection/SelectionSerializer.h"
+        "selection/SelectionSet.cpp"
+        "selection/SelectionSet.h"
+        "selection/SelectionState.cpp"
+        "selection/SelectionState.h"
 )
 
 target_include_directories(locus3d_editor

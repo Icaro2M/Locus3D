@@ -1,5 +1,5 @@
 #include "editor/Editor.h"
-#include "editor/scene/MeshNode.h"
+#include "editor/selection/SelectionSerializer.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 
 #include <glm/vec3.hpp>
@@ -11,17 +11,15 @@ int main()
     using namespace locus::editor;
     using namespace locus::kernel::geometry;
 
-    std::cout << "=== Locus3D Editor Scene Smoke Test ===\n\n";
+    std::cout << "=== Locus3D Editor Selection Smoke Test ===\n\n";
 
     Editor editor;
 
     const SceneNodeId root = editor.scene().create_empty("Root");
     const SceneNodeId meshId = editor.scene().create_mesh("Quad Mesh");
+    const SceneNodeId emptyId = editor.scene().create_empty("Empty Helper");
 
-    std::cout << "[INFO] root id: " << root.value << "\n";
-    std::cout << "[INFO] mesh id: " << meshId.value << "\n";
-
-    if (!root.is_valid() || !meshId.is_valid()) {
+    if (!root.is_valid() || !meshId.is_valid() || !emptyId.is_valid()) {
         std::cout << "[FAIL] ids validos\n";
         return 1;
     }
@@ -31,27 +29,11 @@ int main()
         return 1;
     }
 
-    const SceneNode* rootNode = editor.scene().find_node(root);
-    const SceneNode* meshNodeBase = editor.scene().find_node(meshId);
     MeshNode* meshNode = editor.scene().find_mesh(meshId);
-
-    if (!rootNode || !meshNodeBase || !meshNode) {
-        std::cout << "[FAIL] busca de nodes\n";
+    if (!meshNode) {
+        std::cout << "[FAIL] mesh node encontrado\n";
         return 1;
     }
-
-    if (rootNode->children().size() != 1 || rootNode->children()[0] != meshId) {
-        std::cout << "[FAIL] hierarquia root -> mesh\n";
-        return 1;
-    }
-
-    if (meshNodeBase->parent() != root) {
-        std::cout << "[FAIL] parent do mesh\n";
-        return 1;
-    }
-
-    meshNode->transform().set_position(glm::vec3{ 1.0f, 2.0f, 3.0f });
-    meshNode->transform().set_scale(glm::vec3{ 2.0f, 2.0f, 2.0f });
 
     LEMEditor meshEditor(meshNode->mesh());
 
@@ -63,38 +45,126 @@ int main()
     const FaceHandle face = meshEditor.add_face({ v0, v1, v2, v3 });
 
     if (!face.is_valid()) {
-        std::cout << "[FAIL] face quad criada\n";
+        std::cout << "[FAIL] face criada\n";
         return 1;
     }
 
-    if (meshNode->mesh().vertex_count() != 4 ||
-        meshNode->mesh().edge_count() != 4 ||
-        meshNode->mesh().loop_count() != 4 ||
-        meshNode->mesh().face_count() != 1) {
-        std::cout << "[FAIL] contagem da LEM\n";
+    SelectionController& selection = editor.selection_controller();
+
+    if (!selection.select_object(meshId)) {
+        std::cout << "[FAIL] select object mesh\n";
         return 1;
     }
 
-    if (!editor.scene().tree().is_ancestor(root, meshId)) {
-        std::cout << "[FAIL] root deveria ser ancestral do mesh\n";
+    if (editor.selection().objects().active() != meshId) {
+        std::cout << "[FAIL] active object mesh\n";
         return 1;
     }
 
-    if (editor.scene().tree().is_ancestor(meshId, root)) {
-        std::cout << "[FAIL] mesh nao deveria ser ancestral do root\n";
+    if (!selection.add_object(emptyId)) {
+        std::cout << "[FAIL] add object empty\n";
         return 1;
     }
 
-    std::cout << "[OK] ids criados\n";
-    std::cout << "[OK] hierarquia criada\n";
-    std::cout << "[OK] transform local aplicado\n";
-    std::cout << "[OK] MeshNode contem LEM editavel\n";
-    std::cout << "[OK] quad criado via LEMEditor\n";
-    std::cout << "[OK] vertices: " << meshNode->mesh().vertex_count() << "\n";
-    std::cout << "[OK] edges: " << meshNode->mesh().edge_count() << "\n";
-    std::cout << "[OK] loops: " << meshNode->mesh().loop_count() << "\n";
-    std::cout << "[OK] faces: " << meshNode->mesh().face_count() << "\n";
+    if (editor.selection().objects().size() != 2) {
+        std::cout << "[FAIL] object selection size 2\n";
+        return 1;
+    }
 
-    std::cout << "\n=== Editor Scene Smoke Test PASSED ===\n";
+    const bool emptySelectedAfterToggle = selection.toggle_object(emptyId);
+    if (emptySelectedAfterToggle) {
+        std::cout << "[FAIL] empty deveria ser removido no toggle\n";
+        return 1;
+    }
+
+    if (editor.selection().objects().contains(emptyId)) {
+        std::cout << "[FAIL] empty removido da selecao\n";
+        return 1;
+    }
+
+    const bool emptySelectedAfterSecondToggle = selection.toggle_object(emptyId);
+    if (!emptySelectedAfterSecondToggle) {
+        std::cout << "[FAIL] empty deveria ser selecionado no segundo toggle\n";
+        return 1;
+    }
+
+    if (!editor.selection().objects().contains(emptyId)) {
+        std::cout << "[FAIL] empty selecionado novamente\n";
+        return 1;
+    }
+
+    if (!selection.set_active_mesh(meshId)) {
+        std::cout << "[FAIL] set active mesh\n";
+        return 1;
+    }
+
+    if (!selection.select_vertex(v0)) {
+        std::cout << "[FAIL] select vertex v0\n";
+        return 1;
+    }
+
+    if (!selection.toggle_vertex(v1)) {
+        std::cout << "[FAIL] toggle vertex v1\n";
+        return 1;
+    }
+
+    if (editor.selection().mesh().vertices().size() != 2) {
+        std::cout << "[FAIL] vertex selection size 2\n";
+        return 1;
+    }
+
+    if (!selection.select_face(face)) {
+        std::cout << "[FAIL] select face\n";
+        return 1;
+    }
+
+    if (editor.selection().granularity() != SelectionGranularity::Face) {
+        std::cout << "[FAIL] granularity face\n";
+        return 1;
+    }
+
+    if (editor.selection().scope() != SelectionScope::ActiveMesh) {
+        std::cout << "[FAIL] scope active mesh\n";
+        return 1;
+    }
+
+    const SelectionSnapshot snapshot =
+        SelectionSerializer::capture(editor.selection());
+
+    editor.selection().clear();
+
+    if (!editor.selection().objects().empty() ||
+        !editor.selection().mesh().empty()) {
+        std::cout << "[FAIL] selection clear\n";
+        return 1;
+    }
+
+    SelectionSerializer::restore(snapshot, editor.selection());
+
+    if (editor.selection().mesh().faces().size() != 1) {
+        std::cout << "[FAIL] snapshot restore face\n";
+        return 1;
+    }
+
+    if (editor.selection().mesh().active_mesh() != meshId) {
+        std::cout << "[FAIL] snapshot restore active mesh\n";
+        return 1;
+    }
+
+    if (!editor.selection().objects().contains(emptyId)) {
+        std::cout << "[FAIL] snapshot restore object empty\n";
+        return 1;
+    }
+
+    std::cout << "[OK] object selection\n";
+    std::cout << "[OK] active object\n";
+    std::cout << "[OK] object toggle remove/add\n";
+    std::cout << "[OK] active mesh\n";
+    std::cout << "[OK] vertex selection\n";
+    std::cout << "[OK] face selection\n";
+    std::cout << "[OK] selection granularity/scope\n";
+    std::cout << "[OK] selection snapshot restore\n";
+
+    std::cout << "\n=== Editor Selection Smoke Test PASSED ===\n";
     return 0;
 }

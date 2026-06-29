@@ -7,6 +7,9 @@
 
 #include "editor/EditorContext.h"
 #include "editor/EditorState.h"
+#include "editor/selection/SelectionController.h"
+
+#include <memory>
 
 namespace locus::editor {
 
@@ -26,6 +29,17 @@ namespace locus::editor {
          * @param context Editor service context.
          */
         explicit Editor(EditorContext context);
+
+        /**
+         * @brief Destroys the editor facade.
+         */
+        ~Editor();
+
+        Editor(const Editor&) = delete;
+        Editor& operator=(const Editor&) = delete;
+
+        Editor(Editor&&) = delete;
+        Editor& operator=(Editor&&) = delete;
 
         /**
          * @brief Returns mutable editor state.
@@ -70,6 +84,34 @@ namespace locus::editor {
         [[nodiscard]] const EditorScene& scene() const;
 
         /**
+         * @brief Returns mutable access to the selection state.
+         *
+         * @return Mutable selection state reference.
+         */
+        [[nodiscard]] SelectionState& selection();
+
+        /**
+         * @brief Returns read-only access to the selection state.
+         *
+         * @return Read-only selection state reference.
+         */
+        [[nodiscard]] const SelectionState& selection() const;
+
+        /**
+         * @brief Returns the selection controller.
+         *
+         * @return Selection controller reference.
+         */
+        [[nodiscard]] SelectionController& selection_controller();
+
+        /**
+         * @brief Returns the selection controller.
+         *
+         * @return Read-only selection controller reference.
+         */
+        [[nodiscard]] const SelectionController& selection_controller() const;
+
+        /**
          * @brief Changes the current high-level editor mode.
          *
          * @param mode New editor mode.
@@ -105,8 +147,11 @@ namespace locus::editor {
         [[nodiscard]] EditorDirtyFlags dirty_flags() const;
 
     private:
+        void rebuild_controllers();
+
         EditorContext context_{};
         EditorState state_{};
+        std::unique_ptr<SelectionController> selectionController_{};
     };
 
 }
