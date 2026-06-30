@@ -86,6 +86,31 @@ set_tests_properties(editor.unit.selection PROPERTIES
     LABELS "unit;editor;selection"
 )
 
+add_executable(Locus3DEditorCommandTests
+    unit/editor/command/CommandContextTests.cpp
+    unit/editor/command/CommandDispatcherTests.cpp
+    unit/editor/command/CommandRegistryTests.cpp
+    unit/editor/command/CommandResultTests.cpp
+    unit/editor/command/CommandTestMain.cpp
+)
+
+target_include_directories(Locus3DEditorCommandTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorCommandTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.command COMMAND Locus3DEditorCommandTests)
+set_tests_properties(editor.unit.command PROPERTIES
+    LABELS "unit;editor;command"
+)
+
 # Future test executables will be registered here as the manual test suites are
 # added. Expected target groups include:
 #
