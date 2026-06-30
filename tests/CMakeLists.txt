@@ -111,6 +111,29 @@ set_tests_properties(editor.unit.command PROPERTIES
     LABELS "unit;editor;command"
 )
 
+add_executable(Locus3DEditorHistoryTests
+    unit/editor/history/HistoryEntryTests.cpp
+    unit/editor/history/HistoryStackTests.cpp
+    unit/editor/history/HistoryTestMain.cpp
+)
+
+target_include_directories(Locus3DEditorHistoryTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorHistoryTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.history COMMAND Locus3DEditorHistoryTests)
+set_tests_properties(editor.unit.history PROPERTIES
+    LABELS "unit;editor;history"
+)
+
 # Future test executables will be registered here as the manual test suites are
 # added. Expected target groups include:
 #
