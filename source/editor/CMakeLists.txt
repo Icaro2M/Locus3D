@@ -48,7 +48,16 @@ target_sources(locus3d_editor
         "command/CommandRegistry.cpp"
         "history/HistoryEntry.h"
         "history/HistoryStack.h"
-        "history/HistoryStack.cpp")
+        "history/HistoryStack.cpp"
+        "command/selection/ObjectSelectionSnapshot.h" 
+        "command/scene/CreateEmptyNodeCommand.h"
+        "command/scene/CreateEmptyNodeCommand.cpp"
+        "command/scene/CreateMeshNodeCommand.h"
+        "command/scene/CreateMeshNodeCommand.cpp"
+        "command/selection/SelectObjectCommand.h"
+        "command/selection/SelectObjectCommand.cpp"
+        "command/selection/ClearObjectSelectionCommand.h"
+        "command/selection/ClearObjectSelectionCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

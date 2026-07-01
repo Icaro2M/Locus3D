@@ -1,140 +1,16 @@
 #include "editor/Editor.h"
 #include "editor/command/CommandDispatcher.h"
-#include "editor/command/ICommand.h"
+#include "editor/command/scene/CreateEmptyNodeCommand.h"
+#include "editor/command/scene/CreateMeshNodeCommand.h"
+#include "editor/command/selection/ClearObjectSelectionCommand.h"
+#include "editor/command/selection/SelectObjectCommand.h"
 #include "editor/history/HistoryStack.h"
+#include "editor/scene/SceneNode.h"
 
 #include <iostream>
 #include <memory>
-#include <string_view>
 
 namespace {
-
-	class CountingCommand final : public locus::editor::ICommand {
-	public:
-		explicit CountingCommand(int& value, int delta, std::string_view commandName = "Counting Command")
-			: value_(&value)
-			, delta_(delta)
-			, name_(commandName)
-		{
-		}
-
-		[[nodiscard]] std::string_view name() const override
-		{
-			return name_;
-		}
-
-		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			*value_ += delta_;
-			++executeCount_;
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render,
-				"Counting command executed.");
-		}
-
-		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			*value_ -= delta_;
-			++undoCount_;
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render,
-				"Counting command undone.");
-		}
-
-		locus::editor::CommandResult redo(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			*value_ += delta_;
-			++redoCount_;
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Scene |
-				locus::editor::EditorDirtyFlags::Render,
-				"Counting command redone.");
-		}
-
-	private:
-		int* value_ = nullptr;
-		int delta_ = 0;
-		std::string_view name_{};
-
-		int executeCount_ = 0;
-		int undoCount_ = 0;
-		int redoCount_ = 0;
-	};
-
-	class NonUndoableCountingCommand final : public locus::editor::ICommand {
-	public:
-		explicit NonUndoableCountingCommand(int& value, int delta)
-			: value_(&value)
-			, delta_(delta)
-		{
-		}
-
-		[[nodiscard]] std::string_view name() const override
-		{
-			return "Non Undoable Counting Command";
-		}
-
-		[[nodiscard]] bool is_undoable() const override
-		{
-			return false;
-		}
-
-		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			*value_ += delta_;
-
-			return locus::editor::CommandResult::ok(
-				locus::editor::EditorDirtyFlags::Selection,
-				"Non undoable counting command executed.");
-		}
-
-		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			return locus::editor::CommandResult::fail(
-				"Non undoable counting command cannot be undone.");
-		}
-
-	private:
-		int* value_ = nullptr;
-		int delta_ = 0;
-	};
-
-	class FailingCommand final : public locus::editor::ICommand {
-	public:
-		[[nodiscard]] std::string_view name() const override
-		{
-			return "Failing Command";
-		}
-
-		locus::editor::CommandResult execute(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			return locus::editor::CommandResult::fail("Intentional execute failure.");
-		}
-
-		locus::editor::CommandResult undo(locus::editor::CommandContext& context) override
-		{
-			(void)context;
-
-			return locus::editor::CommandResult::fail("Intentional undo failure.");
-		}
-	};
 
 	bool check(bool condition, const char* message)
 	{
@@ -153,11 +29,13 @@ int main()
 {
 	using namespace locus::editor;
 
-	std::cout << "=== Locus3D Editor History Smoke Test ===\n\n";
+	std::cout << "=== Locus3D Concrete Editor Commands Smoke Test ===\n\n";
 
 	Editor editor;
 	CommandDispatcher dispatcher(editor);
 	HistoryStack history{};
+
+	const Editor& constEditor = editor;
 
 	if (!check(editor.dirty_flags() == EditorDirtyFlags::All, "editor comeca com dirty flags All")) {
 		return 1;
@@ -165,330 +43,358 @@ int main()
 
 	editor.clear_dirty();
 
+	if (!check(constEditor.scene().tree().empty(), "cena comeca vazia")) {
+		return 1;
+	}
+
 	if (!check(history.empty(), "history comeca vazio")) {
 		return 1;
 	}
 
-	if (!check(!history.can_undo(), "history comeca sem undo")) {
+	auto createEmpty = std::make_unique<CreateEmptyNodeCommand>("Empty A");
+	CreateEmptyNodeCommand* createEmptyPtr = createEmpty.get();
+
+	const CommandResult createEmptyResult = history.execute(dispatcher, std::move(createEmpty));
+
+	if (!check(createEmptyResult.success, "CreateEmptyNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(!history.can_redo(), "history comeca sem redo")) {
+	const SceneNodeId emptyId = createEmptyPtr->created_node();
+
+	if (!check(emptyId.is_valid(), "CreateEmptyNodeCommand guardou id valido")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 0, "undo_size inicial 0")) {
+	if (!check(constEditor.scene().tree().size() == 1, "cena tem 1 node apos criar empty")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "redo_size inicial 0")) {
+	if (!check(constEditor.scene().find_node(emptyId) != nullptr, "empty criado existe na cena")) {
 		return 1;
 	}
 
-	if (!check(history.undo_name().empty(), "undo_name inicial vazio")) {
+	if (!check(constEditor.scene().find_node(emptyId)->metadata().name == "Empty A", "empty criado tem nome esperado")) {
 		return 1;
 	}
 
-	if (!check(history.redo_name().empty(), "redo_name inicial vazio")) {
+	if (!check(history.undo_size() == 1, "history guardou CreateEmptyNodeCommand")) {
 		return 1;
 	}
 
-	const CommandResult emptyUndoResult = history.undo(dispatcher);
-
-	if (!check(!emptyUndoResult.success, "undo vazio falha corretamente")) {
+	if (!check(history.undo_name() == "Create Empty Node", "undo_name aponta para Create Empty Node")) {
 		return 1;
 	}
 
-	const CommandResult emptyRedoResult = history.redo(dispatcher);
-
-	if (!check(!emptyRedoResult.success, "redo vazio falha corretamente")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "criar empty marcou Scene")) {
 		return 1;
 	}
 
-	int value = 0;
-
-	const CommandResult executeA = history.execute(
-		dispatcher,
-		std::make_unique<CountingCommand>(value, 10, "Add Ten"));
-
-	if (!check(executeA.success, "execute Add Ten retornou sucesso")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "criar empty marcou Render")) {
 		return 1;
 	}
 
-	if (!check(value == 10, "execute Add Ten alterou valor para 10")) {
-		return 1;
-	}
-
-	if (!check(history.can_undo(), "history tem undo depois de execute undoable")) {
-		return 1;
-	}
-
-	if (!check(!history.can_redo(), "history nao tem redo depois de execute novo")) {
-		return 1;
-	}
-
-	if (!check(history.undo_size() == 1, "undo_size 1 depois de execute undoable")) {
-		return 1;
-	}
-
-	if (!check(history.redo_size() == 0, "redo_size 0 depois de execute undoable")) {
-		return 1;
-	}
-
-	if (!check(history.undo_name() == "Add Ten", "undo_name aponta para Add Ten")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "execute marcou dirty Scene")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "execute marcou dirty Render")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "criar empty marcou Picking")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoA = history.undo(dispatcher);
+	const CommandResult undoEmptyResult = history.undo(dispatcher);
 
-	if (!check(undoA.success, "undo Add Ten retornou sucesso")) {
+	if (!check(undoEmptyResult.success, "undo CreateEmptyNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(value == 0, "undo Add Ten voltou valor para 0")) {
+	if (!check(constEditor.scene().tree().empty(), "undo removeu empty da cena")) {
 		return 1;
 	}
 
-	if (!check(!history.can_undo(), "history ficou sem undo apos desfazer unico comando")) {
+	if (!check(constEditor.scene().find_node(emptyId) == nullptr, "id antigo do empty nao existe apos undo")) {
 		return 1;
 	}
 
-	if (!check(history.can_redo(), "history tem redo apos undo")) {
+	if (!check(history.undo_size() == 0, "undo_size 0 apos undo do empty")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 0, "undo_size 0 apos undo")) {
+	if (!check(history.redo_size() == 1, "redo_size 1 apos undo do empty")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 1, "redo_size 1 apos undo")) {
+	if (!check(history.redo_name() == "Create Empty Node", "redo_name aponta para Create Empty Node")) {
 		return 1;
 	}
 
-	if (!check(history.redo_name() == "Add Ten", "redo_name aponta para Add Ten")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo marcou dirty Scene")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo empty marcou Scene")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult redoA = history.redo(dispatcher);
+	const CommandResult redoEmptyResult = history.redo(dispatcher);
 
-	if (!check(redoA.success, "redo Add Ten retornou sucesso")) {
+	if (!check(redoEmptyResult.success, "redo CreateEmptyNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(value == 10, "redo Add Ten voltou valor para 10")) {
+	const SceneNodeId redoneEmptyId = createEmptyPtr->created_node();
+
+	if (!check(redoneEmptyId.is_valid(), "redo guardou novo id valido")) {
 		return 1;
 	}
 
-	if (!check(history.can_undo(), "history tem undo apos redo")) {
+	if (!check(constEditor.scene().tree().size() == 1, "redo recriou empty na cena")) {
 		return 1;
 	}
 
-	if (!check(!history.can_redo(), "history ficou sem redo apos redo")) {
+	if (!check(constEditor.scene().find_node(redoneEmptyId) != nullptr, "empty recriado existe na cena")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 1, "undo_size 1 apos redo")) {
+	if (!check(constEditor.scene().find_node(redoneEmptyId)->metadata().name == "Empty A", "empty recriado manteve nome")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "redo_size 0 apos redo")) {
+	if (!check(history.undo_size() == 1, "undo_size 1 apos redo do empty")) {
+		return 1;
+	}
+
+	if (!check(history.redo_size() == 0, "redo_size 0 apos redo do empty")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult executeB = history.execute(
-		dispatcher,
-		std::make_unique<CountingCommand>(value, 5, "Add Five"));
+	auto createMesh = std::make_unique<CreateMeshNodeCommand>("Mesh A");
+	CreateMeshNodeCommand* createMeshPtr = createMesh.get();
 
-	if (!check(executeB.success, "execute Add Five retornou sucesso")) {
+	const CommandResult createMeshResult = history.execute(dispatcher, std::move(createMesh));
+
+	if (!check(createMeshResult.success, "CreateMeshNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(value == 15, "execute Add Five alterou valor para 15")) {
+	const SceneNodeId meshId = createMeshPtr->created_node();
+
+	if (!check(meshId.is_valid(), "CreateMeshNodeCommand guardou id valido")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 2, "undo_size 2 depois de dois comandos")) {
+	if (!check(constEditor.scene().tree().size() == 2, "cena tem 2 nodes apos criar mesh")) {
 		return 1;
 	}
 
-	if (!check(history.undo_name() == "Add Five", "undo_name aponta para comando mais recente")) {
+	if (!check(constEditor.scene().find_mesh(meshId) != nullptr, "mesh criado existe como MeshNode")) {
 		return 1;
 	}
 
-	const CommandResult undoB = history.undo(dispatcher);
-
-	if (!check(undoB.success, "undo Add Five retornou sucesso")) {
+	if (!check(constEditor.scene().find_node(meshId)->metadata().name == "Mesh A", "mesh criado tem nome esperado")) {
 		return 1;
 	}
 
-	if (!check(value == 10, "undo Add Five voltou valor para 10")) {
+	if (!check(history.undo_size() == 2, "history guardou dois comandos de criacao")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 1, "undo_size 1 apos desfazer Add Five")) {
+	if (!check(history.undo_name() == "Create Mesh Node", "undo_name aponta para Create Mesh Node")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 1, "redo_size 1 apos desfazer Add Five")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Mesh), "criar mesh marcou Mesh")) {
 		return 1;
 	}
 
-	const CommandResult executeC = history.execute(
-		dispatcher,
-		std::make_unique<CountingCommand>(value, 20, "Add Twenty"));
+	editor.clear_dirty();
 
-	if (!check(executeC.success, "execute Add Twenty retornou sucesso")) {
+	auto selectEmpty = std::make_unique<SelectObjectCommand>(redoneEmptyId);
+
+	const CommandResult selectEmptyResult = history.execute(dispatcher, std::move(selectEmpty));
+
+	if (!check(selectEmptyResult.success, "SelectObjectCommand selecionou empty")) {
 		return 1;
 	}
 
-	if (!check(value == 30, "execute Add Twenty alterou valor para 30")) {
+	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "empty esta selecionado")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 2, "undo_size 2 apos novo comando")) {
+	if (!check(constEditor.selection().objects().active() == redoneEmptyId, "empty virou objeto ativo")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "novo comando limpou redo")) {
+	if (!check(history.undo_size() == 3, "history guardou comando de selecao do empty")) {
 		return 1;
 	}
 
-	const CommandResult nonUndoableResult = history.execute(
-		dispatcher,
-		std::make_unique<NonUndoableCountingCommand>(value, 7));
+	editor.clear_dirty();
 
-	if (!check(nonUndoableResult.success, "execute nao undoable retornou sucesso")) {
+	auto selectMesh = std::make_unique<SelectObjectCommand>(meshId);
+
+	const CommandResult selectMeshResult = history.execute(dispatcher, std::move(selectMesh));
+
+	if (!check(selectMeshResult.success, "SelectObjectCommand selecionou mesh")) {
 		return 1;
 	}
 
-	if (!check(value == 37, "comando nao undoable alterou valor para 37")) {
+	if (!check(constEditor.selection().objects().contains(meshId), "mesh esta selecionado")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 2, "comando nao undoable nao entrou no undo")) {
+	if (!check(!constEditor.selection().objects().contains(redoneEmptyId), "selecionar mesh substituiu selecao anterior")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "comando nao undoable manteve redo vazio")) {
+	if (!check(constEditor.selection().objects().active() == meshId, "mesh virou objeto ativo")) {
 		return 1;
 	}
 
-	const CommandResult failingResult = history.execute(
-		dispatcher,
-		std::make_unique<FailingCommand>());
-
-	if (!check(!failingResult.success, "execute com comando falho retorna falha")) {
+	if (!check(history.undo_name() == "Select Object", "undo_name aponta para Select Object")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 2, "comando falho nao entrou no undo")) {
+	editor.clear_dirty();
+
+	const CommandResult undoSelectMeshResult = history.undo(dispatcher);
+
+	if (!check(undoSelectMeshResult.success, "undo SelectObjectCommand do mesh executou com sucesso")) {
 		return 1;
 	}
 
-	const CommandResult nullResult = history.execute(dispatcher, std::unique_ptr<ICommand>{});
-
-	if (!check(!nullResult.success, "execute com comando nulo falha corretamente")) {
+	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "undo da selecao restaurou empty selecionado")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 2, "comando nulo nao entrou no undo")) {
+	if (!check(!constEditor.selection().objects().contains(meshId), "undo da selecao removeu mesh da selecao")) {
 		return 1;
 	}
 
-	history.set_max_entries(1);
-
-	if (!check(history.max_entries() == 1, "max_entries configurado para 1")) {
+	if (!check(constEditor.selection().objects().active() == redoneEmptyId, "undo da selecao restaurou active empty")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 1, "set_max_entries aparou undo para 1")) {
+	if (!check(history.redo_size() == 1, "redo_size 1 apos undo da selecao")) {
 		return 1;
 	}
 
-	if (!check(history.undo_name() == "Add Twenty", "apos trim, undo_name manteve comando mais recente")) {
+	editor.clear_dirty();
+
+	const CommandResult redoSelectMeshResult = history.redo(dispatcher);
+
+	if (!check(redoSelectMeshResult.success, "redo SelectObjectCommand do mesh executou com sucesso")) {
 		return 1;
 	}
 
-	const CommandResult executeD = history.execute(
-		dispatcher,
-		std::make_unique<CountingCommand>(value, 3, "Add Three"));
-
-	if (!check(executeD.success, "execute Add Three retornou sucesso")) {
+	if (!check(constEditor.selection().objects().contains(meshId), "redo da selecao selecionou mesh novamente")) {
 		return 1;
 	}
 
-	if (!check(value == 40, "execute Add Three alterou valor para 40")) {
+	if (!check(!constEditor.selection().objects().contains(redoneEmptyId), "redo da selecao removeu empty novamente")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 1, "max_entries manteve undo_size em 1")) {
+	if (!check(constEditor.selection().objects().active() == meshId, "redo da selecao restaurou active mesh")) {
 		return 1;
 	}
 
-	if (!check(history.undo_name() == "Add Three", "undo_name aponta para Add Three apos limite")) {
+	editor.clear_dirty();
+
+	auto clearSelection = std::make_unique<ClearObjectSelectionCommand>();
+
+	const CommandResult clearSelectionResult = history.execute(dispatcher, std::move(clearSelection));
+
+	if (!check(clearSelectionResult.success, "ClearObjectSelectionCommand executou com sucesso")) {
 		return 1;
 	}
 
-	const CommandResult undoD = history.undo(dispatcher);
-
-	if (!check(undoD.success, "undo Add Three retornou sucesso")) {
+	if (!check(constEditor.selection().objects().empty(), "clear selection deixou selecao vazia")) {
 		return 1;
 	}
 
-	if (!check(value == 37, "undo Add Three voltou valor para 37")) {
+	if (!check(constEditor.selection().objects().active().is_invalid(), "clear selection limpou active object")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 0, "undo_size 0 apos undo com limite 1")) {
+	if (!check(history.undo_name() == "Clear Object Selection", "undo_name aponta para Clear Object Selection")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 1, "redo_size 1 apos undo com limite 1")) {
+	editor.clear_dirty();
+
+	const CommandResult undoClearSelectionResult = history.undo(dispatcher);
+
+	if (!check(undoClearSelectionResult.success, "undo ClearObjectSelectionCommand executou com sucesso")) {
 		return 1;
 	}
 
-	history.clear_redo();
-
-	if (!check(!history.can_redo(), "clear_redo remove redo")) {
+	if (!check(constEditor.selection().objects().contains(meshId), "undo clear restaurou mesh selecionado")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "redo_size 0 apos clear_redo")) {
+	if (!check(constEditor.selection().objects().active() == meshId, "undo clear restaurou active mesh")) {
 		return 1;
 	}
 
-	history.clear();
+	editor.clear_dirty();
 
-	if (!check(history.empty(), "clear remove todo historico")) {
+	const CommandResult undoSelectMeshAgainResult = history.undo(dispatcher);
+
+	if (!check(undoSelectMeshAgainResult.success, "undo SelectObjectCommand apos clear executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 0, "undo_size 0 apos clear")) {
+	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "undo select mesh restaurou empty novamente")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 0, "redo_size 0 apos clear")) {
+	editor.clear_dirty();
+
+	const CommandResult undoSelectEmptyResult = history.undo(dispatcher);
+
+	if (!check(undoSelectEmptyResult.success, "undo SelectObjectCommand do empty executou com sucesso")) {
 		return 1;
 	}
 
-	std::cout << "\n=== Editor History Smoke Test PASSED ===\n";
+	if (!check(constEditor.selection().objects().empty(), "undo select empty restaurou selecao inicial vazia")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	const CommandResult undoMeshResult = history.undo(dispatcher);
+
+	if (!check(undoMeshResult.success, "undo CreateMeshNodeCommand executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_mesh(meshId) == nullptr, "undo mesh removeu MeshNode")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().tree().size() == 1, "cena ficou com 1 node apos undo mesh")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	const CommandResult undoEmptyAgainResult = history.undo(dispatcher);
+
+	if (!check(undoEmptyAgainResult.success, "undo CreateEmptyNodeCommand final executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().tree().empty(), "cena ficou vazia apos desfazer tudo")) {
+		return 1;
+	}
+
+	if (!check(!history.can_undo(), "history ficou sem undo apos desfazer tudo")) {
+		return 1;
+	}
+
+	if (!check(history.can_redo(), "history tem redo apos desfazer tudo")) {
+		return 1;
+	}
+
+	std::cout << "\n=== Concrete Editor Commands Smoke Test PASSED ===\n";
 	return 0;
 }
