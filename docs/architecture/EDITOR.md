@@ -102,29 +102,78 @@ source\editor
 +---command
 |   |   ICommand.h
 |   |   CommandContext.h 
+|   |   CommandResult.h
 |   |   CommandDispatcher.h 
 |   |   CommandDispatcher.cpp 
 |   |   CommandRegistry.h 
 |   |   CommandRegistry.cpp
-|   |   CommandResult.h
 |   |
-|   \---commands [!]
-|           TransformCommand.h [!]
-|           TransformCommand.cpp [!]
-|           ReparentCommand.h [!]
-|           ReparentCommand.cpp [!]
-|           AddObjectCommand.h [!]
-|           AddObjectCommand.cpp [!]
-|           DeleteObjectCommand.h [!]
-|           DeleteObjectCommand.cpp [!]
-|           SetPivotCommand.h [!]
-|           SetPivotCommand.cpp [!]
-|           DuplicateCommand.h [!]
-|           DuplicateCommand.cpp [!]
-|           MeshOperationCommand.h [!]
-|           MeshOperationCommand.cpp [!]
-|           BooleanCommand.h [!]
-|           BooleanCommand.cpp [!]
+|   \---commands
+|       +---scene
+|       |       CreateEmptyNodeCommand.h
+|       |       CreateEmptyNodeCommand.cpp
+|       |       CreateMeshNodeCommand.h
+|       |       CreateMeshNodeCommand.cpp
+|       |       DeleteNodeCommand.h [!]
+|       |       DeleteNodeCommand.cpp [!]
+|       |       DuplicateNodeCommand.h [!]
+|       |       DuplicateNodeCommand.cpp [!]
+|       |       RenameNodeCommand.h [!]
+|       |       RenameNodeCommand.cpp [!]
+|       |       ReparentNodeCommand.h [!]
+|       |       ReparentNodeCommand.cpp [!]
+|       |       SetNodeVisibilityCommand.h [!]
+|       |       SetNodeVisibilityCommand.cpp [!]
+|       |       SetNodeLockCommand.h [!]
+|       |       SetNodeLockCommand.cpp [!]
+|       |
+|       +---selection
+|       |       ObjectSelectionSnapshot.h
+|       |       MeshSelectionSnapshot.h [!]
+|       |       SelectObjectCommand.h
+|       |       SelectObjectCommand.cpp
+|       |       ToggleObjectSelectionCommand.h [!]
+|       |       ToggleObjectSelectionCommand.cpp [!]
+|       |       ClearObjectSelectionCommand.h
+|       |       ClearObjectSelectionCommand.cpp
+|       |       SelectMeshComponentCommand.h [!]
+|       |       SelectMeshComponentCommand.cpp [!]
+|       |       ToggleMeshComponentSelectionCommand.h [!]
+|       |       ToggleMeshComponentSelectionCommand.cpp [!]
+|       |       ClearMeshSelectionCommand.h [!]
+|       |       ClearMeshSelectionCommand.cpp [!]
+|       |       SetSelectionGranularityCommand.h [!]
+|       |       SetSelectionGranularityCommand.cpp [!]
+|       |       SetSelectionScopeCommand.h [!]
+|       |       SetSelectionScopeCommand.cpp [!]
+|       |
+|       +---transform [!]
+|       |       NodeTransformSnapshot.h [!]
+|       |       SetNodeTransformCommand.h [!]
+|       |       SetNodeTransformCommand.cpp [!]
+|       |       TranslateNodeCommand.h [!]
+|       |       TranslateNodeCommand.cpp [!]
+|       |       RotateNodeCommand.h [!]
+|       |       RotateNodeCommand.cpp [!]
+|       |       ScaleNodeCommand.h [!]
+|       |       ScaleNodeCommand.cpp [!]
+|       |       SetNodePivotCommand.h [!]
+|       |       SetNodePivotCommand.cpp [!]
+|       |
+|       +---mesh [!]
+|       |       MeshSnapshot.h [!]
+|       |       ApplyMeshOperationCommand.h [!]
+|       |       ApplyMeshOperationCommand.cpp [!]
+|       |       ReplaceMeshCommand.h [!]
+|       |       ReplaceMeshCommand.cpp [!]
+|       |       EditMeshSelectionCommand.h [!]
+|       |       EditMeshSelectionCommand.cpp [!]
+|       |
+|       \---document [!]
+|               ClearSceneCommand.h [!]
+|               ClearSceneCommand.cpp [!]
+|               ImportMeshCommand.h [!]
+|               ImportMeshCommand.cpp [!]
 |
 +---history
 |       HistoryStack.h
@@ -220,22 +269,53 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `command/commands/TransformCommand.h`
-- [!] `command/commands/TransformCommand.cpp`
-- [!] `command/commands/ReparentCommand.h`
-- [!] `command/commands/ReparentCommand.cpp`
-- [!] `command/commands/AddObjectCommand.h`
-- [!] `command/commands/AddObjectCommand.cpp`
-- [!] `command/commands/DeleteObjectCommand.h`
-- [!] `command/commands/DeleteObjectCommand.cpp`
-- [!] `command/commands/SetPivotCommand.h`
-- [!] `command/commands/SetPivotCommand.cpp`
-- [!] `command/commands/DuplicateCommand.h`
-- [!] `command/commands/DuplicateCommand.cpp`
-- [!] `command/commands/MeshOperationCommand.h`
-- [!] `command/commands/MeshOperationCommand.cpp`
-- [!] `command/commands/BooleanCommand.h`
-- [!] `command/commands/BooleanCommand.cpp`
+- [!] `command/commands/scene/DeleteNodeCommand.h`
+- [!] `command/commands/scene/DeleteNodeCommand.cpp`
+- [!] `command/commands/scene/DuplicateNodeCommand.h`
+- [!] `command/commands/scene/DuplicateNodeCommand.cpp`
+- [!] `command/commands/scene/RenameNodeCommand.h`
+- [!] `command/commands/scene/RenameNodeCommand.cpp`
+- [!] `command/commands/scene/ReparentNodeCommand.h`
+- [!] `command/commands/scene/ReparentNodeCommand.cpp`
+- [!] `command/commands/scene/SetNodeVisibilityCommand.h`
+- [!] `command/commands/scene/SetNodeVisibilityCommand.cpp`
+- [!] `command/commands/scene/SetNodeLockCommand.h`
+- [!] `command/commands/scene/SetNodeLockCommand.cpp`
+- [!] `command/commands/selection/MeshSelectionSnapshot.h`
+- [!] `command/commands/selection/ToggleObjectSelectionCommand.h`
+- [!] `command/commands/selection/ToggleObjectSelectionCommand.cpp`
+- [!] `command/commands/selection/SelectMeshComponentCommand.h`
+- [!] `command/commands/selection/SelectMeshComponentCommand.cpp`
+- [!] `command/commands/selection/ToggleMeshComponentSelectionCommand.h`
+- [!] `command/commands/selection/ToggleMeshComponentSelectionCommand.cpp`
+- [!] `command/commands/selection/ClearMeshSelectionCommand.h`
+- [!] `command/commands/selection/ClearMeshSelectionCommand.cpp`
+- [!] `command/commands/selection/SetSelectionGranularityCommand.h`
+- [!] `command/commands/selection/SetSelectionGranularityCommand.cpp`
+- [!] `command/commands/selection/SetSelectionScopeCommand.h`
+- [!] `command/commands/selection/SetSelectionScopeCommand.cpp`
+- [!] `command/commands/transform/NodeTransformSnapshot.h`
+- [!] `command/commands/transform/SetNodeTransformCommand.h`
+- [!] `command/commands/transform/SetNodeTransformCommand.cpp`
+- [!] `command/commands/transform/TranslateNodeCommand.h`
+- [!] `command/commands/transform/TranslateNodeCommand.cpp`
+- [!] `command/commands/transform/RotateNodeCommand.h`
+- [!] `command/commands/transform/RotateNodeCommand.cpp`
+- [!] `command/commands/transform/ScaleNodeCommand.h`
+- [!] `command/commands/transform/ScaleNodeCommand.cpp`
+- [!] `command/commands/transform/SetNodePivotCommand.h`
+- [!] `command/commands/transform/SetNodePivotCommand.cpp`
+- [!] `command/commands/mesh/MeshSnapshot.h`
+- [!] `command/commands/mesh/ApplyMeshOperationCommand.h`
+- [!] `command/commands/mesh/ApplyMeshOperationCommand.cpp`
+- [!] `command/commands/mesh/ReplaceMeshCommand.h`
+- [!] `command/commands/mesh/ReplaceMeshCommand.cpp`
+- [!] `command/commands/mesh/EditMeshSelectionCommand.h`
+- [!] `command/commands/mesh/EditMeshSelectionCommand.cpp`
+- [!] `command/commands/document/ClearSceneCommand.h`
+- [!] `command/commands/document/ClearSceneCommand.cpp`
+- [!] `command/commands/document/ImportMeshCommand.h`
+- [!] `command/commands/document/ImportMeshCommand.cpp`
 - [!] `history/HistoryConfig.h`
 - [!] `tools/ITool.h`
 - [!] `tools/ToolRegistry.h`
