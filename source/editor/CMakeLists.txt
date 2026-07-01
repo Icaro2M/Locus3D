@@ -32,7 +32,6 @@ target_sources(locus3d_editor
         "selection/ObjectSelection.h"
         "selection/SelectionController.cpp"
         "selection/SelectionController.h"
-        "selection/SelectionGranularity.h"
         "selection/SelectionScope.h"
         "selection/SelectionSerializer.h"
         "selection/SelectionSet.cpp"
@@ -65,7 +64,13 @@ target_sources(locus3d_editor
         "command/scene/SetNodeSelectableCommand.h"
         "command/scene/SetNodeSelectableCommand.cpp"
         "command/scene/SetNodeLockCommand.h"
-        "command/scene/SetNodeLockCommand.cpp")
+        "command/scene/SetNodeLockCommand.cpp"
+        "command/selection/ToggleObjectSelectionCommand.h"
+        "command/selection/ToggleObjectSelectionCommand.cpp" 
+        "command/selection/SetSelectionGranularityCommand.h"
+        "command/selection/SetSelectionGranularityCommand.cpp"
+        "command/selection/SetSelectionScopeCommand.h"
+        "command/selection/SetSelectionScopeCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

@@ -1,364 +1,365 @@
+/* *
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 #include "editor/Editor.h"
 #include "editor/command/CommandDispatcher.h"
-#include "editor/command/scene/CreateEmptyNodeCommand.h"
-#include "editor/command/scene/RenameNodeCommand.h"
-#include "editor/command/scene/SetNodeLockCommand.h"
-#include "editor/command/scene/SetNodeSelectableCommand.h"
-#include "editor/command/scene/SetNodeVisibilityCommand.h"
+#include "editor/command/CommandResult.h"
+#include "editor/command/selection/SetSelectionGranularityCommand.h"
+#include "editor/command/selection/SetSelectionScopeCommand.h"
+#include "editor/command/selection/ToggleObjectSelectionCommand.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/SceneNode.h"
+#include "editor/scene/SceneNodeId.h"
+#include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 
 #include <iostream>
 #include <memory>
+#include <string>
 
 namespace {
 
-	bool check(bool condition, const char* message)
-	{
-		if (condition) {
-			std::cout << "[OK] " << message << '\n';
-			return true;
-		}
+    using namespace locus::editor;
 
-		std::cout << "[FAIL] " << message << '\n';
-		return false;
-	}
+    struct TestStats {
+        int passed = 0;
+        int failed = 0;
+    };
 
-}
+    void expect(TestStats& stats, bool condition, const std::string& message)
+    {
+        if (condition) {
+            ++stats.passed;
+            std::cout << "[OK] " << message << '\n';
+        }
+        else {
+            ++stats.failed;
+            std::cout << "[FAIL] " << message << '\n';
+        }
+    }
+
+    void print_result(const std::string& label, const CommandResult& result)
+    {
+        std::cout << label << '\n';
+        std::cout << "  success: " << (result.success ? "true" : "false") << '\n';
+
+        if (!result.message.empty()) {
+            std::cout << "  message: " << result.message << '\n';
+        }
+    }
+
+    const char* granularity_name(SelectionGranularity granularity)
+    {
+        switch (granularity) {
+        case SelectionGranularity::Object:
+            return "Object";
+        case SelectionGranularity::Vertex:
+            return "Vertex";
+        case SelectionGranularity::Edge:
+            return "Edge";
+        case SelectionGranularity::Loop:
+            return "Loop";
+        case SelectionGranularity::Face:
+            return "Face";
+        }
+
+        return "Unknown";
+    }
+
+    const char* scope_name(SelectionScope scope)
+    {
+        switch (scope) {
+        case SelectionScope::Scene:
+            return "Scene";
+        case SelectionScope::ActiveMesh:
+            return "ActiveMesh";
+        }
+
+        return "Unknown";
+    }
+
+    void print_selection_mode(const Editor& editor)
+    {
+        std::cout << "  granularity: " << granularity_name(editor.selection().granularity()) << '\n';
+        std::cout << "  scope: " << scope_name(editor.selection().scope()) << '\n';
+    }
+
+    bool is_selected(const Editor& editor, SceneNodeId id)
+    {
+        return editor.selection().objects().contains(id);
+    }
+
+    std::size_t selected_count(const Editor& editor)
+    {
+        return editor.selection().objects().size();
+    }
+
+    SceneNodeId active_object(const Editor& editor)
+    {
+        return editor.selection().objects().active();
+    }
+
+} // namespace
 
 int main()
 {
-	using namespace locus::editor;
+    std::cout << "=== Locus3D Editor Selection Commands Smoke Test ===\n\n";
 
-	std::cout << "=== Locus3D Node Metadata Commands Smoke Test ===\n\n";
+    TestStats stats{};
 
-	Editor editor;
-	CommandDispatcher dispatcher(editor);
-	HistoryStack history{};
+    Editor editor{};
+    CommandDispatcher dispatcher(editor);
+    HistoryStack history{};
 
-	const Editor& constEditor = editor;
+    const SceneNodeId cube = editor.scene().create_empty("Cube");
+    const SceneNodeId sphere = editor.scene().create_empty("Sphere");
+    const SceneNodeId locked = editor.scene().create_empty("Locked");
 
-	if (!check(editor.dirty_flags() == EditorDirtyFlags::All, "editor comeca com dirty flags All")) {
-		return 1;
-	}
+    SceneNode* lockedNode = editor.scene().find_node(locked);
+    if (lockedNode) {
+        lockedNode->metadata().selectable = false;
+    }
 
-	editor.clear_dirty();
+    expect(stats, cube.is_valid(), "cube criado com id valido");
+    expect(stats, sphere.is_valid(), "sphere criado com id valido");
+    expect(stats, locked.is_valid(), "locked criado com id valido");
+    expect(stats, selected_count(editor) == 0u, "selecao comeca vazia");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "granularidade inicial eh Object");
+    expect(stats, editor.selection().scope() == SelectionScope::Scene, "scope inicial eh Scene");
+    expect(stats, history.empty(), "historico comeca vazio");
 
-	auto createNode = std::make_unique<CreateEmptyNodeCommand>("Original Name");
-	CreateEmptyNodeCommand* createNodePtr = createNode.get();
+    std::cout << "\n=== Toggle em objeto vazio deve selecionar ===\n";
 
-	const CommandResult createResult = history.execute(dispatcher, std::move(createNode));
+    CommandResult result = history.execute(
+        dispatcher,
+        std::make_unique<ToggleObjectSelectionCommand>(cube));
 
-	if (!check(createResult.success, "CreateEmptyNodeCommand executou com sucesso")) {
-		return 1;
-	}
+    print_result("toggle cube", result);
 
-	const SceneNodeId nodeId = createNodePtr->created_node();
+    expect(stats, result.success, "toggle cube executou com sucesso");
+    expect(stats, is_selected(editor, cube), "cube ficou selecionado");
+    expect(stats, selected_count(editor) == 1u, "selecao possui 1 objeto");
+    expect(stats, active_object(editor) == cube, "cube virou objeto ativo");
+    expect(stats, history.can_undo(), "historico permite undo apos primeiro toggle");
+    expect(stats, history.undo_size() == 1u, "historico possui 1 entrada de undo");
 
-	if (!check(nodeId.is_valid(), "node criado tem id valido")) {
-		return 1;
-	}
+    std::cout << "\n=== Toggle no mesmo objeto deve desselecionar ===\n";
 
-	const SceneNode* constNode = constEditor.scene().find_node(nodeId);
+    result = history.execute(
+        dispatcher,
+        std::make_unique<ToggleObjectSelectionCommand>(cube));
 
-	if (!check(constNode != nullptr, "node criado existe na cena")) {
-		return 1;
-	}
+    print_result("toggle cube novamente", result);
 
-	if (!check(constNode->metadata().name == "Original Name", "node comecou com nome original")) {
-		return 1;
-	}
+    expect(stats, result.success, "segundo toggle cube executou com sucesso");
+    expect(stats, !is_selected(editor, cube), "cube foi removido da selecao");
+    expect(stats, selected_count(editor) == 0u, "selecao ficou vazia");
+    expect(stats, history.undo_size() == 2u, "historico possui 2 entradas de undo");
 
-	if (!check(constNode->metadata().visible, "node comecou visible true")) {
-		return 1;
-	}
+    std::cout << "\n=== Undo do segundo toggle deve restaurar cube selecionado ===\n";
 
-	if (!check(constNode->metadata().selectable, "node comecou selectable true")) {
-		return 1;
-	}
+    result = history.undo(dispatcher);
 
-	if (!check(!constNode->metadata().locked, "node comecou locked false")) {
-		return 1;
-	}
+    print_result("undo segundo toggle", result);
 
-	editor.clear_dirty();
+    expect(stats, result.success, "undo do segundo toggle executou com sucesso");
+    expect(stats, is_selected(editor, cube), "cube voltou a ficar selecionado");
+    expect(stats, selected_count(editor) == 1u, "selecao voltou a ter 1 objeto");
+    expect(stats, active_object(editor) == cube, "cube voltou a ser objeto ativo");
+    expect(stats, history.undo_size() == 1u, "historico voltou para 1 undo");
+    expect(stats, history.redo_size() == 1u, "historico possui 1 redo");
 
-	const CommandResult renameResult = history.execute(
-		dispatcher,
-		std::make_unique<RenameNodeCommand>(nodeId, "Renamed Node"));
+    std::cout << "\n=== Undo do primeiro toggle deve restaurar selecao vazia ===\n";
 
-	if (!check(renameResult.success, "RenameNodeCommand executou com sucesso")) {
-		return 1;
-	}
+    result = history.undo(dispatcher);
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "rename alterou nome")) {
-		return 1;
-	}
+    print_result("undo primeiro toggle", result);
 
-	if (!check(history.undo_name() == "Rename Node", "undo_name aponta para Rename Node")) {
-		return 1;
-	}
+    expect(stats, result.success, "undo do primeiro toggle executou com sucesso");
+    expect(stats, !is_selected(editor, cube), "cube nao esta mais selecionado");
+    expect(stats, selected_count(editor) == 0u, "selecao voltou a ficar vazia");
+    expect(stats, history.undo_size() == 0u, "historico nao possui mais undo");
+    expect(stats, history.redo_size() == 2u, "historico possui 2 redos");
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "rename marcou Scene")) {
-		return 1;
-	}
+    std::cout << "\n=== Redo deve selecionar cube novamente ===\n";
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "rename marcou Render")) {
-		return 1;
-	}
+    result = history.redo(dispatcher);
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "rename marcou Picking")) {
-		return 1;
-	}
+    print_result("redo primeiro toggle", result);
 
-	editor.clear_dirty();
+    expect(stats, result.success, "redo do primeiro toggle executou com sucesso");
+    expect(stats, is_selected(editor, cube), "cube voltou a ficar selecionado pelo redo");
+    expect(stats, selected_count(editor) == 1u, "selecao possui 1 objeto apos redo");
+    expect(stats, history.undo_size() == 1u, "historico possui 1 undo apos redo");
+    expect(stats, history.redo_size() == 1u, "historico possui 1 redo restante");
 
-	const CommandResult undoRenameResult = history.undo(dispatcher);
+    std::cout << "\n=== Novo toggle deve limpar pilha de redo ===\n";
 
-	if (!check(undoRenameResult.success, "undo RenameNodeCommand executou com sucesso")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<ToggleObjectSelectionCommand>(sphere));
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Original Name", "undo rename restaurou nome original")) {
-		return 1;
-	}
+    print_result("toggle sphere", result);
 
-	editor.clear_dirty();
+    expect(stats, result.success, "toggle sphere executou com sucesso");
+    expect(stats, is_selected(editor, cube), "cube continua selecionado");
+    expect(stats, is_selected(editor, sphere), "sphere foi adicionada a selecao");
+    expect(stats, selected_count(editor) == 2u, "selecao possui 2 objetos");
+    expect(stats, active_object(editor) == sphere, "sphere virou objeto ativo");
+    expect(stats, history.redo_size() == 0u, "novo comando limpou a pilha de redo");
 
-	const CommandResult redoRenameResult = history.redo(dispatcher);
+    std::cout << "\n=== Toggle em objeto nao selecionavel deve falhar sem alterar selecao ===\n";
 
-	if (!check(redoRenameResult.success, "redo RenameNodeCommand executou com sucesso")) {
-		return 1;
-	}
+    const std::size_t countBeforeLockedToggle = selected_count(editor);
+    const bool cubeSelectedBeforeLockedToggle = is_selected(editor, cube);
+    const bool sphereSelectedBeforeLockedToggle = is_selected(editor, sphere);
+    const std::size_t undoBeforeLockedToggle = history.undo_size();
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "redo rename reaplicou novo nome")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<ToggleObjectSelectionCommand>(locked));
 
-	editor.clear_dirty();
+    print_result("toggle locked", result);
 
-	const CommandResult emptyRenameResult = history.execute(
-		dispatcher,
-		std::make_unique<RenameNodeCommand>(nodeId, ""));
+    expect(stats, !result.success, "toggle locked falhou como esperado");
+    expect(stats, selected_count(editor) == countBeforeLockedToggle, "falha nao alterou tamanho da selecao");
+    expect(stats, is_selected(editor, cube) == cubeSelectedBeforeLockedToggle, "falha manteve estado do cube");
+    expect(stats, is_selected(editor, sphere) == sphereSelectedBeforeLockedToggle, "falha manteve estado da sphere");
+    expect(stats, history.undo_size() == undoBeforeLockedToggle, "falha nao entrou no historico");
 
-	if (!check(!emptyRenameResult.success, "RenameNodeCommand rejeita nome vazio")) {
-		return 1;
-	}
+    std::cout << "\n=== SetSelectionGranularity: Object -> Vertex ===\n";
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "rename vazio nao alterou nome")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionGranularityCommand>(SelectionGranularity::Vertex));
 
-	if (!check(history.undo_name() == "Rename Node", "comando falho nao entrou no historico")) {
-		return 1;
-	}
+    print_result("set granularity Vertex", result);
+    print_selection_mode(editor);
 
-	editor.clear_dirty();
+    expect(stats, result.success, "set granularity Vertex executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Vertex, "granularidade virou Vertex");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope virou ActiveMesh ao entrar em componente");
 
-	const CommandResult setInvisibleResult = history.execute(
-		dispatcher,
-		std::make_unique<SetNodeVisibilityCommand>(nodeId, false));
+    std::cout << "\n=== SetSelectionGranularity: Vertex -> Face ===\n";
 
-	if (!check(setInvisibleResult.success, "SetNodeVisibilityCommand executou com sucesso")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionGranularityCommand>(SelectionGranularity::Face));
 
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().visible, "visibility alterou visible para false")) {
-		return 1;
-	}
+    print_result("set granularity Face", result);
+    print_selection_mode(editor);
 
-	if (!check(history.undo_name() == "Set Node Visibility", "undo_name aponta para Set Node Visibility")) {
-		return 1;
-	}
+    expect(stats, result.success, "set granularity Face executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Face, "granularidade virou Face");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope continuou ActiveMesh");
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "visibility marcou Selection")) {
-		return 1;
-	}
+    std::cout << "\n=== SetSelectionScope: ActiveMesh -> Scene deve forcar Object ===\n";
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "visibility marcou Render")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionScopeCommand>(SelectionScope::Scene));
 
-	editor.clear_dirty();
+    print_result("set scope Scene", result);
+    print_selection_mode(editor);
 
-	const CommandResult undoVisibilityResult = history.undo(dispatcher);
+    expect(stats, result.success, "set scope Scene executou com sucesso");
+    expect(stats, editor.selection().scope() == SelectionScope::Scene, "scope virou Scene");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "Scene forcou granularidade Object");
 
-	if (!check(undoVisibilityResult.success, "undo SetNodeVisibilityCommand executou com sucesso")) {
-		return 1;
-	}
+    std::cout << "\n=== Undo do SetSelectionScope deve restaurar Face + ActiveMesh ===\n";
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().visible, "undo visibility restaurou visible true")) {
-		return 1;
-	}
+    result = history.undo(dispatcher);
 
-	editor.clear_dirty();
+    print_result("undo set scope Scene", result);
+    print_selection_mode(editor);
 
-	const CommandResult redoVisibilityResult = history.redo(dispatcher);
+    expect(stats, result.success, "undo do set scope executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Face, "undo restaurou granularidade Face");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "undo restaurou scope ActiveMesh");
 
-	if (!check(redoVisibilityResult.success, "redo SetNodeVisibilityCommand executou com sucesso")) {
-		return 1;
-	}
+    std::cout << "\n=== Undo do SetSelectionGranularity Face deve restaurar Vertex + ActiveMesh ===\n";
 
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().visible, "redo visibility reaplicou visible false")) {
-		return 1;
-	}
+    result = history.undo(dispatcher);
 
-	editor.clear_dirty();
+    print_result("undo set granularity Face", result);
+    print_selection_mode(editor);
 
-	const CommandResult setNotSelectableResult = history.execute(
-		dispatcher,
-		std::make_unique<SetNodeSelectableCommand>(nodeId, false));
+    expect(stats, result.success, "undo do set granularity Face executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Vertex, "undo restaurou granularidade Vertex");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "undo manteve/restaurou scope ActiveMesh");
 
-	if (!check(setNotSelectableResult.success, "SetNodeSelectableCommand executou com sucesso")) {
-		return 1;
-	}
+    std::cout << "\n=== Undo do SetSelectionGranularity Vertex deve restaurar Object + Scene ===\n";
 
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().selectable, "selectable alterou selectable para false")) {
-		return 1;
-	}
+    result = history.undo(dispatcher);
 
-	if (!check(history.undo_name() == "Set Node Selectable", "undo_name aponta para Set Node Selectable")) {
-		return 1;
-	}
+    print_result("undo set granularity Vertex", result);
+    print_selection_mode(editor);
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "selectable marcou Selection")) {
-		return 1;
-	}
+    expect(stats, result.success, "undo do set granularity Vertex executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "undo restaurou granularidade Object");
+    expect(stats, editor.selection().scope() == SelectionScope::Scene, "undo restaurou scope Scene");
 
-	editor.clear_dirty();
+    std::cout << "\n=== Redo deve reaplicar Vertex + ActiveMesh ===\n";
 
-	const CommandResult undoSelectableResult = history.undo(dispatcher);
+    result = history.redo(dispatcher);
 
-	if (!check(undoSelectableResult.success, "undo SetNodeSelectableCommand executou com sucesso")) {
-		return 1;
-	}
+    print_result("redo set granularity Vertex", result);
+    print_selection_mode(editor);
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().selectable, "undo selectable restaurou selectable true")) {
-		return 1;
-	}
+    expect(stats, result.success, "redo do set granularity Vertex executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Vertex, "redo reaplicou granularidade Vertex");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "redo reaplicou scope ActiveMesh");
 
-	editor.clear_dirty();
+    std::cout << "\n=== SetSelectionGranularity para Object deve voltar para Scene ===\n";
 
-	const CommandResult redoSelectableResult = history.redo(dispatcher);
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionGranularityCommand>(SelectionGranularity::Object));
 
-	if (!check(redoSelectableResult.success, "redo SetNodeSelectableCommand executou com sucesso")) {
-		return 1;
-	}
+    print_result("set granularity Object", result);
+    print_selection_mode(editor);
 
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().selectable, "redo selectable reaplicou selectable false")) {
-		return 1;
-	}
+    expect(stats, result.success, "set granularity Object executou com sucesso");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "granularidade virou Object");
+    expect(stats, editor.selection().scope() == SelectionScope::Scene, "scope virou Scene ao voltar para Object");
 
-	editor.clear_dirty();
+    std::cout << "\n=== SetSelectionScope ActiveMesh a partir de Object ===\n";
 
-	const CommandResult setLockedResult = history.execute(
-		dispatcher,
-		std::make_unique<SetNodeLockCommand>(nodeId, true));
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionScopeCommand>(SelectionScope::ActiveMesh));
 
-	if (!check(setLockedResult.success, "SetNodeLockCommand executou com sucesso")) {
-		return 1;
-	}
+    print_result("set scope ActiveMesh", result);
+    print_selection_mode(editor);
 
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().locked, "lock alterou locked para true")) {
-		return 1;
-	}
+    expect(stats, result.success, "set scope ActiveMesh executou com sucesso");
+    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope virou ActiveMesh");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "granularidade continuou Object");
 
-	if (!check(history.undo_name() == "Set Node Lock", "undo_name aponta para Set Node Lock")) {
-		return 1;
-	}
+    std::cout << "\n=== SetSelectionScope Scene deve manter Object ===\n";
 
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "lock marcou Selection")) {
-		return 1;
-	}
+    result = history.execute(
+        dispatcher,
+        std::make_unique<SetSelectionScopeCommand>(SelectionScope::Scene));
 
-	editor.clear_dirty();
+    print_result("set scope Scene novamente", result);
+    print_selection_mode(editor);
 
-	const CommandResult undoLockResult = history.undo(dispatcher);
+    expect(stats, result.success, "set scope Scene novamente executou com sucesso");
+    expect(stats, editor.selection().scope() == SelectionScope::Scene, "scope voltou para Scene");
+    expect(stats, editor.selection().granularity() == SelectionGranularity::Object, "granularidade continuou Object");
 
-	if (!check(undoLockResult.success, "undo SetNodeLockCommand executou com sucesso")) {
-		return 1;
-	}
+    std::cout << "\n=== Resultado final ===\n";
+    std::cout << "passed: " << stats.passed << '\n';
+    std::cout << "failed: " << stats.failed << '\n';
 
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().locked, "undo lock restaurou locked false")) {
-		return 1;
-	}
+    if (stats.failed == 0) {
+        std::cout << "\n[OK] Editor selection commands smoke test passou.\n";
+        return 0;
+    }
 
-	editor.clear_dirty();
-
-	const CommandResult redoLockResult = history.redo(dispatcher);
-
-	if (!check(redoLockResult.success, "redo SetNodeLockCommand executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().locked, "redo lock reaplicou locked true")) {
-		return 1;
-	}
-
-	editor.clear_dirty();
-
-	if (!check(history.undo_size() == 5, "history tem 5 comandos undoable validos")) {
-		return 1;
-	}
-
-	const CommandResult undoLockAgainResult = history.undo(dispatcher);
-
-	if (!check(undoLockAgainResult.success, "undo final do lock executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(!constEditor.scene().find_node(nodeId)->metadata().locked, "undo final removeu lock")) {
-		return 1;
-	}
-
-	const CommandResult undoSelectableAgainResult = history.undo(dispatcher);
-
-	if (!check(undoSelectableAgainResult.success, "undo final do selectable executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().selectable, "undo final restaurou selectable")) {
-		return 1;
-	}
-
-	const CommandResult undoVisibilityAgainResult = history.undo(dispatcher);
-
-	if (!check(undoVisibilityAgainResult.success, "undo final da visibility executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().visible, "undo final restaurou visible")) {
-		return 1;
-	}
-
-	const CommandResult undoRenameAgainResult = history.undo(dispatcher);
-
-	if (!check(undoRenameAgainResult.success, "undo final do rename executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Original Name", "undo final restaurou nome original")) {
-		return 1;
-	}
-
-	const CommandResult undoCreateResult = history.undo(dispatcher);
-
-	if (!check(undoCreateResult.success, "undo final da criacao executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().tree().empty(), "undo final removeu node da cena")) {
-		return 1;
-	}
-
-	if (!check(!history.can_undo(), "history ficou sem undo no final")) {
-		return 1;
-	}
-
-	if (!check(history.can_redo(), "history tem redo no final")) {
-		return 1;
-	}
-
-	std::cout << "\n=== Node Metadata Commands Smoke Test PASSED ===\n";
-	return 0;
+    std::cout << "\n[FAIL] Editor selection commands smoke test encontrou problemas.\n";
+    return 1;
 }
