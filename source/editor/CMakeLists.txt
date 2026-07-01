@@ -57,7 +57,15 @@ target_sources(locus3d_editor
         "command/selection/SelectObjectCommand.h"
         "command/selection/SelectObjectCommand.cpp"
         "command/selection/ClearObjectSelectionCommand.h"
-        "command/selection/ClearObjectSelectionCommand.cpp")
+        "command/selection/ClearObjectSelectionCommand.cpp"
+        "command/scene/RenameNodeCommand.h"
+        "command/scene/RenameNodeCommand.cpp"
+        "command/scene/SetNodeVisibilityCommand.h"
+        "command/scene/SetNodeVisibilityCommand.cpp"
+        "command/scene/SetNodeSelectableCommand.h"
+        "command/scene/SetNodeSelectableCommand.cpp"
+        "command/scene/SetNodeLockCommand.h"
+        "command/scene/SetNodeLockCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

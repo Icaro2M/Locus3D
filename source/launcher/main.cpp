@@ -1,9 +1,10 @@
 #include "editor/Editor.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/command/scene/CreateEmptyNodeCommand.h"
-#include "editor/command/scene/CreateMeshNodeCommand.h"
-#include "editor/command/selection/ClearObjectSelectionCommand.h"
-#include "editor/command/selection/SelectObjectCommand.h"
+#include "editor/command/scene/RenameNodeCommand.h"
+#include "editor/command/scene/SetNodeLockCommand.h"
+#include "editor/command/scene/SetNodeSelectableCommand.h"
+#include "editor/command/scene/SetNodeVisibilityCommand.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/SceneNode.h"
 
@@ -29,7 +30,7 @@ int main()
 {
 	using namespace locus::editor;
 
-	std::cout << "=== Locus3D Concrete Editor Commands Smoke Test ===\n\n";
+	std::cout << "=== Locus3D Node Metadata Commands Smoke Test ===\n\n";
 
 	Editor editor;
 	CommandDispatcher dispatcher(editor);
@@ -43,358 +44,321 @@ int main()
 
 	editor.clear_dirty();
 
-	if (!check(constEditor.scene().tree().empty(), "cena comeca vazia")) {
+	auto createNode = std::make_unique<CreateEmptyNodeCommand>("Original Name");
+	CreateEmptyNodeCommand* createNodePtr = createNode.get();
+
+	const CommandResult createResult = history.execute(dispatcher, std::move(createNode));
+
+	if (!check(createResult.success, "CreateEmptyNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(history.empty(), "history comeca vazio")) {
+	const SceneNodeId nodeId = createNodePtr->created_node();
+
+	if (!check(nodeId.is_valid(), "node criado tem id valido")) {
 		return 1;
 	}
 
-	auto createEmpty = std::make_unique<CreateEmptyNodeCommand>("Empty A");
-	CreateEmptyNodeCommand* createEmptyPtr = createEmpty.get();
+	const SceneNode* constNode = constEditor.scene().find_node(nodeId);
 
-	const CommandResult createEmptyResult = history.execute(dispatcher, std::move(createEmpty));
-
-	if (!check(createEmptyResult.success, "CreateEmptyNodeCommand executou com sucesso")) {
+	if (!check(constNode != nullptr, "node criado existe na cena")) {
 		return 1;
 	}
 
-	const SceneNodeId emptyId = createEmptyPtr->created_node();
-
-	if (!check(emptyId.is_valid(), "CreateEmptyNodeCommand guardou id valido")) {
+	if (!check(constNode->metadata().name == "Original Name", "node comecou com nome original")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().tree().size() == 1, "cena tem 1 node apos criar empty")) {
+	if (!check(constNode->metadata().visible, "node comecou visible true")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().find_node(emptyId) != nullptr, "empty criado existe na cena")) {
+	if (!check(constNode->metadata().selectable, "node comecou selectable true")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().find_node(emptyId)->metadata().name == "Empty A", "empty criado tem nome esperado")) {
-		return 1;
-	}
-
-	if (!check(history.undo_size() == 1, "history guardou CreateEmptyNodeCommand")) {
-		return 1;
-	}
-
-	if (!check(history.undo_name() == "Create Empty Node", "undo_name aponta para Create Empty Node")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "criar empty marcou Scene")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "criar empty marcou Render")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "criar empty marcou Picking")) {
+	if (!check(!constNode->metadata().locked, "node comecou locked false")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoEmptyResult = history.undo(dispatcher);
+	const CommandResult renameResult = history.execute(
+		dispatcher,
+		std::make_unique<RenameNodeCommand>(nodeId, "Renamed Node"));
 
-	if (!check(undoEmptyResult.success, "undo CreateEmptyNodeCommand executou com sucesso")) {
+	if (!check(renameResult.success, "RenameNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().tree().empty(), "undo removeu empty da cena")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "rename alterou nome")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().find_node(emptyId) == nullptr, "id antigo do empty nao existe apos undo")) {
+	if (!check(history.undo_name() == "Rename Node", "undo_name aponta para Rename Node")) {
 		return 1;
 	}
 
-	if (!check(history.undo_size() == 0, "undo_size 0 apos undo do empty")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "rename marcou Scene")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 1, "redo_size 1 apos undo do empty")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "rename marcou Render")) {
 		return 1;
 	}
 
-	if (!check(history.redo_name() == "Create Empty Node", "redo_name aponta para Create Empty Node")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Scene), "undo empty marcou Scene")) {
-		return 1;
-	}
-
-	editor.clear_dirty();
-
-	const CommandResult redoEmptyResult = history.redo(dispatcher);
-
-	if (!check(redoEmptyResult.success, "redo CreateEmptyNodeCommand executou com sucesso")) {
-		return 1;
-	}
-
-	const SceneNodeId redoneEmptyId = createEmptyPtr->created_node();
-
-	if (!check(redoneEmptyId.is_valid(), "redo guardou novo id valido")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().tree().size() == 1, "redo recriou empty na cena")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(redoneEmptyId) != nullptr, "empty recriado existe na cena")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(redoneEmptyId)->metadata().name == "Empty A", "empty recriado manteve nome")) {
-		return 1;
-	}
-
-	if (!check(history.undo_size() == 1, "undo_size 1 apos redo do empty")) {
-		return 1;
-	}
-
-	if (!check(history.redo_size() == 0, "redo_size 0 apos redo do empty")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Picking), "rename marcou Picking")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	auto createMesh = std::make_unique<CreateMeshNodeCommand>("Mesh A");
-	CreateMeshNodeCommand* createMeshPtr = createMesh.get();
+	const CommandResult undoRenameResult = history.undo(dispatcher);
 
-	const CommandResult createMeshResult = history.execute(dispatcher, std::move(createMesh));
-
-	if (!check(createMeshResult.success, "CreateMeshNodeCommand executou com sucesso")) {
+	if (!check(undoRenameResult.success, "undo RenameNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	const SceneNodeId meshId = createMeshPtr->created_node();
-
-	if (!check(meshId.is_valid(), "CreateMeshNodeCommand guardou id valido")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().tree().size() == 2, "cena tem 2 nodes apos criar mesh")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_mesh(meshId) != nullptr, "mesh criado existe como MeshNode")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_node(meshId)->metadata().name == "Mesh A", "mesh criado tem nome esperado")) {
-		return 1;
-	}
-
-	if (!check(history.undo_size() == 2, "history guardou dois comandos de criacao")) {
-		return 1;
-	}
-
-	if (!check(history.undo_name() == "Create Mesh Node", "undo_name aponta para Create Mesh Node")) {
-		return 1;
-	}
-
-	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Mesh), "criar mesh marcou Mesh")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Original Name", "undo rename restaurou nome original")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	auto selectEmpty = std::make_unique<SelectObjectCommand>(redoneEmptyId);
+	const CommandResult redoRenameResult = history.redo(dispatcher);
 
-	const CommandResult selectEmptyResult = history.execute(dispatcher, std::move(selectEmpty));
-
-	if (!check(selectEmptyResult.success, "SelectObjectCommand selecionou empty")) {
+	if (!check(redoRenameResult.success, "redo RenameNodeCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "empty esta selecionado")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().active() == redoneEmptyId, "empty virou objeto ativo")) {
-		return 1;
-	}
-
-	if (!check(history.undo_size() == 3, "history guardou comando de selecao do empty")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "redo rename reaplicou novo nome")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	auto selectMesh = std::make_unique<SelectObjectCommand>(meshId);
+	const CommandResult emptyRenameResult = history.execute(
+		dispatcher,
+		std::make_unique<RenameNodeCommand>(nodeId, ""));
 
-	const CommandResult selectMeshResult = history.execute(dispatcher, std::move(selectMesh));
-
-	if (!check(selectMeshResult.success, "SelectObjectCommand selecionou mesh")) {
+	if (!check(!emptyRenameResult.success, "RenameNodeCommand rejeita nome vazio")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().contains(meshId), "mesh esta selecionado")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Renamed Node", "rename vazio nao alterou nome")) {
 		return 1;
 	}
 
-	if (!check(!constEditor.selection().objects().contains(redoneEmptyId), "selecionar mesh substituiu selecao anterior")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().active() == meshId, "mesh virou objeto ativo")) {
-		return 1;
-	}
-
-	if (!check(history.undo_name() == "Select Object", "undo_name aponta para Select Object")) {
+	if (!check(history.undo_name() == "Rename Node", "comando falho nao entrou no historico")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoSelectMeshResult = history.undo(dispatcher);
+	const CommandResult setInvisibleResult = history.execute(
+		dispatcher,
+		std::make_unique<SetNodeVisibilityCommand>(nodeId, false));
 
-	if (!check(undoSelectMeshResult.success, "undo SelectObjectCommand do mesh executou com sucesso")) {
+	if (!check(setInvisibleResult.success, "SetNodeVisibilityCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "undo da selecao restaurou empty selecionado")) {
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().visible, "visibility alterou visible para false")) {
 		return 1;
 	}
 
-	if (!check(!constEditor.selection().objects().contains(meshId), "undo da selecao removeu mesh da selecao")) {
+	if (!check(history.undo_name() == "Set Node Visibility", "undo_name aponta para Set Node Visibility")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().active() == redoneEmptyId, "undo da selecao restaurou active empty")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "visibility marcou Selection")) {
 		return 1;
 	}
 
-	if (!check(history.redo_size() == 1, "redo_size 1 apos undo da selecao")) {
-		return 1;
-	}
-
-	editor.clear_dirty();
-
-	const CommandResult redoSelectMeshResult = history.redo(dispatcher);
-
-	if (!check(redoSelectMeshResult.success, "redo SelectObjectCommand do mesh executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().contains(meshId), "redo da selecao selecionou mesh novamente")) {
-		return 1;
-	}
-
-	if (!check(!constEditor.selection().objects().contains(redoneEmptyId), "redo da selecao removeu empty novamente")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().active() == meshId, "redo da selecao restaurou active mesh")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Render), "visibility marcou Render")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	auto clearSelection = std::make_unique<ClearObjectSelectionCommand>();
+	const CommandResult undoVisibilityResult = history.undo(dispatcher);
 
-	const CommandResult clearSelectionResult = history.execute(dispatcher, std::move(clearSelection));
-
-	if (!check(clearSelectionResult.success, "ClearObjectSelectionCommand executou com sucesso")) {
+	if (!check(undoVisibilityResult.success, "undo SetNodeVisibilityCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().empty(), "clear selection deixou selecao vazia")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().active().is_invalid(), "clear selection limpou active object")) {
-		return 1;
-	}
-
-	if (!check(history.undo_name() == "Clear Object Selection", "undo_name aponta para Clear Object Selection")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().visible, "undo visibility restaurou visible true")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoClearSelectionResult = history.undo(dispatcher);
+	const CommandResult redoVisibilityResult = history.redo(dispatcher);
 
-	if (!check(undoClearSelectionResult.success, "undo ClearObjectSelectionCommand executou com sucesso")) {
+	if (!check(redoVisibilityResult.success, "redo SetNodeVisibilityCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().contains(meshId), "undo clear restaurou mesh selecionado")) {
-		return 1;
-	}
-
-	if (!check(constEditor.selection().objects().active() == meshId, "undo clear restaurou active mesh")) {
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().visible, "redo visibility reaplicou visible false")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoSelectMeshAgainResult = history.undo(dispatcher);
+	const CommandResult setNotSelectableResult = history.execute(
+		dispatcher,
+		std::make_unique<SetNodeSelectableCommand>(nodeId, false));
 
-	if (!check(undoSelectMeshAgainResult.success, "undo SelectObjectCommand apos clear executou com sucesso")) {
+	if (!check(setNotSelectableResult.success, "SetNodeSelectableCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().contains(redoneEmptyId), "undo select mesh restaurou empty novamente")) {
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().selectable, "selectable alterou selectable para false")) {
 		return 1;
 	}
 
-	editor.clear_dirty();
-
-	const CommandResult undoSelectEmptyResult = history.undo(dispatcher);
-
-	if (!check(undoSelectEmptyResult.success, "undo SelectObjectCommand do empty executou com sucesso")) {
+	if (!check(history.undo_name() == "Set Node Selectable", "undo_name aponta para Set Node Selectable")) {
 		return 1;
 	}
 
-	if (!check(constEditor.selection().objects().empty(), "undo select empty restaurou selecao inicial vazia")) {
-		return 1;
-	}
-
-	editor.clear_dirty();
-
-	const CommandResult undoMeshResult = history.undo(dispatcher);
-
-	if (!check(undoMeshResult.success, "undo CreateMeshNodeCommand executou com sucesso")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().find_mesh(meshId) == nullptr, "undo mesh removeu MeshNode")) {
-		return 1;
-	}
-
-	if (!check(constEditor.scene().tree().size() == 1, "cena ficou com 1 node apos undo mesh")) {
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "selectable marcou Selection")) {
 		return 1;
 	}
 
 	editor.clear_dirty();
 
-	const CommandResult undoEmptyAgainResult = history.undo(dispatcher);
+	const CommandResult undoSelectableResult = history.undo(dispatcher);
 
-	if (!check(undoEmptyAgainResult.success, "undo CreateEmptyNodeCommand final executou com sucesso")) {
+	if (!check(undoSelectableResult.success, "undo SetNodeSelectableCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(constEditor.scene().tree().empty(), "cena ficou vazia apos desfazer tudo")) {
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().selectable, "undo selectable restaurou selectable true")) {
 		return 1;
 	}
 
-	if (!check(!history.can_undo(), "history ficou sem undo apos desfazer tudo")) {
+	editor.clear_dirty();
+
+	const CommandResult redoSelectableResult = history.redo(dispatcher);
+
+	if (!check(redoSelectableResult.success, "redo SetNodeSelectableCommand executou com sucesso")) {
 		return 1;
 	}
 
-	if (!check(history.can_redo(), "history tem redo apos desfazer tudo")) {
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().selectable, "redo selectable reaplicou selectable false")) {
 		return 1;
 	}
 
-	std::cout << "\n=== Concrete Editor Commands Smoke Test PASSED ===\n";
+	editor.clear_dirty();
+
+	const CommandResult setLockedResult = history.execute(
+		dispatcher,
+		std::make_unique<SetNodeLockCommand>(nodeId, true));
+
+	if (!check(setLockedResult.success, "SetNodeLockCommand executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().locked, "lock alterou locked para true")) {
+		return 1;
+	}
+
+	if (!check(history.undo_name() == "Set Node Lock", "undo_name aponta para Set Node Lock")) {
+		return 1;
+	}
+
+	if (!check(has_flag(editor.dirty_flags(), EditorDirtyFlags::Selection), "lock marcou Selection")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	const CommandResult undoLockResult = history.undo(dispatcher);
+
+	if (!check(undoLockResult.success, "undo SetNodeLockCommand executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().locked, "undo lock restaurou locked false")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	const CommandResult redoLockResult = history.redo(dispatcher);
+
+	if (!check(redoLockResult.success, "redo SetNodeLockCommand executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().locked, "redo lock reaplicou locked true")) {
+		return 1;
+	}
+
+	editor.clear_dirty();
+
+	if (!check(history.undo_size() == 5, "history tem 5 comandos undoable validos")) {
+		return 1;
+	}
+
+	const CommandResult undoLockAgainResult = history.undo(dispatcher);
+
+	if (!check(undoLockAgainResult.success, "undo final do lock executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(!constEditor.scene().find_node(nodeId)->metadata().locked, "undo final removeu lock")) {
+		return 1;
+	}
+
+	const CommandResult undoSelectableAgainResult = history.undo(dispatcher);
+
+	if (!check(undoSelectableAgainResult.success, "undo final do selectable executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().selectable, "undo final restaurou selectable")) {
+		return 1;
+	}
+
+	const CommandResult undoVisibilityAgainResult = history.undo(dispatcher);
+
+	if (!check(undoVisibilityAgainResult.success, "undo final da visibility executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().visible, "undo final restaurou visible")) {
+		return 1;
+	}
+
+	const CommandResult undoRenameAgainResult = history.undo(dispatcher);
+
+	if (!check(undoRenameAgainResult.success, "undo final do rename executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().find_node(nodeId)->metadata().name == "Original Name", "undo final restaurou nome original")) {
+		return 1;
+	}
+
+	const CommandResult undoCreateResult = history.undo(dispatcher);
+
+	if (!check(undoCreateResult.success, "undo final da criacao executou com sucesso")) {
+		return 1;
+	}
+
+	if (!check(constEditor.scene().tree().empty(), "undo final removeu node da cena")) {
+		return 1;
+	}
+
+	if (!check(!history.can_undo(), "history ficou sem undo no final")) {
+		return 1;
+	}
+
+	if (!check(history.can_redo(), "history tem redo no final")) {
+		return 1;
+	}
+
+	std::cout << "\n=== Node Metadata Commands Smoke Test PASSED ===\n";
 	return 0;
 }
