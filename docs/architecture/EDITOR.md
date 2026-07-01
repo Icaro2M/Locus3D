@@ -117,14 +117,16 @@ source\editor
 |   |       DeleteNodeCommand.cpp [!]
 |   |       DuplicateNodeCommand.h [!]
 |   |       DuplicateNodeCommand.cpp [!]
-|   |       RenameNodeCommand.h [!]
-|   |       RenameNodeCommand.cpp [!]
+|   |       RenameNodeCommand.h
+|   |       RenameNodeCommand.cpp
 |   |       ReparentNodeCommand.h [!]
 |   |       ReparentNodeCommand.cpp [!]
-|   |       SetNodeVisibilityCommand.h [!]
-|   |       SetNodeVisibilityCommand.cpp [!]
-|   |       SetNodeLockCommand.h [!]
-|   |       SetNodeLockCommand.cpp [!]
+|   |       SetNodeVisibilityCommand.h
+|   |       SetNodeVisibilityCommand.cpp
+|   |       SetNodeLockCommand.h
+|   |       SetNodeLockCommand.cpp
+|   |       SetNodeSelectableCommand.h
+|   |       SetNodeSelectableCommand.cpp
 |   |
 |   +---selection
 |   |       ObjectSelectionSnapshot.h
@@ -272,14 +274,8 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `command/scene/DeleteNodeCommand.cpp`
 - [!] `command/scene/DuplicateNodeCommand.h`
 - [!] `command/scene/DuplicateNodeCommand.cpp`
-- [!] `command/scene/RenameNodeCommand.h`
-- [!] `command/scene/RenameNodeCommand.cpp`
 - [!] `command/scene/ReparentNodeCommand.h`
 - [!] `command/scene/ReparentNodeCommand.cpp`
-- [!] `command/scene/SetNodeVisibilityCommand.h`
-- [!] `command/scene/SetNodeVisibilityCommand.cpp`
-- [!] `command/scene/SetNodeLockCommand.h`
-- [!] `command/scene/SetNodeLockCommand.cpp`
 - [!] `command/selection/MeshSelectionSnapshot.h`
 - [!] `command/selection/ToggleObjectSelectionCommand.h`
 - [!] `command/selection/ToggleObjectSelectionCommand.cpp`
