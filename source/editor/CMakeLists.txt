@@ -73,7 +73,11 @@ target_sources(locus3d_editor
         "command/selection/SetSelectionScopeCommand.cpp"
         "command/selection/MeshSelectionSnapshot.h"
         "command/selection/ClearMeshSelectionCommand.h"
-        "command/selection/ClearMeshSelectionCommand.cpp")
+        "command/selection/ClearMeshSelectionCommand.cpp"
+        "command/selection/SelectMeshComponentCommand.h"
+        "command/selection/SelectMeshComponentCommand.cpp"
+        "command/selection/ToggleMeshComponentSelectionCommand.h"
+        "command/selection/ToggleMeshComponentSelectionCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

@@ -130,23 +130,23 @@ source\editor
 |   |
 |   +---selection
 |   |       ObjectSelectionSnapshot.h
-|   |       MeshSelectionSnapshot.h [!]
+|   |       MeshSelectionSnapshot.h
 |   |       SelectObjectCommand.h
 |   |       SelectObjectCommand.cpp
-|   |       ToggleObjectSelectionCommand.h [!]
-|   |       ToggleObjectSelectionCommand.cpp [!]
+|   |       ToggleObjectSelectionCommand.h
+|   |       ToggleObjectSelectionCommand.cpp
 |   |       ClearObjectSelectionCommand.h
 |   |       ClearObjectSelectionCommand.cpp
-|   |       SelectMeshComponentCommand.h [!]
-|   |       SelectMeshComponentCommand.cpp [!]
-|   |       ToggleMeshComponentSelectionCommand.h [!]
-|   |       ToggleMeshComponentSelectionCommand.cpp [!]
-|   |       ClearMeshSelectionCommand.h [!]
-|   |       ClearMeshSelectionCommand.cpp [!]
-|   |       SetSelectionGranularityCommand.h [!]
-|   |       SetSelectionGranularityCommand.cpp [!]
-|   |       SetSelectionScopeCommand.h [!]
-|   |       SetSelectionScopeCommand.cpp [!]
+|   |       SelectMeshComponentCommand.h
+|   |       SelectMeshComponentCommand.cpp
+|   |       ToggleMeshComponentSelectionCommand.h
+|   |       ToggleMeshComponentSelectionCommand.cpp
+|   |       ClearMeshSelectionCommand.h
+|   |       ClearMeshSelectionCommand.cpp
+|   |       SetSelectionGranularityCommand.h
+|   |       SetSelectionGranularityCommand.cpp
+|   |       SetSelectionScopeCommand.h
+|   |       SetSelectionScopeCommand.cpp
 |   |
 |   +---transform [!]
 |   |       NodeTransformSnapshot.h [!]
@@ -276,19 +276,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `command/scene/DuplicateNodeCommand.cpp`
 - [!] `command/scene/ReparentNodeCommand.h`
 - [!] `command/scene/ReparentNodeCommand.cpp`
-- [!] `command/selection/MeshSelectionSnapshot.h`
-- [!] `command/selection/ToggleObjectSelectionCommand.h`
-- [!] `command/selection/ToggleObjectSelectionCommand.cpp`
-- [!] `command/selection/SelectMeshComponentCommand.h`
-- [!] `command/selection/SelectMeshComponentCommand.cpp`
-- [!] `command/selection/ToggleMeshComponentSelectionCommand.h`
-- [!] `command/selection/ToggleMeshComponentSelectionCommand.cpp`
-- [!] `command/selection/ClearMeshSelectionCommand.h`
-- [!] `command/selection/ClearMeshSelectionCommand.cpp`
-- [!] `command/selection/SetSelectionGranularityCommand.h`
-- [!] `command/selection/SetSelectionGranularityCommand.cpp`
-- [!] `command/selection/SetSelectionScopeCommand.h`
-- [!] `command/selection/SetSelectionScopeCommand.cpp`
 - [!] `command/transform/NodeTransformSnapshot.h`
 - [!] `command/transform/SetNodeTransformCommand.h`
 - [!] `command/transform/SetNodeTransformCommand.cpp`
