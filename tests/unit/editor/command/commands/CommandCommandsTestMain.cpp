@@ -25,6 +25,7 @@ int main()
 
     const TestCase tests[] = {
         { "CreateNodeCommands", run_create_node_command_tests },
+        { "NodeMetadataCommands", run_node_metadata_command_tests },
         { "ObjectSelectionCommands", run_object_selection_command_tests },
     };
 

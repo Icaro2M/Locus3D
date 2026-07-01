@@ -15,6 +15,7 @@
 namespace locus::tests {
 
 [[nodiscard]] TestResult run_create_node_command_tests();
+[[nodiscard]] TestResult run_node_metadata_command_tests();
 [[nodiscard]] TestResult run_object_selection_command_tests();
 
 } // namespace locus::tests
