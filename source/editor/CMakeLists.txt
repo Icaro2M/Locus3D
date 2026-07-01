@@ -70,7 +70,10 @@ target_sources(locus3d_editor
         "command/selection/SetSelectionGranularityCommand.h"
         "command/selection/SetSelectionGranularityCommand.cpp"
         "command/selection/SetSelectionScopeCommand.h"
-        "command/selection/SetSelectionScopeCommand.cpp")
+        "command/selection/SetSelectionScopeCommand.cpp"
+        "command/selection/MeshSelectionSnapshot.h"
+        "command/selection/ClearMeshSelectionCommand.h"
+        "command/selection/ClearMeshSelectionCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
