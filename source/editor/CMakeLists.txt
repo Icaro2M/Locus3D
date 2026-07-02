@@ -77,7 +77,13 @@ target_sources(locus3d_editor
         "command/selection/SelectMeshComponentCommand.h"
         "command/selection/SelectMeshComponentCommand.cpp"
         "command/selection/ToggleMeshComponentSelectionCommand.h"
-        "command/selection/ToggleMeshComponentSelectionCommand.cpp")
+        "command/selection/ToggleMeshComponentSelectionCommand.cpp"
+        "command/scene/ReparentNodeCommand.h"
+        "command/scene/ReparentNodeCommand.cpp"
+        "command/scene/DeleteNodeCommand.h"
+        "command/scene/DeleteNodeCommand.cpp"
+        "command/scene/DuplicateNodeCommand.h"
+        "command/scene/DuplicateNodeCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

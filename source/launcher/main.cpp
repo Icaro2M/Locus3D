@@ -1,426 +1,341 @@
-/* *
+/*
  * SPDX-FileCopyrightText: 2026 Icaro2M
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include "editor/Editor.h"
 #include "editor/command/CommandDispatcher.h"
-#include "editor/command/CommandResult.h"
-#include "editor/command/selection/ClearMeshSelectionCommand.h"
-#include "editor/command/selection/SelectMeshComponentCommand.h"
-#include "editor/command/selection/ToggleMeshComponentSelectionCommand.h"
-#include "editor/history/HistoryStack.h"
+#include "editor/command/scene/DeleteNodeCommand.h"
+#include "editor/command/scene/DuplicateNodeCommand.h"
+#include "editor/command/scene/ReparentNodeCommand.h"
+#include "editor/scene/SceneNode.h"
 #include "editor/scene/SceneNodeId.h"
-#include "editor/selection/SelectionGranularity.h"
-#include "editor/selection/SelectionScope.h"
-#include "kernel/geometry/mesh/LEMHandles.h"
 
+#include <cstdlib>
 #include <iostream>
-#include <memory>
 #include <string>
+#include <string_view>
 
 namespace {
 
     using namespace locus::editor;
-    namespace geometry = locus::kernel::geometry;
 
-    struct TestStats {
-        int passed = 0;
-        int failed = 0;
-    };
+    int g_failures = 0;
 
-    void expect(TestStats& stats, bool condition, const std::string& message)
-    {
+    void expect(bool condition, std::string_view message) {
         if (condition) {
-            ++stats.passed;
             std::cout << "[OK] " << message << '\n';
+            return;
         }
-        else {
-            ++stats.failed;
-            std::cout << "[FAIL] " << message << '\n';
-        }
+
+        std::cout << "[FAIL] " << message << '\n';
+        ++g_failures;
     }
 
-    void print_result(const std::string& label, const CommandResult& result)
-    {
+    void print_result(std::string_view label, const CommandResult& result) {
         std::cout << label << '\n';
         std::cout << "  success: " << (result.success ? "true" : "false") << '\n';
+        std::cout << "  message: " << result.message << '\n';
+    }
 
-        if (!result.message.empty()) {
-            std::cout << "  message: " << result.message << '\n';
+    std::string node_name(const Editor& editor, SceneNodeId id) {
+        const SceneNode* node = editor.scene().find_node(id);
+        if (!node) {
+            return "<missing>";
+        }
+
+        return node->metadata().name;
+    }
+
+    SceneNodeId find_child_by_name(const Editor& editor, SceneNodeId parent, std::string_view name) {
+        const SceneNode* parentNode = editor.scene().find_node(parent);
+        if (!parentNode) {
+            return {};
+        }
+
+        for (SceneNodeId child : parentNode->children()) {
+            const SceneNode* childNode = editor.scene().find_node(child);
+            if (childNode && childNode->metadata().name == name) {
+                return child;
+            }
+        }
+
+        return {};
+    }
+
+    void print_scene_node_recursive(const Editor& editor, SceneNodeId id, int depth = 0) {
+        const SceneNode* node = editor.scene().find_node(id);
+        if (!node) {
+            return;
+        }
+
+        for (int i = 0; i < depth; ++i) {
+            std::cout << "  ";
+        }
+
+        std::cout
+            << "- id=" << node->id().value
+            << " name=\"" << node->metadata().name << "\""
+            << " parent=";
+
+        if (node->parent().is_valid()) {
+            std::cout << node->parent().value;
+        }
+        else {
+            std::cout << "root";
+        }
+
+        std::cout << " children=" << node->children().size() << '\n';
+
+        for (SceneNodeId child : node->children()) {
+            print_scene_node_recursive(editor, child, depth + 1);
         }
     }
 
-    const char* granularity_name(SelectionGranularity granularity)
-    {
-        switch (granularity) {
-        case SelectionGranularity::Object:
-            return "Object";
-        case SelectionGranularity::Vertex:
-            return "Vertex";
-        case SelectionGranularity::Edge:
-            return "Edge";
-        case SelectionGranularity::Loop:
-            return "Loop";
-        case SelectionGranularity::Face:
-            return "Face";
+    void print_scene(const Editor& editor) {
+        std::cout << "\nScene tree:\n";
+
+        const auto& roots = editor.scene().tree().roots();
+        if (roots.empty()) {
+            std::cout << "  <empty>\n";
+            return;
         }
 
-        return "Unknown";
-    }
-
-    const char* scope_name(SelectionScope scope)
-    {
-        switch (scope) {
-        case SelectionScope::Scene:
-            return "Scene";
-        case SelectionScope::ActiveMesh:
-            return "ActiveMesh";
+        for (SceneNodeId root : roots) {
+            print_scene_node_recursive(editor, root, 1);
         }
-
-        return "Unknown";
     }
 
-    std::size_t mesh_selection_count(const Editor& editor)
-    {
-        return editor.selection().mesh().vertices().size()
-            + editor.selection().mesh().edges().size()
-            + editor.selection().mesh().loops().size()
-            + editor.selection().mesh().faces().size();
+    void test_reparent_command() {
+        std::cout << "\n=== ReparentNodeCommand smoke test ===\n";
+
+        Editor editor;
+        CommandDispatcher dispatcher(editor);
+
+        const SceneNodeId rootA = editor.scene().create_empty("Root A");
+        const SceneNodeId rootB = editor.scene().create_empty("Root B");
+        const SceneNodeId child = editor.scene().create_mesh("Child Mesh");
+
+        expect(editor.scene().tree().size() == 3, "cena inicial tem 3 nos");
+        expect(editor.scene().find_node(child)->parent().is_invalid(), "child comeca como root");
+
+        ReparentNodeCommand reparent(child, rootA);
+        CommandResult result = dispatcher.execute(reparent);
+        print_result("reparent child -> rootA", result);
+
+        expect(result.success, "reparent executou com sucesso");
+        expect(editor.scene().find_node(child)->parent() == rootA, "child virou filho de rootA");
+        expect(editor.scene().find_node(rootA)->children().size() == 1, "rootA recebeu 1 filho");
+
+        result = dispatcher.undo(reparent);
+        print_result("undo reparent", result);
+
+        expect(result.success, "undo do reparent executou com sucesso");
+        expect(editor.scene().find_node(child)->parent().is_invalid(), "child voltou para root");
+        expect(editor.scene().find_node(rootA)->children().empty(), "rootA voltou a ficar sem filhos");
+
+        result = dispatcher.redo(reparent);
+        print_result("redo reparent", result);
+
+        expect(result.success, "redo do reparent executou com sucesso");
+        expect(editor.scene().find_node(child)->parent() == rootA, "child voltou para rootA");
+
+        ReparentNodeCommand makeRoot(child, {});
+        result = dispatcher.execute(makeRoot);
+        print_result("reparent child -> root", result);
+
+        expect(result.success, "reparent para root executou com sucesso");
+        expect(editor.scene().find_node(child)->parent().is_invalid(), "child virou root novamente");
+
+        ReparentNodeCommand invalidSelf(rootB, rootB);
+        result = dispatcher.execute(invalidSelf);
+        print_result("falha self parent", result);
+
+        expect(!result.success, "self parent falhou corretamente");
+
+        ReparentNodeCommand parentAUnderChild(rootA, child);
+        result = dispatcher.execute(parentAUnderChild);
+        print_result("rootA -> child", result);
+
+        expect(result.success, "rootA pode virar filho de child quando nao ha ciclo");
+        expect(editor.scene().find_node(rootA)->parent() == child, "rootA virou filho de child");
+
+        ReparentNodeCommand cycle(child, rootA);
+        result = dispatcher.execute(cycle);
+        print_result("falha ciclo child -> rootA descendente", result);
+
+        expect(!result.success, "reparent que criaria ciclo falhou corretamente");
+
+        print_scene(editor);
     }
 
-    void print_mesh_selection(const Editor& editor)
-    {
-        const auto& mesh = editor.selection().mesh();
+    void test_delete_command() {
+        std::cout << "\n=== DeleteNodeCommand smoke test ===\n";
 
-        std::cout << "  active mesh valid: "
-            << (mesh.active_mesh().is_valid() ? "true" : "false") << '\n';
-        std::cout << "  vertices: " << mesh.vertices().size() << '\n';
-        std::cout << "  edges: " << mesh.edges().size() << '\n';
-        std::cout << "  loops: " << mesh.loops().size() << '\n';
-        std::cout << "  faces: " << mesh.faces().size() << '\n';
-        std::cout << "  total: " << mesh_selection_count(editor) << '\n';
-        std::cout << "  granularity: " << granularity_name(editor.selection().granularity()) << '\n';
-        std::cout << "  scope: " << scope_name(editor.selection().scope()) << '\n';
-        std::cout << "  empty: " << (mesh.empty() ? "true" : "false") << '\n';
+        Editor editor;
+        CommandDispatcher dispatcher(editor);
+
+        const SceneNodeId root = editor.scene().create_empty("Root");
+        const SceneNodeId childA = editor.scene().create_mesh("Child A");
+        const SceneNodeId childB = editor.scene().create_empty("Child B");
+        const SceneNodeId grandChild = editor.scene().create_mesh("Grand Child");
+        const SceneNodeId survivor = editor.scene().create_empty("Survivor");
+
+        editor.scene().reparent(childA, root);
+        editor.scene().reparent(childB, root);
+        editor.scene().reparent(grandChild, childA);
+
+        editor.selection().objects().set({ childA, survivor }, childA);
+        editor.selection().mesh().set_active_mesh(childA);
+        editor.selection().clear_dirty();
+
+        expect(editor.scene().tree().size() == 5, "cena inicial tem 5 nos");
+        expect(editor.selection().objects().contains(childA), "childA esta selecionado antes do delete");
+        expect(editor.selection().objects().contains(survivor), "survivor esta selecionado antes do delete");
+        expect(editor.selection().mesh().active_mesh() == childA, "active mesh aponta para childA antes do delete");
+
+        DeleteNodeCommand deleteRoot(root);
+        CommandResult result = dispatcher.execute(deleteRoot);
+        print_result("delete root subtree", result);
+
+        expect(result.success, "delete executou com sucesso");
+        expect(editor.scene().tree().size() == 1, "delete removeu root e descendentes");
+        expect(!editor.scene().find_node(root), "root foi removido");
+        expect(!editor.scene().find_node(childA), "childA foi removido");
+        expect(!editor.scene().find_node(childB), "childB foi removido");
+        expect(!editor.scene().find_node(grandChild), "grandChild foi removido");
+        expect(editor.scene().find_node(survivor) != nullptr, "survivor permaneceu na cena");
+
+        expect(!editor.selection().objects().contains(childA), "delete removeu childA da selecao");
+        expect(editor.selection().objects().contains(survivor), "delete preservou survivor selecionado");
+        expect(editor.selection().objects().active().is_invalid(), "active object removido foi limpo");
+        expect(editor.selection().mesh().active_mesh().is_invalid(), "active mesh removido foi limpo");
+
+        result = dispatcher.undo(deleteRoot);
+        print_result("undo delete", result);
+
+        expect(result.success, "undo do delete executou com sucesso");
+        expect(editor.scene().tree().size() == 5, "undo restaurou todos os nos");
+        expect(editor.scene().find_node(root) != nullptr, "root foi restaurado");
+        expect(editor.scene().find_node(childA) != nullptr, "childA foi restaurado");
+        expect(editor.scene().find_node(childB) != nullptr, "childB foi restaurado");
+        expect(editor.scene().find_node(grandChild) != nullptr, "grandChild foi restaurado");
+        expect(editor.scene().find_node(childA)->parent() == root, "childA voltou como filho de root");
+        expect(editor.scene().find_node(childB)->parent() == root, "childB voltou como filho de root");
+        expect(editor.scene().find_node(grandChild)->parent() == childA, "grandChild voltou como filho de childA");
+        expect(node_name(editor, root) == "Root", "nome do root foi preservado");
+        expect(node_name(editor, childA) == "Child A", "nome do childA foi preservado");
+
+        result = dispatcher.redo(deleteRoot);
+        print_result("redo delete", result);
+
+        expect(result.success, "redo do delete executou com sucesso");
+        expect(editor.scene().tree().size() == 1, "redo removeu subtree de novo");
+        expect(editor.scene().find_node(survivor) != nullptr, "survivor ainda existe depois do redo");
+
+        DeleteNodeCommand deleteMissing(root);
+        result = dispatcher.execute(deleteMissing);
+        print_result("falha delete missing", result);
+
+        expect(!result.success, "delete de no ausente falhou corretamente");
+
+        print_scene(editor);
     }
 
-} // namespace
+    void test_duplicate_command() {
+        std::cout << "\n=== DuplicateNodeCommand smoke test ===\n";
 
-int main()
-{
-    std::cout << "=== Locus3D Editor Mesh Component Selection Commands Smoke Test ===\n\n";
+        Editor editor;
+        CommandDispatcher dispatcher(editor);
 
-    TestStats stats{};
+        const SceneNodeId root = editor.scene().create_empty("Root");
+        const SceneNodeId childA = editor.scene().create_mesh("Child A");
+        const SceneNodeId childB = editor.scene().create_empty("Child B");
+        const SceneNodeId grandChild = editor.scene().create_mesh("Grand Child");
+        const SceneNodeId externalParent = editor.scene().create_empty("External Parent");
 
-    Editor editor{};
-    CommandDispatcher dispatcher(editor);
-    HistoryStack history{};
+        editor.scene().reparent(root, externalParent);
+        editor.scene().reparent(childA, root);
+        editor.scene().reparent(childB, root);
+        editor.scene().reparent(grandChild, childA);
 
-    const SceneNodeId meshNode = editor.scene().create_mesh("Editable Mesh");
+        expect(editor.scene().tree().size() == 5, "cena inicial tem 5 nos");
+        expect(editor.scene().find_node(root)->parent() == externalParent, "root original esta sob externalParent");
 
-    const geometry::VertexHandle v0{ 1 };
-    const geometry::VertexHandle v1{ 2 };
-    const geometry::VertexHandle v2{ 3 };
-    const geometry::EdgeHandle e0{ 4 };
-    const geometry::EdgeHandle e1{ 5 };
-    const geometry::LoopHandle l0{ 6 };
-    const geometry::FaceHandle f0{ 7 };
+        DuplicateNodeCommand duplicateRoot(root);
+        CommandResult result = dispatcher.execute(duplicateRoot);
+        print_result("duplicate root subtree", result);
 
-    expect(stats, meshNode.is_valid(), "mesh node criado com id valido");
-    expect(stats, editor.scene().find_mesh(meshNode) != nullptr, "mesh node pode ser encontrado como MeshNode");
-    expect(stats, editor.selection().mesh().empty(), "selecao de mesh comeca vazia");
-    expect(stats, history.empty(), "historico comeca vazio");
+        const SceneNodeId duplicatedRoot = duplicateRoot.duplicated_node();
 
-    std::cout << "\n=== Falha sem active mesh ===\n";
+        expect(result.success, "duplicate executou com sucesso");
+        expect(duplicatedRoot.is_valid(), "duplicate retornou id valido");
+        expect(duplicatedRoot != root, "duplicado tem id diferente do original");
+        expect(editor.scene().tree().size() == 9, "duplicate criou 4 novos nos");
+        expect(editor.scene().find_node(duplicatedRoot) != nullptr, "root duplicado existe");
+        expect(editor.scene().find_node(duplicatedRoot)->parent() == externalParent, "root duplicado manteve parent externo");
+        expect(node_name(editor, duplicatedRoot) == "Root Copy", "root duplicado recebeu sufixo Copy");
 
-    CommandResult result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(v0));
+        const SceneNodeId duplicatedChildA = find_child_by_name(editor, duplicatedRoot, "Child A");
+        const SceneNodeId duplicatedChildB = find_child_by_name(editor, duplicatedRoot, "Child B");
 
-    print_result("select vertex sem active mesh", result);
-    print_mesh_selection(editor);
+        expect(duplicatedChildA.is_valid(), "childA duplicado foi encontrado por nome");
+        expect(duplicatedChildB.is_valid(), "childB duplicado foi encontrado por nome");
+        expect(duplicatedChildA != childA, "childA duplicado tem id diferente");
+        expect(duplicatedChildB != childB, "childB duplicado tem id diferente");
 
-    expect(stats, !result.success, "select vertex sem active mesh falhou");
-    expect(stats, editor.selection().mesh().empty(), "falha sem active mesh nao alterou selecao");
-    expect(stats, history.empty(), "falha sem active mesh nao entrou no historico");
+        const SceneNodeId duplicatedGrandChild = find_child_by_name(editor, duplicatedChildA, "Grand Child");
+        expect(duplicatedGrandChild.is_valid(), "grandChild duplicado foi encontrado");
+        expect(duplicatedGrandChild != grandChild, "grandChild duplicado tem id diferente");
+        expect(editor.scene().find_node(duplicatedGrandChild)->parent() == duplicatedChildA, "hierarquia profunda foi preservada");
 
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(v0));
+        result = dispatcher.undo(duplicateRoot);
+        print_result("undo duplicate", result);
 
-    print_result("toggle vertex sem active mesh", result);
-    print_mesh_selection(editor);
+        expect(result.success, "undo do duplicate executou com sucesso");
+        expect(editor.scene().tree().size() == 5, "undo removeu os nos duplicados");
+        expect(!editor.scene().find_node(duplicatedRoot), "root duplicado foi removido no undo");
+        expect(editor.scene().find_node(root) != nullptr, "root original permaneceu no undo");
 
-    expect(stats, !result.success, "toggle vertex sem active mesh falhou");
-    expect(stats, editor.selection().mesh().empty(), "toggle sem active mesh nao alterou selecao");
-    expect(stats, history.empty(), "toggle sem active mesh nao entrou no historico");
+        result = dispatcher.redo(duplicateRoot);
+        print_result("redo duplicate", result);
 
-    std::cout << "\n=== Preparando active mesh ===\n";
+        expect(result.success, "redo do duplicate executou com sucesso");
+        expect(editor.scene().tree().size() == 9, "redo restaurou os nos duplicados");
+        expect(editor.scene().find_node(duplicatedRoot) != nullptr, "root duplicado foi restaurado com mesmo id");
+        expect(editor.scene().find_node(duplicatedRoot)->parent() == externalParent, "parent externo do duplicado foi preservado no redo");
 
-    editor.selection().mesh().set_active_mesh(meshNode);
-    editor.selection().set_granularity(SelectionGranularity::Vertex);
-    editor.selection().set_scope(SelectionScope::ActiveMesh);
+        const SceneNodeId redoChildA = find_child_by_name(editor, duplicatedRoot, "Child A");
+        const SceneNodeId redoGrandChild = find_child_by_name(editor, redoChildA, "Grand Child");
 
-    print_mesh_selection(editor);
+        expect(redoChildA == duplicatedChildA, "redo preservou id do childA duplicado");
+        expect(redoGrandChild == duplicatedGrandChild, "redo preservou id do grandChild duplicado");
 
-    expect(stats, editor.selection().mesh().active_mesh() == meshNode, "active mesh foi definido");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Vertex, "granularidade preparada como Vertex");
-    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope preparado como ActiveMesh");
+        DuplicateNodeCommand duplicateMissing(SceneNodeId{ 999999 });
+        result = dispatcher.execute(duplicateMissing);
+        print_result("falha duplicate missing", result);
 
-    std::cout << "\n=== Falha com handle invalido ===\n";
+        expect(!result.success, "duplicate de no ausente falhou corretamente");
 
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(geometry::VertexHandle{}));
+        print_scene(editor);
+    }
 
-    print_result("select vertex invalido", result);
-    print_mesh_selection(editor);
+}
 
-    expect(stats, !result.success, "select vertex invalido falhou");
-    expect(stats, editor.selection().mesh().empty(), "handle invalido nao alterou selecao");
-    expect(stats, history.empty(), "handle invalido nao entrou no historico");
+int main() {
+    std::cout << "=== Locus3D Editor Scene Commands Regression Test ===\n";
 
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(geometry::EdgeHandle{}));
-
-    print_result("toggle edge invalido", result);
-    print_mesh_selection(editor);
-
-    expect(stats, !result.success, "toggle edge invalido falhou");
-    expect(stats, editor.selection().mesh().empty(), "toggle invalido nao alterou selecao");
-    expect(stats, history.empty(), "toggle invalido nao entrou no historico");
-
-    std::cout << "\n=== Select vertex deve selecionar somente v0 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(v0));
-
-    print_result("select vertex v0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "select vertex v0 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 1u, "ha 1 vertex selecionado");
-    expect(stats, editor.selection().mesh().vertices().contains(v0), "v0 esta selecionado");
-    expect(stats, editor.selection().mesh().edges().empty(), "edges continuam vazias");
-    expect(stats, editor.selection().mesh().loops().empty(), "loops continuam vazios");
-    expect(stats, editor.selection().mesh().faces().empty(), "faces continuam vazias");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Vertex, "granularidade virou Vertex");
-    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope ficou ActiveMesh");
-    expect(stats, history.undo_size() == 1u, "select vertex entrou no historico");
-
-    std::cout << "\n=== Select vertex v1 deve substituir v0 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(v1));
-
-    print_result("select vertex v1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "select vertex v1 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 1u, "continua havendo 1 vertex selecionado");
-    expect(stats, !editor.selection().mesh().vertices().contains(v0), "v0 foi removido");
-    expect(stats, editor.selection().mesh().vertices().contains(v1), "v1 esta selecionado");
-    expect(stats, history.undo_size() == 2u, "select vertex v1 entrou no historico");
-
-    std::cout << "\n=== Undo deve restaurar v0 ===\n";
-
-    result = history.undo(dispatcher);
-
-    print_result("undo select vertex v1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "undo select vertex v1 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 1u, "undo restaurou 1 vertex");
-    expect(stats, editor.selection().mesh().vertices().contains(v0), "undo restaurou v0");
-    expect(stats, !editor.selection().mesh().vertices().contains(v1), "undo removeu v1");
-    expect(stats, history.undo_size() == 1u, "undo size voltou para 1");
-    expect(stats, history.redo_size() == 1u, "redo size virou 1");
-
-    std::cout << "\n=== Redo deve reaplicar v1 ===\n";
-
-    result = history.redo(dispatcher);
-
-    print_result("redo select vertex v1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "redo select vertex v1 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 1u, "redo manteve 1 vertex");
-    expect(stats, editor.selection().mesh().vertices().contains(v1), "redo reaplicou v1");
-    expect(stats, !editor.selection().mesh().vertices().contains(v0), "redo removeu v0 novamente");
-    expect(stats, history.undo_size() == 2u, "undo size voltou para 2");
-    expect(stats, history.redo_size() == 0u, "redo size voltou para 0");
-
-    std::cout << "\n=== Toggle vertex v2 deve adicionar v2 sem remover v1 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(v2));
-
-    print_result("toggle vertex v2", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "toggle vertex v2 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 2u, "ha 2 vertices selecionados");
-    expect(stats, editor.selection().mesh().vertices().contains(v1), "v1 continua selecionado");
-    expect(stats, editor.selection().mesh().vertices().contains(v2), "v2 foi adicionado");
-    expect(stats, history.undo_size() == 3u, "toggle v2 entrou no historico");
-
-    std::cout << "\n=== Toggle vertex v1 deve remover v1 e manter v2 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(v1));
-
-    print_result("toggle vertex v1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "toggle vertex v1 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 1u, "ha 1 vertex selecionado apos remocao");
-    expect(stats, !editor.selection().mesh().vertices().contains(v1), "v1 foi removido");
-    expect(stats, editor.selection().mesh().vertices().contains(v2), "v2 continua selecionado");
-    expect(stats, history.undo_size() == 4u, "toggle remove v1 entrou no historico");
-
-    std::cout << "\n=== Undo do toggle v1 deve restaurar v1 + v2 ===\n";
-
-    result = history.undo(dispatcher);
-
-    print_result("undo toggle vertex v1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "undo toggle vertex v1 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().size() == 2u, "undo restaurou 2 vertices");
-    expect(stats, editor.selection().mesh().vertices().contains(v1), "undo restaurou v1");
-    expect(stats, editor.selection().mesh().vertices().contains(v2), "undo manteve v2");
-    expect(stats, history.undo_size() == 3u, "undo size voltou para 3");
-    expect(stats, history.redo_size() == 1u, "redo size virou 1");
-
-    std::cout << "\n=== Select edge deve limpar vertices e selecionar e0 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(e0));
-
-    print_result("select edge e0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "select edge e0 executou com sucesso");
-    expect(stats, editor.selection().mesh().vertices().empty(), "select edge limpou vertices");
-    expect(stats, editor.selection().mesh().edges().size() == 1u, "ha 1 edge selecionada");
-    expect(stats, editor.selection().mesh().edges().contains(e0), "e0 esta selecionada");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Edge, "granularidade virou Edge");
-    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope ficou ActiveMesh");
-    expect(stats, history.redo_size() == 0u, "novo comando limpou pilha de redo");
-
-    std::cout << "\n=== Toggle edge e1 deve adicionar e1 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(e1));
-
-    print_result("toggle edge e1", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "toggle edge e1 executou com sucesso");
-    expect(stats, editor.selection().mesh().edges().size() == 2u, "ha 2 edges selecionadas");
-    expect(stats, editor.selection().mesh().edges().contains(e0), "e0 continua selecionada");
-    expect(stats, editor.selection().mesh().edges().contains(e1), "e1 foi adicionada");
-
-    std::cout << "\n=== Select loop deve limpar edges e selecionar l0 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(l0));
-
-    print_result("select loop l0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "select loop l0 executou com sucesso");
-    expect(stats, editor.selection().mesh().edges().empty(), "select loop limpou edges");
-    expect(stats, editor.selection().mesh().loops().size() == 1u, "ha 1 loop selecionado");
-    expect(stats, editor.selection().mesh().loops().contains(l0), "l0 esta selecionado");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Loop, "granularidade virou Loop");
-
-    std::cout << "\n=== Select face deve limpar loops e selecionar f0 ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<SelectMeshComponentCommand>(f0));
-
-    print_result("select face f0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "select face f0 executou com sucesso");
-    expect(stats, editor.selection().mesh().loops().empty(), "select face limpou loops");
-    expect(stats, editor.selection().mesh().faces().size() == 1u, "ha 1 face selecionada");
-    expect(stats, editor.selection().mesh().faces().contains(f0), "f0 esta selecionada");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Face, "granularidade virou Face");
-
-    std::cout << "\n=== Toggle face f0 deve remover face ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ToggleMeshComponentSelectionCommand>(f0));
-
-    print_result("toggle face f0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "toggle face f0 executou com sucesso");
-    expect(stats, editor.selection().mesh().faces().empty(), "f0 foi removida");
-    expect(stats, editor.selection().mesh().empty(), "selecao de componentes ficou vazia");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Face, "granularidade continuou Face");
-    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "scope continuou ActiveMesh");
-
-    std::cout << "\n=== Undo do toggle face deve restaurar f0 ===\n";
-
-    result = history.undo(dispatcher);
-
-    print_result("undo toggle face f0", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "undo toggle face f0 executou com sucesso");
-    expect(stats, editor.selection().mesh().faces().size() == 1u, "undo restaurou 1 face");
-    expect(stats, editor.selection().mesh().faces().contains(f0), "undo restaurou f0");
-    expect(stats, editor.selection().granularity() == SelectionGranularity::Face, "undo manteve/restaurou Face");
-    expect(stats, editor.selection().scope() == SelectionScope::ActiveMesh, "undo manteve/restaurou ActiveMesh");
-
-    std::cout << "\n=== ClearMeshSelectionCommand deve limpar selecao final ===\n";
-
-    result = history.execute(
-        dispatcher,
-        std::make_unique<ClearMeshSelectionCommand>());
-
-    print_result("clear mesh selection", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "clear mesh selection executou com sucesso");
-    expect(stats, editor.selection().mesh().active_mesh() == meshNode, "clear preservou active mesh");
-    expect(stats, editor.selection().mesh().empty(), "clear limpou componentes");
-
-    std::cout << "\n=== Undo do clear deve restaurar f0 ===\n";
-
-    result = history.undo(dispatcher);
-
-    print_result("undo clear mesh selection", result);
-    print_mesh_selection(editor);
-
-    expect(stats, result.success, "undo clear mesh selection executou com sucesso");
-    expect(stats, editor.selection().mesh().faces().size() == 1u, "undo do clear restaurou face");
-    expect(stats, editor.selection().mesh().faces().contains(f0), "undo do clear restaurou f0");
-    expect(stats, editor.selection().mesh().active_mesh() == meshNode, "undo do clear restaurou active mesh");
+    test_reparent_command();
+    test_delete_command();
+    test_duplicate_command();
 
     std::cout << "\n=== Resultado final ===\n";
-    std::cout << "passed: " << stats.passed << '\n';
-    std::cout << "failed: " << stats.failed << '\n';
 
-    if (stats.failed == 0) {
-        std::cout << "\n[OK] Mesh component selection commands smoke test passou.\n";
-        return 0;
+    if (g_failures == 0) {
+        std::cout << "[OK] todos os testes passaram\n";
+        return EXIT_SUCCESS;
     }
 
-    std::cout << "\n[FAIL] Mesh component selection commands smoke test encontrou problemas.\n";
-    return 1;
+    std::cout << "[FAIL] falhas encontradas: " << g_failures << '\n';
+    return EXIT_FAILURE;
 }
