@@ -119,6 +119,7 @@ add_executable(Locus3DEditorCommandCommandsTests
     unit/editor/command/commands/selection/MeshSelectionCommandTests.cpp
     unit/editor/command/commands/selection/ObjectSelectionCommandTests.cpp
     unit/editor/command/commands/selection/SelectionModeCommandTests.cpp
+    unit/editor/command/commands/transform/NodeTransformCommandTests.cpp
 )
 
 target_include_directories(Locus3DEditorCommandCommandsTests
