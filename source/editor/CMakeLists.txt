@@ -92,7 +92,9 @@ target_sources(locus3d_editor
         "command/transform/RotateNodeCommand.h"
         "command/transform/RotateNodeCommand.cpp"
         "command/transform/ScaleNodeCommand.h"
-        "command/transform/ScaleNodeCommand.cpp")
+        "command/transform/ScaleNodeCommand.cpp"
+        "command/transform/SetNodePivotCommand.h"
+        "command/transform/SetNodePivotCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

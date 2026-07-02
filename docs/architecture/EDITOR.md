@@ -158,8 +158,8 @@ source\editor
 |   |       RotateNodeCommand.cpp
 |   |       ScaleNodeCommand.h
 |   |       ScaleNodeCommand.cpp
-|   |       SetNodePivotCommand.h [!]
-|   |       SetNodePivotCommand.cpp [!]
+|   |       SetNodePivotCommand.h
+|   |       SetNodePivotCommand.cpp
 |   |
 |   +---mesh [!]
 |   |       MeshSnapshot.h [!]
@@ -270,8 +270,6 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `command/transform/SetNodePivotCommand.h`
-- [!] `command/transform/SetNodePivotCommand.cpp`
 - [!] `command/mesh/MeshSnapshot.h`
 - [!] `command/mesh/ApplyMeshOperationCommand.h`
 - [!] `command/mesh/ApplyMeshOperationCommand.cpp`
