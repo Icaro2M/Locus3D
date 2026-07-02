@@ -114,6 +114,7 @@ set_tests_properties(editor.unit.command PROPERTIES
 add_executable(Locus3DEditorCommandCommandsTests
     unit/editor/command/commands/CommandCommandsTestMain.cpp
     unit/editor/command/commands/scene/CreateNodeCommandTests.cpp
+    unit/editor/command/commands/scene/NodeHierarchyCommandTests.cpp
     unit/editor/command/commands/scene/NodeMetadataCommandTests.cpp
     unit/editor/command/commands/selection/MeshSelectionCommandTests.cpp
     unit/editor/command/commands/selection/ObjectSelectionCommandTests.cpp
