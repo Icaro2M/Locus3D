@@ -83,7 +83,16 @@ target_sources(locus3d_editor
         "command/scene/DeleteNodeCommand.h"
         "command/scene/DeleteNodeCommand.cpp"
         "command/scene/DuplicateNodeCommand.h"
-        "command/scene/DuplicateNodeCommand.cpp")
+        "command/scene/DuplicateNodeCommand.cpp" 
+        "command/transform/NodeTransformSnapshot.h"
+        "command/transform/SetNodeTransformCommand.h"
+        "command/transform/SetNodeTransformCommand.cpp"
+        "command/transform/TranslateNodeCommand.h"
+        "command/transform/TranslateNodeCommand.cpp"
+        "command/transform/RotateNodeCommand.h"
+        "command/transform/RotateNodeCommand.cpp"
+        "command/transform/ScaleNodeCommand.h"
+        "command/transform/ScaleNodeCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

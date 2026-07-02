@@ -113,14 +113,14 @@ source\editor
 |   |       CreateEmptyNodeCommand.cpp
 |   |       CreateMeshNodeCommand.h
 |   |       CreateMeshNodeCommand.cpp
-|   |       DeleteNodeCommand.h [!]
-|   |       DeleteNodeCommand.cpp [!]
-|   |       DuplicateNodeCommand.h [!]
-|   |       DuplicateNodeCommand.cpp [!]
+|   |       DeleteNodeCommand.h 
+|   |       DeleteNodeCommand.cpp
+|   |       DuplicateNodeCommand.h
+|   |       DuplicateNodeCommand.cpp
 |   |       RenameNodeCommand.h
 |   |       RenameNodeCommand.cpp
-|   |       ReparentNodeCommand.h [!]
-|   |       ReparentNodeCommand.cpp [!]
+|   |       ReparentNodeCommand.h
+|   |       ReparentNodeCommand.cpp
 |   |       SetNodeVisibilityCommand.h
 |   |       SetNodeVisibilityCommand.cpp
 |   |       SetNodeLockCommand.h
@@ -148,16 +148,16 @@ source\editor
 |   |       SetSelectionScopeCommand.h
 |   |       SetSelectionScopeCommand.cpp
 |   |
-|   +---transform [!]
-|   |       NodeTransformSnapshot.h [!]
-|   |       SetNodeTransformCommand.h [!]
-|   |       SetNodeTransformCommand.cpp [!]
-|   |       TranslateNodeCommand.h [!]
-|   |       TranslateNodeCommand.cpp [!]
-|   |       RotateNodeCommand.h [!]
-|   |       RotateNodeCommand.cpp [!]
-|   |       ScaleNodeCommand.h [!]
-|   |       ScaleNodeCommand.cpp [!]
+|   +---transform
+|   |       NodeTransformSnapshot.h
+|   |       SetNodeTransformCommand.h
+|   |       SetNodeTransformCommand.cpp
+|   |       TranslateNodeCommand.h
+|   |       TranslateNodeCommand.cpp
+|   |       RotateNodeCommand.h
+|   |       RotateNodeCommand.cpp
+|   |       ScaleNodeCommand.h
+|   |       ScaleNodeCommand.cpp
 |   |       SetNodePivotCommand.h [!]
 |   |       SetNodePivotCommand.cpp [!]
 |   |
@@ -270,21 +270,6 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `command/scene/DeleteNodeCommand.h`
-- [!] `command/scene/DeleteNodeCommand.cpp`
-- [!] `command/scene/DuplicateNodeCommand.h`
-- [!] `command/scene/DuplicateNodeCommand.cpp`
-- [!] `command/scene/ReparentNodeCommand.h`
-- [!] `command/scene/ReparentNodeCommand.cpp`
-- [!] `command/transform/NodeTransformSnapshot.h`
-- [!] `command/transform/SetNodeTransformCommand.h`
-- [!] `command/transform/SetNodeTransformCommand.cpp`
-- [!] `command/transform/TranslateNodeCommand.h`
-- [!] `command/transform/TranslateNodeCommand.cpp`
-- [!] `command/transform/RotateNodeCommand.h`
-- [!] `command/transform/RotateNodeCommand.cpp`
-- [!] `command/transform/ScaleNodeCommand.h`
-- [!] `command/transform/ScaleNodeCommand.cpp`
 - [!] `command/transform/SetNodePivotCommand.h`
 - [!] `command/transform/SetNodePivotCommand.cpp`
 - [!] `command/mesh/MeshSnapshot.h`
