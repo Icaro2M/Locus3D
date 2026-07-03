@@ -180,7 +180,7 @@ source\editor
 |       HistoryStack.h
 |       HistoryStack.cpp
 |       HistoryEntry.h
-|       HistoryConfig.h [!]
+|       HistoryConfig.h
 |
 +---tools [!]
 |   |   ITool.h [!]
@@ -270,7 +270,6 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `history/HistoryConfig.h`
 - [!] `tools/ITool.h`
 - [!] `tools/ToolRegistry.h`
 - [!] `tools/ToolManager.h`
