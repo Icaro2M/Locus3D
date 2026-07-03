@@ -188,6 +188,29 @@ set_tests_properties(editor.unit.command.mesh PROPERTIES
     LABELS "unit;editor;command;mesh"
 )
 
+add_executable(Locus3DEditorCommandDocumentTests
+    unit/editor/command/document/ClearSceneCommandTests.cpp
+    unit/editor/command/document/DocumentCommandTestMain.cpp
+    unit/editor/command/document/ImportMeshCommandTests.cpp
+)
+
+target_include_directories(Locus3DEditorCommandDocumentTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorCommandDocumentTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.command.document COMMAND Locus3DEditorCommandDocumentTests)
+set_tests_properties(editor.unit.command.document PROPERTIES
+    LABELS "unit;editor;command;document"
+)
+
 add_executable(Locus3DEditorHistoryTests
     unit/editor/history/HistoryEntryTests.cpp
     unit/editor/history/HistoryStackTests.cpp
