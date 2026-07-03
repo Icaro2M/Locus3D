@@ -34,6 +34,30 @@ set_tests_properties(kernel.unit.geometry.mesh PROPERTIES
     LABELS "unit;kernel;geometry;mesh"
 )
 
+add_executable(Locus3DSpatialTests
+    unit/kernel/geometry/spatial/BVHQueryTests.cpp
+    unit/kernel/geometry/spatial/BVHTests.cpp
+    unit/kernel/geometry/spatial/SpatialIndexTests.cpp
+    unit/kernel/geometry/spatial/SpatialTestMain.cpp
+)
+
+target_include_directories(Locus3DSpatialTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DSpatialTests
+    PRIVATE
+        Locus3D::Geometry
+)
+
+add_test(NAME kernel.unit.geometry.spatial COMMAND Locus3DSpatialTests)
+set_tests_properties(kernel.unit.geometry.spatial PROPERTIES
+    LABELS "unit;kernel;geometry;spatial"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp
