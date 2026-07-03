@@ -161,20 +161,20 @@ source\editor
 |   |       SetNodePivotCommand.h
 |   |       SetNodePivotCommand.cpp
 |   |
-|   +---mesh [!]
-|   |       MeshSnapshot.h [!]
-|   |       ApplyMeshOperationCommand.h [!]
-|   |       ApplyMeshOperationCommand.cpp [!]
-|   |       ReplaceMeshCommand.h [!]
-|   |       ReplaceMeshCommand.cpp [!]
-|   |       EditMeshSelectionCommand.h [!]
-|   |       EditMeshSelectionCommand.cpp [!]
+|   +---mesh
+|   |       MeshSnapshot.h
+|   |       ApplyMeshOperationCommand.h
+|   |       ApplyMeshOperationCommand.cpp
+|   |       ReplaceMeshCommand.h
+|   |       ReplaceMeshCommand.cpp
+|   |       EditMeshSelectionCommand.h
+|   |       EditMeshSelectionCommand.cpp
 |   |
-|   \---document [!]
-|           ClearSceneCommand.h [!]
-|           ClearSceneCommand.cpp [!]
-|           ImportMeshCommand.h [!]
-|           ImportMeshCommand.cpp [!]
+|   \---document
+|           ClearSceneCommand.h
+|           ClearSceneCommand.cpp
+|           ImportMeshCommand.h
+|           ImportMeshCommand.cpp
 |
 +---history
 |       HistoryStack.h
@@ -270,17 +270,6 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `command/mesh/MeshSnapshot.h`
-- [!] `command/mesh/ApplyMeshOperationCommand.h`
-- [!] `command/mesh/ApplyMeshOperationCommand.cpp`
-- [!] `command/mesh/ReplaceMeshCommand.h`
-- [!] `command/mesh/ReplaceMeshCommand.cpp`
-- [!] `command/mesh/EditMeshSelectionCommand.h`
-- [!] `command/mesh/EditMeshSelectionCommand.cpp`
-- [!] `command/document/ClearSceneCommand.h`
-- [!] `command/document/ClearSceneCommand.cpp`
-- [!] `command/document/ImportMeshCommand.h`
-- [!] `command/document/ImportMeshCommand.cpp`
 - [!] `history/HistoryConfig.h`
 - [!] `tools/ITool.h`
 - [!] `tools/ToolRegistry.h`
