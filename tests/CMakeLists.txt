@@ -163,6 +163,31 @@ set_tests_properties(editor.unit.command.commands PROPERTIES
     LABELS "unit;editor;command;commands"
 )
 
+add_executable(Locus3DEditorCommandMeshTests
+    unit/editor/command/mesh/ApplyMeshOperationCommandTests.cpp
+    unit/editor/command/mesh/EditMeshSelectionCommandTests.cpp
+    unit/editor/command/mesh/MeshCommandTestMain.cpp
+    unit/editor/command/mesh/MeshSnapshotTests.cpp
+    unit/editor/command/mesh/ReplaceMeshCommandTests.cpp
+)
+
+target_include_directories(Locus3DEditorCommandMeshTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorCommandMeshTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.command.mesh COMMAND Locus3DEditorCommandMeshTests)
+set_tests_properties(editor.unit.command.mesh PROPERTIES
+    LABELS "unit;editor;command;mesh"
+)
+
 add_executable(Locus3DEditorHistoryTests
     unit/editor/history/HistoryEntryTests.cpp
     unit/editor/history/HistoryStackTests.cpp
