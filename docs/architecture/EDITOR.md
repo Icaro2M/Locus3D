@@ -2,7 +2,7 @@
 
 This document contains high-level architecture notes for the planned editor production code in `source/editor/`.
 
-The editor layer has not been started yet. This document is a development guide for the future object scene, selection, command history, tools, gizmos, snapping, synchronization, and document IO systems.
+This document is a development guide for the future object scene, selection, command history, tools, gizmos, snapping, synchronization, and document IO systems.
 
 For the graphics foundation, see [`GRAPHICS.md`](GRAPHICS.md). For the geometry/modeling kernel, see [`GEOMETRY.md`](GEOMETRY.md). For the editable mesh design, see [`LEM.md`](LEM.md).
 
