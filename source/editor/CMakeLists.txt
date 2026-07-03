@@ -101,7 +101,12 @@ target_sources(locus3d_editor
         "command/mesh/ApplyMeshOperationCommand.h"
         "command/mesh/ApplyMeshOperationCommand.cpp"
         "command/mesh/EditMeshSelectionCommand.h"
-        "command/mesh/EditMeshSelectionCommand.cpp" "command/document/ClearSceneCommand.h" "command/document/ClearSceneCommand.cpp" "command/document/ImportMeshCommand.h" "command/document/ImportMeshCommand.cpp")
+        "command/mesh/EditMeshSelectionCommand.cpp"
+        "command/document/ClearSceneCommand.h"
+        "command/document/ClearSceneCommand.cpp"
+        "command/document/ImportMeshCommand.h"
+        "command/document/ImportMeshCommand.cpp"
+        "history/HistoryConfig.h")
 
 target_include_directories(locus3d_editor
     PUBLIC
