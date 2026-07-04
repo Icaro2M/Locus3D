@@ -113,7 +113,10 @@ target_sources(locus3d_editor
         "transform/TransformPivotResolver.h"
         "transform/TransformPivotResolver.cpp"
         "transform/TransformSession.h"
-        "transform/TransformSession.cpp")
+        "transform/TransformSession.cpp"
+        "render/RenderAdapterTypes.h"
+        "render/RenderMeshUploadAdapter.h"
+        "render/RenderMeshUploadAdapter.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

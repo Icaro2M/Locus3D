@@ -246,6 +246,23 @@ source\editor
 |       AngleSnapProvider.h [!]
 |       AngleSnapProvider.cpp [!]
 |
++---render [!] < -!- >
+|       RenderAdapterTypes.h [!]
+|       RenderMeshUploadAdapter.h [!]
+|       RenderMeshUploadAdapter.cpp [!]
+|       MeshNodeRenderAdapter.h [!]
+|       MeshNodeRenderAdapter.cpp [!]
+|       SceneRenderAdapter.h [!]
+|       SceneRenderAdapter.cpp [!]
+|       SelectionRenderAdapter.h [!]
+|       SelectionRenderAdapter.cpp [!]
+|       OverlayRenderAdapter.h [!]
+|       OverlayRenderAdapter.cpp [!]
+|       PreviewRenderAdapter.h [!]
+|       PreviewRenderAdapter.cpp [!]
+|       PickingRenderAdapter.h [!]
+|       PickingRenderAdapter.cpp [!]
+|
 +---sync [!]
 |       EditorSync.h [!]
 |       EditorSync.cpp [!]
@@ -317,6 +334,21 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `snapping/IncrementSnapProvider.cpp`
 - [!] `snapping/AngleSnapProvider.h`
 - [!] `snapping/AngleSnapProvider.cpp`
+- [!] `render/RenderAdapterTypes.h`
+- [!] `render/RenderMeshUploadAdapter.h`
+- [!] `render/RenderMeshUploadAdapter.cpp`
+- [!] `render/MeshNodeRenderAdapter.h`
+- [!] `render/MeshNodeRenderAdapter.cpp`
+- [!] `render/SceneRenderAdapter.h`
+- [!] `render/SceneRenderAdapter.cpp`
+- [!] `render/SelectionRenderAdapter.h`
+- [!] `render/SelectionRenderAdapter.cpp`
+- [!] `render/OverlayRenderAdapter.h`
+- [!] `render/OverlayRenderAdapter.cpp`
+- [!] `render/PreviewRenderAdapter.h`
+- [!] `render/PreviewRenderAdapter.cpp`
+- [!] `render/PickingRenderAdapter.h`
+- [!] `render/PickingRenderAdapter.cpp`
 - [!] `sync/EditorSync.h`
 - [!] `sync/EditorSync.cpp`
 - [!] `sync/RenderSceneSync.h`

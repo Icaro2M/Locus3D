@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/Editor.h"
-#include "editor/scene/SceneNode.h"
-#include "editor/transform/TransformSession.h"
+#include "editor/render/RenderMeshUploadAdapter.h"
+#include "kernel/geometry/mesh/LEM.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
+#include "kernel/geometry/render/MeshTriangulator.h"
+#include "kernel/geometry/render/RenderMesh.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -14,10 +16,6 @@
 #include <string>
 #include <vector>
 
-#include <glm/common.hpp>
-#include <glm/ext/scalar_constants.hpp>
-#include <glm/geometric.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 namespace {
@@ -27,21 +25,6 @@ namespace {
     bool nearly_equal(float lhs, float rhs, float epsilon = Epsilon)
     {
         return std::abs(lhs - rhs) <= epsilon;
-    }
-
-    bool nearly_equal(const glm::vec3& lhs, const glm::vec3& rhs, float epsilon = Epsilon)
-    {
-        return glm::length(lhs - rhs) <= epsilon;
-    }
-
-    void print_vec3(const std::string& label, const glm::vec3& value)
-    {
-        std::cout
-            << label << ": "
-            << std::fixed << std::setprecision(4)
-            << value.x << ", "
-            << value.y << ", "
-            << value.z << '\n';
     }
 
     bool expect(bool condition, const std::string& message)
@@ -55,305 +38,352 @@ namespace {
         return false;
     }
 
-    bool expect_vec3(
-        const glm::vec3& actual,
-        const glm::vec3& expected,
+    bool expect_size(
+        std::size_t actual,
+        std::size_t expected,
         const std::string& message)
     {
-        if (nearly_equal(actual, expected)) {
-            std::cout << "[OK] " << message << '\n';
+        if (actual == expected) {
+            std::cout << "[OK] " << message << " = " << actual << '\n';
             return true;
         }
 
-        std::cout << "[FAIL] " << message << '\n';
-        print_vec3("  actual", actual);
-        print_vec3("  expected", expected);
+        std::cout
+            << "[FAIL] " << message
+            << " | actual=" << actual
+            << " expected=" << expected << '\n';
+
         return false;
     }
 
-    locus::editor::SceneNode* require_node(
-        locus::editor::Editor& editor,
-        locus::editor::SceneNodeId id,
-        const std::string& name,
-        bool& ok)
+    bool expect_float(
+        float actual,
+        float expected,
+        const std::string& message)
     {
-        locus::editor::SceneNode* node = editor.scene().find_node(id);
-
-        if (!node) {
-            std::cout << "[FAIL] node nao encontrado: " << name << '\n';
-            ok = false;
-            return nullptr;
+        if (nearly_equal(actual, expected)) {
+            std::cout
+                << "[OK] " << message
+                << " = " << std::fixed << std::setprecision(4) << actual << '\n';
+            return true;
         }
 
-        std::cout << "[OK] node encontrado: " << name << " id=" << id.value << '\n';
-        return node;
+        std::cout
+            << "[FAIL] " << message
+            << " | actual=" << std::fixed << std::setprecision(4) << actual
+            << " expected=" << expected << '\n';
+
+        return false;
     }
 
-    bool test_empty_selection()
+    void print_render_mesh_summary(const locus::kernel::geometry::RenderMesh& renderMesh)
     {
-        using namespace locus::editor;
+        std::cout
+            << "RenderMesh"
+            << " | vertices: " << renderMesh.vertex_count()
+            << " | triangles: " << renderMesh.triangle_count()
+            << " | lines: " << renderMesh.line_count()
+            << " | empty: " << (renderMesh.empty() ? "true" : "false")
+            << '\n';
+    }
 
-        std::cout << "\n=== TransformSession: selecao vazia ===\n";
+    void print_upload_summary(
+        const locus::graphics::MeshUploadData& uploadData,
+        const locus::editor::RenderMeshUploadResult& result)
+    {
+        std::cout
+            << "MeshUploadData"
+            << " | vertices: " << uploadData.vertices.size()
+            << " | indices: " << uploadData.indices.size()
+            << " | result vertices: " << result.vertexCount
+            << " | result triangles: " << result.triangleCount
+            << " | result lines: " << result.lineCount
+            << " | result indices: " << result.indexCount
+            << '\n';
+    }
+
+    locus::kernel::geometry::FaceHandle make_triangle(
+        locus::kernel::geometry::LEMEditor& editor)
+    {
+        const auto v0 = editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const auto v1 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const auto v2 = editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        return editor.add_face(std::vector<locus::kernel::geometry::VertexHandle>{
+            v0,
+                v1,
+                v2,
+        });
+    }
+
+    locus::kernel::geometry::FaceHandle make_quad(
+        locus::kernel::geometry::LEMEditor& editor)
+    {
+        const auto v0 = editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const auto v1 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const auto v2 = editor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
+        const auto v3 = editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        return editor.add_face(std::vector<locus::kernel::geometry::VertexHandle>{
+            v0,
+                v1,
+                v2,
+                v3,
+        });
+    }
+
+    locus::kernel::geometry::FaceHandle make_concave_pentagon(
+        locus::kernel::geometry::LEMEditor& editor)
+    {
+        const auto v0 = editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const auto v1 = editor.add_vertex(glm::vec3{ 2.0f, 0.0f, 0.0f });
+        const auto v2 = editor.add_vertex(glm::vec3{ 2.0f, 2.0f, 0.0f });
+        const auto v3 = editor.add_vertex(glm::vec3{ 1.0f, 0.75f, 0.0f });
+        const auto v4 = editor.add_vertex(glm::vec3{ 0.0f, 2.0f, 0.0f });
+
+        return editor.add_face(std::vector<locus::kernel::geometry::VertexHandle>{
+            v0,
+                v1,
+                v2,
+                v3,
+                v4,
+        });
+    }
+
+    bool test_empty_mesh()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== RenderMeshUploadAdapter: malha vazia ===\n";
 
         bool ok = true;
 
-        Editor editor{};
-        TransformSession session{};
+        kernel::geometry::LEM mesh{};
+        const kernel::geometry::RenderMesh renderMesh =
+            kernel::geometry::MeshTriangulator::triangulate(mesh);
 
-        const bool began = session.begin(editor.scene(), editor.selection());
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_triangle_upload_data(renderMesh, {}, &result);
 
-        ok &= expect(!began, "begin() com selecao vazia falhou corretamente");
-        ok &= expect(!session.is_active(), "sessao nao ficou ativa com selecao vazia");
-        ok &= expect(session.state() == TransformSessionState::Idle, "estado final ficou Idle");
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
+
+        ok &= expect(renderMesh.empty(), "RenderMesh ficou vazio");
+        ok &= expect(uploadData.is_empty(), "MeshUploadData ficou vazio");
+        ok &= expect(!uploadData.has_indices(), "MeshUploadData nao tem indices");
+
+        ok &= expect_size(result.vertexCount, 0, "result.vertexCount");
+        ok &= expect_size(result.triangleCount, 0, "result.triangleCount");
+        ok &= expect_size(result.lineCount, 0, "result.lineCount");
+        ok &= expect_size(result.indexCount, 0, "result.indexCount");
+        ok &= expect(!result.has_triangles(), "result.has_triangles() retornou false");
 
         return ok;
     }
 
-    bool test_world_translate_confirm()
+    bool test_triangle()
     {
-        using namespace locus::editor;
+        using namespace locus;
 
-        std::cout << "\n=== TransformSession: world translate + confirm ===\n";
+        std::cout << "\n=== RenderMeshUploadAdapter: triangulo ===\n";
 
         bool ok = true;
 
-        Editor editor{};
+        kernel::geometry::LEM mesh{};
+        kernel::geometry::LEMEditor editorFacade{ mesh };
 
-        const SceneNodeId nodeAId = editor.scene().create_empty("A");
-        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+        const auto face = make_triangle(editorFacade);
+        ok &= expect(mesh.is_valid(face), "face triangular criada");
 
-        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
-        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+        const kernel::geometry::RenderMesh renderMesh =
+            kernel::geometry::MeshTriangulator::triangulate(mesh);
 
-        if (!nodeA || !nodeB) {
-            return false;
-        }
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_triangle_upload_data(renderMesh, {}, &result);
 
-        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
-        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
 
-        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
+        ok &= expect(!renderMesh.empty(), "RenderMesh nao ficou vazio");
+        ok &= expect(!uploadData.is_empty(), "MeshUploadData nao ficou vazio");
+        ok &= expect(uploadData.has_indices(), "MeshUploadData tem indices");
+        ok &= expect(uploadData.topology == graphics::PrimitiveTopology::Triangles, "topologia ficou Triangles");
+        ok &= expect(uploadData.usage == graphics::BufferUsage::Static, "usage default ficou Static");
 
-        TransformSessionOptions options{};
-        options.space = TransformSpace::World;
-        options.pivotMode = TransformPivotMode::SelectionCenter;
+        ok &= expect_size(renderMesh.vertex_count(), 3, "RenderMesh vertices");
+        ok &= expect_size(renderMesh.triangle_count(), 1, "RenderMesh triangles");
 
-        TransformSession session{};
+        ok &= expect_size(uploadData.vertices.size(), 3, "upload vertices");
+        ok &= expect_size(uploadData.indices.size(), 3, "upload indices");
 
-        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() capturou dois targets");
-        ok &= expect(session.is_active(), "sessao ficou ativa");
-        ok &= expect(session.targets().size() == 2, "sessao tem dois targets");
-        ok &= expect_vec3(session.pivot(), glm::vec3{ 2.0f, 0.0f, 0.0f }, "pivot da selecao ficou no centro");
+        ok &= expect_size(result.vertexCount, 3, "result.vertexCount");
+        ok &= expect_size(result.triangleCount, 1, "result.triangleCount");
+        ok &= expect_size(result.lineCount, 0, "result.lineCount");
+        ok &= expect_size(result.indexCount, 3, "result.indexCount");
+        ok &= expect(result.has_triangles(), "result.has_triangles() retornou true");
 
-        ok &= expect(session.translate(editor.scene(), glm::vec3{ 0.0f, 2.0f, 0.0f }), "translate() atualizou pelo menos um target");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 2.0f, 0.0f }, "node A moveu em world");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 2.0f, 0.0f }, "node B moveu em world");
-        ok &= expect(session.has_changes(), "sessao detectou alteracoes");
-
-        ok &= expect(session.confirm(), "confirm() finalizou a sessao");
-        ok &= expect(session.state() == TransformSessionState::Confirmed, "estado final ficou Confirmed");
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 2.0f, 0.0f }, "confirm manteve preview do node A");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 2.0f, 0.0f }, "confirm manteve preview do node B");
+        ok &= expect_float(uploadData.vertices[0].position[0], 0.0f, "v0.position.x");
+        ok &= expect_float(uploadData.vertices[1].position[0], 1.0f, "v1.position.x");
+        ok &= expect_float(uploadData.vertices[2].position[1], 1.0f, "v2.position.y");
 
         return ok;
     }
 
-    bool test_world_translate_cancel()
+    bool test_quad()
     {
-        using namespace locus::editor;
+        using namespace locus;
 
-        std::cout << "\n=== TransformSession: world translate + cancel ===\n";
+        std::cout << "\n=== RenderMeshUploadAdapter: quad ===\n";
 
         bool ok = true;
 
-        Editor editor{};
+        kernel::geometry::LEM mesh{};
+        kernel::geometry::LEMEditor editorFacade{ mesh };
 
-        const SceneNodeId nodeAId = editor.scene().create_empty("A");
-        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+        const auto face = make_quad(editorFacade);
+        ok &= expect(mesh.is_valid(face), "face quad criada");
 
-        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
-        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+        const kernel::geometry::RenderMesh renderMesh =
+            kernel::geometry::MeshTriangulator::triangulate(mesh);
 
-        if (!nodeA || !nodeB) {
-            return false;
-        }
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_triangle_upload_data(renderMesh, {}, &result);
 
-        nodeA->transform().set_position(glm::vec3{ -1.0f, 0.0f, 0.0f });
-        nodeB->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
 
-        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
+        ok &= expect_size(renderMesh.vertex_count(), 4, "RenderMesh vertices");
+        ok &= expect_size(renderMesh.triangle_count(), 2, "RenderMesh triangles");
 
-        TransformSessionOptions options{};
-        options.space = TransformSpace::World;
-        options.pivotMode = TransformPivotMode::SelectionCenter;
+        ok &= expect_size(uploadData.vertices.size(), 4, "upload vertices");
+        ok &= expect_size(uploadData.indices.size(), 6, "upload indices");
 
-        TransformSession session{};
-
-        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
-        ok &= expect(session.translate(editor.scene(), glm::vec3{ 5.0f, 0.0f, 0.0f }), "translate() aplicou preview");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 4.0f, 0.0f, 0.0f }, "node A recebeu preview");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 6.0f, 0.0f, 0.0f }, "node B recebeu preview");
-
-        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou pelo menos um target");
-        ok &= expect(session.state() == TransformSessionState::Cancelled, "estado final ficou Cancelled");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ -1.0f, 0.0f, 0.0f }, "cancel restaurou node A");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou node B");
+        ok &= expect_size(result.vertexCount, 4, "result.vertexCount");
+        ok &= expect_size(result.triangleCount, 2, "result.triangleCount");
+        ok &= expect_size(result.indexCount, 6, "result.indexCount");
 
         return ok;
     }
 
-    bool test_world_rotate_selection_center()
+    bool test_concave_pentagon()
     {
-        using namespace locus::editor;
+        using namespace locus;
 
-        std::cout << "\n=== TransformSession: world rotate selection center ===\n";
+        std::cout << "\n=== RenderMeshUploadAdapter: pentagono concavo ===\n";
 
         bool ok = true;
 
-        Editor editor{};
+        kernel::geometry::LEM mesh{};
+        kernel::geometry::LEMEditor editorFacade{ mesh };
 
-        const SceneNodeId nodeAId = editor.scene().create_empty("A");
-        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+        const auto face = make_concave_pentagon(editorFacade);
+        ok &= expect(mesh.is_valid(face), "face pentagonal concava criada");
 
-        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
-        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+        const kernel::geometry::RenderMesh renderMesh =
+            kernel::geometry::MeshTriangulator::triangulate(mesh);
 
-        if (!nodeA || !nodeB) {
-            return false;
-        }
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_triangle_upload_data(renderMesh, {}, &result);
 
-        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
-        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
 
-        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
+        ok &= expect_size(renderMesh.vertex_count(), 5, "RenderMesh vertices");
+        ok &= expect_size(renderMesh.triangle_count(), 3, "RenderMesh triangles");
 
-        TransformSessionOptions options{};
-        options.space = TransformSpace::World;
-        options.pivotMode = TransformPivotMode::SelectionCenter;
+        ok &= expect_size(uploadData.vertices.size(), 5, "upload vertices");
+        ok &= expect_size(uploadData.indices.size(), 9, "upload indices");
 
-        TransformSession session{};
-
-        const glm::quat rotation = glm::angleAxis(
-            glm::half_pi<float>(),
-            glm::vec3{ 0.0f, 0.0f, 1.0f });
-
-        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
-        ok &= expect_vec3(session.pivot(), glm::vec3{ 2.0f, 0.0f, 0.0f }, "pivot ficou no centro antes da rotacao");
-
-        ok &= expect(session.rotate(editor.scene(), rotation), "rotate() aplicou preview");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 2.0f, -1.0f, 0.0f }, "node A rotacionou ao redor do centro");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 2.0f, 1.0f, 0.0f }, "node B rotacionou ao redor do centro");
-
-        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou depois da rotacao");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou node A");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f }, "cancel restaurou node B");
+        ok &= expect_size(result.vertexCount, 5, "result.vertexCount");
+        ok &= expect_size(result.triangleCount, 3, "result.triangleCount");
+        ok &= expect_size(result.indexCount, 9, "result.indexCount");
 
         return ok;
     }
 
-    bool test_world_scale_selection_center()
+    bool test_manual_line_upload()
     {
-        using namespace locus::editor;
+        using namespace locus;
 
-        std::cout << "\n=== TransformSession: world scale selection center ===\n";
+        std::cout << "\n=== RenderMeshUploadAdapter: linhas manuais ===\n";
 
         bool ok = true;
 
-        Editor editor{};
+        kernel::geometry::RenderMesh renderMesh{};
 
-        const SceneNodeId nodeAId = editor.scene().create_empty("A");
-        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+        const auto a = renderMesh.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const auto b = renderMesh.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const auto c = renderMesh.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
 
-        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
-        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+        renderMesh.add_line(a, b);
+        renderMesh.add_line(b, c);
 
-        if (!nodeA || !nodeB) {
-            return false;
-        }
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_line_upload_data(renderMesh, {}, &result);
 
-        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
-        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
 
-        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
+        ok &= expect(!renderMesh.empty(), "RenderMesh de linhas nao ficou vazio");
+        ok &= expect(!uploadData.is_empty(), "MeshUploadData de linhas nao ficou vazio");
+        ok &= expect(uploadData.has_indices(), "MeshUploadData de linhas tem indices");
+        ok &= expect(uploadData.topology == graphics::PrimitiveTopology::Lines, "topologia ficou Lines");
 
-        TransformSessionOptions options{};
-        options.space = TransformSpace::World;
-        options.pivotMode = TransformPivotMode::SelectionCenter;
+        ok &= expect_size(renderMesh.vertex_count(), 3, "RenderMesh vertices");
+        ok &= expect_size(renderMesh.line_count(), 2, "RenderMesh lines");
 
-        TransformSession session{};
+        ok &= expect_size(uploadData.vertices.size(), 3, "upload vertices");
+        ok &= expect_size(uploadData.indices.size(), 4, "upload indices");
 
-        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
-        ok &= expect(session.scale(editor.scene(), glm::vec3{ 2.0f, 1.0f, 1.0f }), "scale() aplicou preview");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 0.0f, 0.0f, 0.0f }, "node A escalou afastando do centro");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 4.0f, 0.0f, 0.0f }, "node B escalou afastando do centro");
-
-        ok &= expect_vec3(nodeA->transform().scale(), glm::vec3{ 2.0f, 1.0f, 1.0f }, "node A recebeu escala local");
-        ok &= expect_vec3(nodeB->transform().scale(), glm::vec3{ 2.0f, 1.0f, 1.0f }, "node B recebeu escala local");
-
-        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou depois da escala");
-
-        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou posicao do node A");
-        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f }, "cancel restaurou posicao do node B");
-        ok &= expect_vec3(nodeA->transform().scale(), glm::vec3{ 1.0f, 1.0f, 1.0f }, "cancel restaurou escala do node A");
-        ok &= expect_vec3(nodeB->transform().scale(), glm::vec3{ 1.0f, 1.0f, 1.0f }, "cancel restaurou escala do node B");
+        ok &= expect_size(result.vertexCount, 3, "result.vertexCount");
+        ok &= expect_size(result.triangleCount, 0, "result.triangleCount");
+        ok &= expect_size(result.lineCount, 2, "result.lineCount");
+        ok &= expect_size(result.indexCount, 4, "result.indexCount");
+        ok &= expect(result.has_lines(), "result.has_lines() retornou true");
 
         return ok;
     }
 
-    bool test_local_translate_with_rotation()
+    bool test_color_and_usage()
     {
-        using namespace locus::editor;
+        using namespace locus;
 
-        std::cout << "\n=== TransformSession: local translate com rotacao ===\n";
+        std::cout << "\n=== RenderMeshUploadAdapter: cor e usage ===\n";
 
         bool ok = true;
 
-        Editor editor{};
+        kernel::geometry::LEM mesh{};
+        kernel::geometry::LEMEditor editorFacade{ mesh };
 
-        const SceneNodeId nodeId = editor.scene().create_empty("Rotated");
+        const auto face = make_triangle(editorFacade);
+        ok &= expect(mesh.is_valid(face), "face triangular criada");
 
-        SceneNode* node = require_node(editor, nodeId, "Rotated", ok);
+        const kernel::geometry::RenderMesh renderMesh =
+            kernel::geometry::MeshTriangulator::triangulate(mesh);
 
-        if (!node) {
-            return false;
-        }
+        editor::RenderMeshUploadOptions options{};
+        options.color = graphics::ColorRGBA{ 0.25f, 0.50f, 0.75f, 1.0f };
+        options.usage = graphics::BufferUsage::Dynamic;
 
-        node->transform().set_position(glm::vec3{ 0.0f, 0.0f, 0.0f });
-        node->transform().set_rotation(glm::angleAxis(
-            glm::half_pi<float>(),
-            glm::vec3{ 0.0f, 0.0f, 1.0f }));
+        editor::RenderMeshUploadResult result{};
+        const graphics::MeshUploadData uploadData =
+            editor::RenderMeshUploadAdapter::build_triangle_upload_data(renderMesh, options, &result);
 
-        editor.selection().objects().set(nodeId);
+        print_render_mesh_summary(renderMesh);
+        print_upload_summary(uploadData, result);
 
-        TransformSessionOptions options{};
-        options.space = TransformSpace::Local;
-        options.pivotMode = TransformPivotMode::IndividualOrigins;
+        ok &= expect(uploadData.usage == graphics::BufferUsage::Dynamic, "usage ficou Dynamic");
+        ok &= expect_size(uploadData.vertices.size(), 3, "upload vertices");
 
-        TransformSession session{};
-
-        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou em Local");
-
-        ok &= expect(
-            session.translate(editor.scene(), glm::vec3{ 1.0f, 0.0f, 0.0f }),
-            "translate local aplicou eixo X local");
-
-        ok &= expect_vec3(
-            node->transform().position(),
-            glm::vec3{ 0.0f, 1.0f, 0.0f },
-            "eixo X local rotacionado moveu no Y world/local armazenado");
-
-        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou translate local");
-
-        ok &= expect_vec3(
-            node->transform().position(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            "cancel restaurou posicao original");
+        ok &= expect_float(uploadData.vertices[0].color[0], 0.25f, "color.r");
+        ok &= expect_float(uploadData.vertices[0].color[1], 0.50f, "color.g");
+        ok &= expect_float(uploadData.vertices[0].color[2], 0.75f, "color.b");
+        ok &= expect_float(uploadData.vertices[0].color[3], 1.00f, "color.a");
 
         return ok;
     }
@@ -362,24 +392,24 @@ namespace {
 
 int main()
 {
-    std::cout << "=== Locus3D Editor TransformSession Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor RenderMeshUploadAdapter Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_empty_selection();
-    ok &= test_world_translate_confirm();
-    ok &= test_world_translate_cancel();
-    ok &= test_world_rotate_selection_center();
-    ok &= test_world_scale_selection_center();
-    ok &= test_local_translate_with_rotation();
+    ok &= test_empty_mesh();
+    ok &= test_triangle();
+    ok &= test_quad();
+    ok &= test_concave_pentagon();
+    ok &= test_manual_line_upload();
+    ok &= test_color_and_usage();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (ok) {
-        std::cout << "[OK] Todos os testes de TransformSession passaram.\n";
+        std::cout << "[OK] Todos os testes de RenderMeshUploadAdapter passaram.\n";
         return EXIT_SUCCESS;
     }
 
-    std::cout << "[FAIL] Algum teste de TransformSession falhou.\n";
+    std::cout << "[FAIL] Algum teste de RenderMeshUploadAdapter falhou.\n";
     return EXIT_FAILURE;
 }
