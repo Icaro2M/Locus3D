@@ -214,14 +214,14 @@ source\editor
 |       TransformGizmo.h [!]
 |       TransformGizmo.cpp [!]
 |
-+---transform [!]
-|       TransformSpace.h [!]
-|       TransformSession.h [!]
-|       TransformSession.cpp [!]
-|       TransformTarget.h [!]
-|       TransformTarget.cpp [!]
-|       TransformPivotResolver.h [!]
-|       TransformPivotResolver.cpp [!]
++---transform
+|       TransformSpace.h
+|       TransformSession.h
+|       TransformSession.cpp
+|       TransformTarget.h
+|       TransformTarget.cpp
+|       TransformPivotResolver.h
+|       TransformPivotResolver.cpp
 |
 +---snapping [!]
 |       SnapMode.h [!]
@@ -296,13 +296,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `gizmo/GizmoConstraint.cpp`
 - [!] `gizmo/TransformGizmo.h`
 - [!] `gizmo/TransformGizmo.cpp`
-- [!] `transform/TransformSpace.h`
-- [!] `transform/TransformSession.h`
-- [!] `transform/TransformSession.cpp`
-- [!] `transform/TransformTarget.h`
-- [!] `transform/TransformTarget.cpp`
-- [!] `transform/TransformPivotResolver.h`
-- [!] `transform/TransformPivotResolver.cpp`
 - [!] `snapping/SnapMode.h`
 - [!] `snapping/SnapSettings.h`
 - [!] `snapping/SnapSettings.cpp`

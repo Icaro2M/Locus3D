@@ -106,7 +106,14 @@ target_sources(locus3d_editor
         "command/document/ClearSceneCommand.cpp"
         "command/document/ImportMeshCommand.h"
         "command/document/ImportMeshCommand.cpp"
-        "history/HistoryConfig.h")
+        "history/HistoryConfig.h"
+        "transform/TransformSpace.h"
+        "transform/TransformTarget.h"
+        "transform/TransformTarget.cpp"
+        "transform/TransformPivotResolver.h"
+        "transform/TransformPivotResolver.cpp"
+        "transform/TransformSession.h"
+        "transform/TransformSession.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

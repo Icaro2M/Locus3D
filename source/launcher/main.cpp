@@ -1,253 +1,385 @@
-// SPDX-FileCopyrightText: 2026 Icaro2M
-// SPDX-License-Identifier: Apache-2.0
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-#include "editor/history/HistoryConfig.h"
-#include "editor/history/HistoryStack.h"
+#include "editor/Editor.h"
+#include "editor/scene/SceneNode.h"
+#include "editor/transform/TransformSession.h"
 
+#include <cmath>
+#include <cstdlib>
+#include <iomanip>
 #include <iostream>
 #include <string>
+#include <vector>
+
+#include <glm/common.hpp>
+#include <glm/ext/scalar_constants.hpp>
+#include <glm/geometric.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/vec3.hpp>
 
 namespace {
 
-    using namespace locus::editor;
+    constexpr float Epsilon = 0.0001f;
 
-    int g_failures = 0;
+    bool nearly_equal(float lhs, float rhs, float epsilon = Epsilon)
+    {
+        return std::abs(lhs - rhs) <= epsilon;
+    }
 
-    void check(bool condition, const std::string& message)
+    bool nearly_equal(const glm::vec3& lhs, const glm::vec3& rhs, float epsilon = Epsilon)
+    {
+        return glm::length(lhs - rhs) <= epsilon;
+    }
+
+    void print_vec3(const std::string& label, const glm::vec3& value)
+    {
+        std::cout
+            << label << ": "
+            << std::fixed << std::setprecision(4)
+            << value.x << ", "
+            << value.y << ", "
+            << value.z << '\n';
+    }
+
+    bool expect(bool condition, const std::string& message)
     {
         if (condition) {
             std::cout << "[OK] " << message << '\n';
-            return;
+            return true;
         }
 
         std::cout << "[FAIL] " << message << '\n';
-        ++g_failures;
+        return false;
     }
 
-    void print_config(const std::string& label, const HistoryConfig& config)
+    bool expect_vec3(
+        const glm::vec3& actual,
+        const glm::vec3& expected,
+        const std::string& message)
     {
-        std::cout << label << '\n';
-        std::cout << "  maxEntries: " << config.maxEntries << '\n';
-        std::cout << "  enabled: " << (config.enabled ? "true" : "false") << '\n';
+        if (nearly_equal(actual, expected)) {
+            std::cout << "[OK] " << message << '\n';
+            return true;
+        }
+
+        std::cout << "[FAIL] " << message << '\n';
+        print_vec3("  actual", actual);
+        print_vec3("  expected", expected);
+        return false;
     }
 
-    void test_history_config_constants()
+    locus::editor::SceneNode* require_node(
+        locus::editor::Editor& editor,
+        locus::editor::SceneNodeId id,
+        const std::string& name,
+        bool& ok)
     {
-        std::cout << "\n=== HistoryConfig constants ===\n";
+        locus::editor::SceneNode* node = editor.scene().find_node(id);
 
-        check(
-            UnlimitedHistoryEntries == 0u,
-            "UnlimitedHistoryEntries e 0");
+        if (!node) {
+            std::cout << "[FAIL] node nao encontrado: " << name << '\n';
+            ok = false;
+            return nullptr;
+        }
 
-        check(
-            MinHistoryMaxEntries == 1u,
-            "MinHistoryMaxEntries e 1");
-
-        check(
-            DefaultHistoryMaxEntries == 128u,
-            "DefaultHistoryMaxEntries e 128");
-
-        check(
-            MaxHistoryMaxEntries == 4096u,
-            "MaxHistoryMaxEntries e 4096");
-
-        check(
-            DefaultHistoryMaxEntries >= MinHistoryMaxEntries,
-            "DefaultHistoryMaxEntries respeita o minimo");
-
-        check(
-            DefaultHistoryMaxEntries <= MaxHistoryMaxEntries,
-            "DefaultHistoryMaxEntries respeita o maximo");
-
-        check(
-            MaxHistoryMaxEntries >= MinHistoryMaxEntries,
-            "MaxHistoryMaxEntries respeita o minimo");
+        std::cout << "[OK] node encontrado: " << name << " id=" << id.value << '\n';
+        return node;
     }
 
-    void test_normalize_history_max_entries()
+    bool test_empty_selection()
     {
-        std::cout << "\n=== normalize_history_max_entries ===\n";
+        using namespace locus::editor;
 
-        check(
-            normalize_history_max_entries(UnlimitedHistoryEntries) == UnlimitedHistoryEntries,
-            "normalize preserva UnlimitedHistoryEntries");
+        std::cout << "\n=== TransformSession: selecao vazia ===\n";
 
-        check(
-            normalize_history_max_entries(0u) == UnlimitedHistoryEntries,
-            "normalize preserva 0 como historico ilimitado");
+        bool ok = true;
 
-        check(
-            normalize_history_max_entries(MinHistoryMaxEntries) == MinHistoryMaxEntries,
-            "normalize preserva valor minimo");
+        Editor editor{};
+        TransformSession session{};
 
-        check(
-            normalize_history_max_entries(DefaultHistoryMaxEntries) == DefaultHistoryMaxEntries,
-            "normalize preserva valor padrao");
+        const bool began = session.begin(editor.scene(), editor.selection());
 
-        check(
-            normalize_history_max_entries(MaxHistoryMaxEntries) == MaxHistoryMaxEntries,
-            "normalize preserva valor maximo");
+        ok &= expect(!began, "begin() com selecao vazia falhou corretamente");
+        ok &= expect(!session.is_active(), "sessao nao ficou ativa com selecao vazia");
+        ok &= expect(session.state() == TransformSessionState::Idle, "estado final ficou Idle");
 
-        check(
-            normalize_history_max_entries(MaxHistoryMaxEntries + 1u) == MaxHistoryMaxEntries,
-            "normalize limita valor acima do maximo");
-
-        check(
-            normalize_history_max_entries(MaxHistoryMaxEntries + 1000u) == MaxHistoryMaxEntries,
-            "normalize limita valor muito acima do maximo");
+        return ok;
     }
 
-    void test_normalize_history_config()
+    bool test_world_translate_confirm()
     {
-        std::cout << "\n=== normalize_history_config ===\n";
+        using namespace locus::editor;
 
-        {
-            HistoryConfig config{};
-            print_config("config padrao antes", config);
+        std::cout << "\n=== TransformSession: world translate + confirm ===\n";
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            print_config("config padrao depois", normalized);
+        bool ok = true;
 
-            check(
-                normalized.maxEntries == DefaultHistoryMaxEntries,
-                "config padrao preserva maxEntries");
+        Editor editor{};
 
-            check(
-                normalized.enabled,
-                "config padrao preserva enabled true");
+        const SceneNodeId nodeAId = editor.scene().create_empty("A");
+        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+
+        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
+        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+
+        if (!nodeA || !nodeB) {
+            return false;
         }
 
-        {
-            HistoryConfig config{};
-            config.maxEntries = UnlimitedHistoryEntries;
-            config.enabled = true;
+        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
 
-            print_config("config ilimitada antes", config);
+        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            print_config("config ilimitada depois", normalized);
+        TransformSessionOptions options{};
+        options.space = TransformSpace::World;
+        options.pivotMode = TransformPivotMode::SelectionCenter;
 
-            check(
-                normalized.maxEntries == UnlimitedHistoryEntries,
-                "config ilimitada preserva maxEntries 0");
+        TransformSession session{};
 
-            check(
-                normalized.enabled,
-                "config ilimitada preserva enabled true");
-        }
+        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() capturou dois targets");
+        ok &= expect(session.is_active(), "sessao ficou ativa");
+        ok &= expect(session.targets().size() == 2, "sessao tem dois targets");
+        ok &= expect_vec3(session.pivot(), glm::vec3{ 2.0f, 0.0f, 0.0f }, "pivot da selecao ficou no centro");
 
-        {
-            HistoryConfig config{};
-            config.maxEntries = MaxHistoryMaxEntries + 250u;
-            config.enabled = false;
+        ok &= expect(session.translate(editor.scene(), glm::vec3{ 0.0f, 2.0f, 0.0f }), "translate() atualizou pelo menos um target");
 
-            print_config("config acima do maximo antes", config);
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 2.0f, 0.0f }, "node A moveu em world");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 2.0f, 0.0f }, "node B moveu em world");
+        ok &= expect(session.has_changes(), "sessao detectou alteracoes");
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            print_config("config acima do maximo depois", normalized);
+        ok &= expect(session.confirm(), "confirm() finalizou a sessao");
+        ok &= expect(session.state() == TransformSessionState::Confirmed, "estado final ficou Confirmed");
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 2.0f, 0.0f }, "confirm manteve preview do node A");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 2.0f, 0.0f }, "confirm manteve preview do node B");
 
-            check(
-                normalized.maxEntries == MaxHistoryMaxEntries,
-                "config acima do maximo foi limitada");
-
-            check(
-                !normalized.enabled,
-                "config acima do maximo preserva enabled false");
-        }
+        return ok;
     }
 
-    void test_history_stack_with_config()
+    bool test_world_translate_cancel()
     {
-        std::cout << "\n=== HistoryStack usando HistoryConfig ===\n";
+        using namespace locus::editor;
 
-        {
-            HistoryStack history;
+        std::cout << "\n=== TransformSession: world translate + cancel ===\n";
 
-            check(
-                history.max_entries() == UnlimitedHistoryEntries,
-                "HistoryStack comeca ilimitado por padrao");
+        bool ok = true;
 
-            HistoryConfig config{};
-            config.maxEntries = DefaultHistoryMaxEntries;
+        Editor editor{};
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            history.set_max_entries(normalized.maxEntries);
+        const SceneNodeId nodeAId = editor.scene().create_empty("A");
+        const SceneNodeId nodeBId = editor.scene().create_empty("B");
 
-            check(
-                history.max_entries() == DefaultHistoryMaxEntries,
-                "HistoryStack recebeu DefaultHistoryMaxEntries");
+        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
+        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+
+        if (!nodeA || !nodeB) {
+            return false;
         }
 
-        {
-            HistoryStack history;
+        nodeA->transform().set_position(glm::vec3{ -1.0f, 0.0f, 0.0f });
+        nodeB->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-            HistoryConfig config{};
-            config.maxEntries = UnlimitedHistoryEntries;
+        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            history.set_max_entries(normalized.maxEntries);
+        TransformSessionOptions options{};
+        options.space = TransformSpace::World;
+        options.pivotMode = TransformPivotMode::SelectionCenter;
 
-            check(
-                history.max_entries() == UnlimitedHistoryEntries,
-                "HistoryStack aceitou historico ilimitado pelo config");
+        TransformSession session{};
+
+        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
+        ok &= expect(session.translate(editor.scene(), glm::vec3{ 5.0f, 0.0f, 0.0f }), "translate() aplicou preview");
+
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 4.0f, 0.0f, 0.0f }, "node A recebeu preview");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 6.0f, 0.0f, 0.0f }, "node B recebeu preview");
+
+        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou pelo menos um target");
+        ok &= expect(session.state() == TransformSessionState::Cancelled, "estado final ficou Cancelled");
+
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ -1.0f, 0.0f, 0.0f }, "cancel restaurou node A");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou node B");
+
+        return ok;
+    }
+
+    bool test_world_rotate_selection_center()
+    {
+        using namespace locus::editor;
+
+        std::cout << "\n=== TransformSession: world rotate selection center ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        const SceneNodeId nodeAId = editor.scene().create_empty("A");
+        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+
+        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
+        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+
+        if (!nodeA || !nodeB) {
+            return false;
         }
 
-        {
-            HistoryStack history;
+        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
 
-            HistoryConfig config{};
-            config.maxEntries = MaxHistoryMaxEntries + 500u;
+        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            history.set_max_entries(normalized.maxEntries);
+        TransformSessionOptions options{};
+        options.space = TransformSpace::World;
+        options.pivotMode = TransformPivotMode::SelectionCenter;
 
-            check(
-                history.max_entries() == MaxHistoryMaxEntries,
-                "HistoryStack recebeu valor normalizado para o maximo");
+        TransformSession session{};
+
+        const glm::quat rotation = glm::angleAxis(
+            glm::half_pi<float>(),
+            glm::vec3{ 0.0f, 0.0f, 1.0f });
+
+        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
+        ok &= expect_vec3(session.pivot(), glm::vec3{ 2.0f, 0.0f, 0.0f }, "pivot ficou no centro antes da rotacao");
+
+        ok &= expect(session.rotate(editor.scene(), rotation), "rotate() aplicou preview");
+
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 2.0f, -1.0f, 0.0f }, "node A rotacionou ao redor do centro");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 2.0f, 1.0f, 0.0f }, "node B rotacionou ao redor do centro");
+
+        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou depois da rotacao");
+
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou node A");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f }, "cancel restaurou node B");
+
+        return ok;
+    }
+
+    bool test_world_scale_selection_center()
+    {
+        using namespace locus::editor;
+
+        std::cout << "\n=== TransformSession: world scale selection center ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        const SceneNodeId nodeAId = editor.scene().create_empty("A");
+        const SceneNodeId nodeBId = editor.scene().create_empty("B");
+
+        SceneNode* nodeA = require_node(editor, nodeAId, "A", ok);
+        SceneNode* nodeB = require_node(editor, nodeBId, "B", ok);
+
+        if (!nodeA || !nodeB) {
+            return false;
         }
 
-        {
-            HistoryStack history;
+        nodeA->transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        nodeB->transform().set_position(glm::vec3{ 3.0f, 0.0f, 0.0f });
 
-            HistoryConfig config{};
-            config.maxEntries = 16u;
-            config.enabled = false;
+        editor.selection().objects().set(std::vector<SceneNodeId>{ nodeAId, nodeBId }, nodeAId);
 
-            const HistoryConfig normalized = normalize_history_config(config);
-            history.set_max_entries(normalized.maxEntries);
+        TransformSessionOptions options{};
+        options.space = TransformSpace::World;
+        options.pivotMode = TransformPivotMode::SelectionCenter;
 
-            check(
-                history.max_entries() == 16u,
-                "HistoryStack recebeu valor customizado valido");
+        TransformSession session{};
 
-            check(
-                !normalized.enabled,
-                "enabled false continua preservado no config normalizado");
+        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou");
+        ok &= expect(session.scale(editor.scene(), glm::vec3{ 2.0f, 1.0f, 1.0f }), "scale() aplicou preview");
 
-            check(
-                history.empty(),
-                "HistoryStack continua vazio apos aplicar config");
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 0.0f, 0.0f, 0.0f }, "node A escalou afastando do centro");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 4.0f, 0.0f, 0.0f }, "node B escalou afastando do centro");
+
+        ok &= expect_vec3(nodeA->transform().scale(), glm::vec3{ 2.0f, 1.0f, 1.0f }, "node A recebeu escala local");
+        ok &= expect_vec3(nodeB->transform().scale(), glm::vec3{ 2.0f, 1.0f, 1.0f }, "node B recebeu escala local");
+
+        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou depois da escala");
+
+        ok &= expect_vec3(nodeA->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }, "cancel restaurou posicao do node A");
+        ok &= expect_vec3(nodeB->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f }, "cancel restaurou posicao do node B");
+        ok &= expect_vec3(nodeA->transform().scale(), glm::vec3{ 1.0f, 1.0f, 1.0f }, "cancel restaurou escala do node A");
+        ok &= expect_vec3(nodeB->transform().scale(), glm::vec3{ 1.0f, 1.0f, 1.0f }, "cancel restaurou escala do node B");
+
+        return ok;
+    }
+
+    bool test_local_translate_with_rotation()
+    {
+        using namespace locus::editor;
+
+        std::cout << "\n=== TransformSession: local translate com rotacao ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        const SceneNodeId nodeId = editor.scene().create_empty("Rotated");
+
+        SceneNode* node = require_node(editor, nodeId, "Rotated", ok);
+
+        if (!node) {
+            return false;
         }
+
+        node->transform().set_position(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        node->transform().set_rotation(glm::angleAxis(
+            glm::half_pi<float>(),
+            glm::vec3{ 0.0f, 0.0f, 1.0f }));
+
+        editor.selection().objects().set(nodeId);
+
+        TransformSessionOptions options{};
+        options.space = TransformSpace::Local;
+        options.pivotMode = TransformPivotMode::IndividualOrigins;
+
+        TransformSession session{};
+
+        ok &= expect(session.begin(editor.scene(), editor.selection(), options), "begin() iniciou em Local");
+
+        ok &= expect(
+            session.translate(editor.scene(), glm::vec3{ 1.0f, 0.0f, 0.0f }),
+            "translate local aplicou eixo X local");
+
+        ok &= expect_vec3(
+            node->transform().position(),
+            glm::vec3{ 0.0f, 1.0f, 0.0f },
+            "eixo X local rotacionado moveu no Y world/local armazenado");
+
+        ok &= expect(session.cancel(editor.scene()), "cancel() restaurou translate local");
+
+        ok &= expect_vec3(
+            node->transform().position(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            "cancel restaurou posicao original");
+
+        return ok;
     }
 
 } // namespace
 
 int main()
 {
-    std::cout << "=== Locus3D Editor HistoryConfig Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor TransformSession Smoke Test ===\n";
 
-    test_history_config_constants();
-    test_normalize_history_max_entries();
-    test_normalize_history_config();
-    test_history_stack_with_config();
+    bool ok = true;
 
-    std::cout << "\n=== Resultado Final ===\n";
+    ok &= test_empty_selection();
+    ok &= test_world_translate_confirm();
+    ok &= test_world_translate_cancel();
+    ok &= test_world_rotate_selection_center();
+    ok &= test_world_scale_selection_center();
+    ok &= test_local_translate_with_rotation();
 
-    if (g_failures == 0) {
-        std::cout << "Todos os testes passaram.\n";
-        return 0;
+    std::cout << "\n=== Resultado final ===\n";
+
+    if (ok) {
+        std::cout << "[OK] Todos os testes de TransformSession passaram.\n";
+        return EXIT_SUCCESS;
     }
 
-    std::cout << g_failures << " teste(s) falharam.\n";
-    return 1;
+    std::cout << "[FAIL] Algum teste de TransformSession falhou.\n";
+    return EXIT_FAILURE;
 }
