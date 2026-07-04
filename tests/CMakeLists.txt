@@ -212,6 +212,7 @@ set_tests_properties(editor.unit.command.document PROPERTIES
 )
 
 add_executable(Locus3DEditorHistoryTests
+    unit/editor/history/HistoryConfigTests.cpp
     unit/editor/history/HistoryEntryTests.cpp
     unit/editor/history/HistoryStackTests.cpp
     unit/editor/history/HistoryTestMain.cpp

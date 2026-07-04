@@ -24,6 +24,7 @@ int main()
     using namespace locus::tests;
 
     const TestCase tests[] = {
+        { "HistoryConfig", run_history_config_tests },
         { "HistoryEntry", run_history_entry_tests },
         { "HistoryStack", run_history_stack_tests },
     };

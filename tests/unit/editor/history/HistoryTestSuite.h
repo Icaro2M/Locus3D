@@ -14,6 +14,7 @@
 
 namespace locus::tests {
 
+[[nodiscard]] TestResult run_history_config_tests();
 [[nodiscard]] TestResult run_history_entry_tests();
 [[nodiscard]] TestResult run_history_stack_tests();
 
