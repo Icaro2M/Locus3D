@@ -110,6 +110,33 @@ set_tests_properties(editor.unit.selection PROPERTIES
     LABELS "unit;editor;selection"
 )
 
+add_executable(Locus3DEditorRenderTests
+    ${GLAD_DIR}/src/glad.c
+    unit/editor/render/EditorRenderTestMain.cpp
+    unit/editor/render/MeshNodeRenderAdapterTests.cpp
+    unit/editor/render/RenderMeshUploadAdapterTests.cpp
+    unit/editor/render/SceneRenderAdapterTests.cpp
+    unit/editor/render/SelectionRenderAdapterTests.cpp
+)
+
+target_include_directories(Locus3DEditorRenderTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorRenderTests
+    PRIVATE
+        Locus3D::Editor
+        Locus3D::Graphics
+)
+
+add_test(NAME editor.unit.render COMMAND Locus3DEditorRenderTests)
+set_tests_properties(editor.unit.render PROPERTIES
+    LABELS "unit;editor;render"
+)
+
 add_executable(Locus3DEditorCommandTests
     unit/editor/command/CommandContextTests.cpp
     unit/editor/command/CommandDispatcherTests.cpp

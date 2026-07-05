@@ -122,7 +122,8 @@ target_sources(locus3d_editor
         "render/SceneRenderAdapter.h"
         "render/SceneRenderAdapter.cpp"
         "render/SelectionRenderAdapter.h"
-        "render/SelectionRenderAdapter.cpp")
+        "render/SelectionRenderAdapter.cpp"
+        )
 
 target_include_directories(locus3d_editor
     PUBLIC

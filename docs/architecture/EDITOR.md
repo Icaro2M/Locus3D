@@ -254,8 +254,8 @@ source\editor
 |       MeshNodeRenderAdapter.cpp
 |       SceneRenderAdapter.h
 |       SceneRenderAdapter.cpp
-|       SelectionRenderAdapter.h [!]
-|       SelectionRenderAdapter.cpp [!]
+|       SelectionRenderAdapter.h 
+|       SelectionRenderAdapter.cpp 
 |       OverlayRenderAdapter.h [!]
 |       OverlayRenderAdapter.cpp [!]
 |       PreviewRenderAdapter.h [!]
