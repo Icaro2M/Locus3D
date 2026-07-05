@@ -252,8 +252,8 @@ source\editor
 |       RenderMeshUploadAdapter.cpp
 |       MeshNodeRenderAdapter.h
 |       MeshNodeRenderAdapter.cpp
-|       SceneRenderAdapter.h [!]
-|       SceneRenderAdapter.cpp [!]
+|       SceneRenderAdapter.h
+|       SceneRenderAdapter.cpp
 |       SelectionRenderAdapter.h [!]
 |       SelectionRenderAdapter.cpp [!]
 |       OverlayRenderAdapter.h [!]

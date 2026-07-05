@@ -118,7 +118,9 @@ target_sources(locus3d_editor
         "render/RenderMeshUploadAdapter.h"
         "render/RenderMeshUploadAdapter.cpp"
         "render/MeshNodeRenderAdapter.h"
-        "render/MeshNodeRenderAdapter.cpp")
+        "render/MeshNodeRenderAdapter.cpp"
+        "render/SceneRenderAdapter.h"
+        "render/SceneRenderAdapter.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

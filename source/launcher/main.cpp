@@ -3,30 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/render/MeshNodeRenderAdapter.h"
+#include "editor/render/SceneRenderAdapter.h"
+#include "editor/scene/EditorScene.h"
+#include "editor/scene/EmptyNode.h"
 #include "editor/scene/MeshNode.h"
-#include "graphics/mesh/MeshUploadData.h"
-#include "graphics/scene/RenderLayer.h"
+#include "graphics/scene/RenderScene.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 
 #include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
-#include <cmath>
 #include <cstdlib>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace {
-
-    constexpr float Epsilon = 0.0001f;
-
-    bool nearly_equal(float lhs, float rhs, float epsilon = Epsilon)
-    {
-        return std::abs(lhs - rhs) <= epsilon;
-    }
 
     bool expect(bool condition, const std::string& message)
     {
@@ -77,54 +71,24 @@ namespace {
         return false;
     }
 
-    bool expect_float(
-        float actual,
-        float expected,
-        const std::string& message)
+    locus::editor::SceneNodeId insert_empty_node(
+        locus::editor::EditorScene& scene,
+        locus::editor::SceneNodeId id,
+        const std::string& name)
     {
-        if (nearly_equal(actual, expected)) {
-            std::cout
-                << "[OK] " << message
-                << " = " << std::fixed << std::setprecision(4) << actual
-                << '\n';
-
-            return true;
-        }
-
-        std::cout
-            << "[FAIL] " << message
-            << " | actual=" << std::fixed << std::setprecision(4) << actual
-            << " expected=" << expected
-            << '\n';
-
-        return false;
+        return scene.tree().insert_node(
+            std::make_unique<locus::editor::EmptyNode>(id, name)
+        );
     }
 
-    void print_upload_summary(
-        const locus::graphics::MeshUploadData& uploadData,
-        const locus::editor::MeshNodeRenderResult& result)
+    locus::editor::SceneNodeId insert_mesh_node(
+        locus::editor::EditorScene& scene,
+        locus::editor::SceneNodeId id,
+        const std::string& name)
     {
-        std::cout
-            << "MeshUploadData"
-            << " | vertices: " << uploadData.vertices.size()
-            << " | indices: " << uploadData.indices.size()
-            << " | hasUploadData: " << (result.hasUploadData ? "true" : "false")
-            << " | hasGpuMesh: " << (result.hasGpuMesh ? "true" : "false")
-            << " | hasRenderObject: " << (result.hasRenderObject ? "true" : "false")
-            << " | skipped: " << (result.skipped ? "true" : "false")
-            << '\n';
-
-        std::cout
-            << "UploadResult"
-            << " | vertices: " << result.uploadResult.vertexCount
-            << " | triangles: " << result.uploadResult.triangleCount
-            << " | lines: " << result.uploadResult.lineCount
-            << " | indices: " << result.uploadResult.indexCount
-            << '\n';
-
-        if (!result.message.empty()) {
-            std::cout << "Message: " << result.message << '\n';
-        }
+        return scene.tree().insert_node(
+            std::make_unique<locus::editor::MeshNode>(id, name)
+        );
     }
 
     locus::kernel::geometry::FaceHandle make_triangle(
@@ -148,269 +112,435 @@ namespace {
         return editor.add_face(std::vector{ v0, v1, v2, v3 });
     }
 
-    bool test_empty_mesh_node_upload()
+    void print_scene_result(const locus::editor::SceneRenderResult& result)
+    {
+        std::cout
+            << "SceneRenderResult"
+            << " | visited: " << result.visitedNodeCount
+            << " | mesh nodes: " << result.meshNodeCount
+            << " | objects: " << result.objectCount
+            << " | skipped: " << result.skippedNodeCount
+            << " | failed: " << result.failedNodeCount
+            << " | has failures: " << (result.has_failures() ? "true" : "false")
+            << '\n';
+
+        for (const locus::editor::SceneRenderNodeResult& nodeResult : result.nodes) {
+            std::cout
+                << "  node " << nodeResult.nodeId.value
+                << " | meshNode: " << (nodeResult.meshNode ? "true" : "false")
+                << " | emitted: " << (nodeResult.emitted ? "true" : "false")
+                << " | skipped: " << (nodeResult.skipped ? "true" : "false")
+                << " | failed: " << (nodeResult.failed ? "true" : "false");
+
+            if (!nodeResult.message.empty()) {
+                std::cout << " | " << nodeResult.message;
+            }
+
+            std::cout << '\n';
+        }
+    }
+
+    bool test_empty_scene()
     {
         using namespace locus;
 
-        std::cout << "\n=== MeshNodeRenderAdapter: mesh node vazio ===\n";
+        std::cout << "\n=== SceneRenderAdapter: cena vazia ===\n";
 
         bool ok = true;
 
-        editor::MeshNode node{ editor::SceneNodeId{ 10 }, "Empty mesh node" };
+        editor::EditorScene scene;
 
-        editor::MeshNodeRenderResult result{};
-        const graphics::MeshUploadData uploadData =
-            editor::MeshNodeRenderAdapter::build_upload_data(node, {}, &result);
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, {}, &result);
 
-        print_upload_summary(uploadData, result);
+        print_scene_result(result);
 
-        ok &= expect(uploadData.is_empty(), "upload data vazio");
-        ok &= expect(!uploadData.has_indices(), "upload data sem indices");
-        ok &= expect(result.nodeId == node.id(), "result.nodeId preservado");
-        ok &= expect(!result.hasUploadData, "result.hasUploadData false");
-        ok &= expect(!result.hasGpuMesh, "result.hasGpuMesh false");
-        ok &= expect(!result.hasRenderObject, "result.hasRenderObject false");
-        ok &= expect(result.skipped, "result.skipped true");
-        ok &= expect_size(result.uploadResult.vertexCount, 0, "uploadResult.vertexCount");
-        ok &= expect_size(result.uploadResult.triangleCount, 0, "uploadResult.triangleCount");
-        ok &= expect_size(result.uploadResult.indexCount, 0, "uploadResult.indexCount");
-        ok &= expect(!result.message.empty(), "mensagem diagnostica preenchida");
+        ok &= expect(renderScene.empty(), "render scene vazia");
+        ok &= expect_size(renderScene.object_count(), 0, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 0, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 0, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 0, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect(!result.has_failures(), "sem falhas");
 
         return ok;
     }
 
-    bool test_triangle_mesh_node_upload()
+    bool test_scene_with_empty_node_only()
     {
         using namespace locus;
 
-        std::cout << "\n=== MeshNodeRenderAdapter: mesh node triangulo ===\n";
+        std::cout << "\n=== SceneRenderAdapter: cena com EmptyNode ===\n";
 
         bool ok = true;
 
-        editor::MeshNode node{ editor::SceneNodeId{ 20 }, "Triangle mesh node" };
-        kernel::geometry::LEMEditor meshEditor{ node.mesh() };
+        editor::EditorScene scene;
 
+        const editor::SceneNodeId emptyId = insert_empty_node(
+            scene,
+            editor::SceneNodeId{ 100 },
+            "Empty root"
+        );
+
+        ok &= expect(emptyId.is_valid(), "EmptyNode inserido");
+
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, {}, &result);
+
+        print_scene_result(result);
+
+        ok &= expect(renderScene.empty(), "render scene vazia");
+        ok &= expect_size(renderScene.object_count(), 0, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 0, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 0, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect(!result.has_failures(), "sem falhas");
+        ok &= expect_size(result.nodes.size(), 1, "node result count");
+        ok &= expect(result.nodes[0].skipped, "EmptyNode foi pulado");
+        ok &= expect(!result.nodes[0].meshNode, "EmptyNode nao contado como mesh");
+
+        return ok;
+    }
+
+    bool test_scene_with_visible_mesh()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SceneRenderAdapter: cena com MeshNode visivel ===\n";
+
+        bool ok = true;
+
+        editor::EditorScene scene;
+
+        const editor::SceneNodeId meshId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 200 },
+            "Visible mesh"
+        );
+
+        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+
+        editor::MeshNode* meshNode = scene.find_mesh(meshId);
+        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+
+        if (!meshNode) {
+            return false;
+        }
+
+        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
         const auto face = make_triangle(meshEditor);
-        ok &= expect(node.mesh().is_valid(face), "face triangular criada");
 
-        editor::MeshNodeRenderOptions options{};
-        options.uploadOptions.color = graphics::ColorRGBA{ 0.20f, 0.40f, 0.80f, 1.0f };
-        options.uploadOptions.usage = graphics::BufferUsage::Dynamic;
+        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
 
-        editor::MeshNodeRenderResult result{};
-        const graphics::MeshUploadData uploadData =
-            editor::MeshNodeRenderAdapter::build_upload_data(node, options, &result);
+        meshNode->transform().set_position(glm::vec3{ 2.0f, 3.0f, 4.0f });
+        meshNode->metadata().visible = true;
+        meshNode->metadata().selectable = true;
+        meshNode->metadata().locked = false;
 
-        print_upload_summary(uploadData, result);
+        editor::SceneRenderOptions options{};
+        options.includeHiddenNodes = true;
+        options.allowNullGpuMeshes = true;
+        options.meshOptions.selected = true;
+        options.meshOptions.hovered = true;
+        options.meshOptions.wireframe = false;
 
-        ok &= expect(!uploadData.is_empty(), "upload data nao vazio");
-        ok &= expect(uploadData.has_indices(), "upload data com indices");
-        ok &= expect(uploadData.topology == graphics::PrimitiveTopology::Triangles, "topologia Triangles");
-        ok &= expect(uploadData.usage == graphics::BufferUsage::Dynamic, "usage Dynamic");
-        ok &= expect(result.nodeId == node.id(), "result.nodeId preservado");
-        ok &= expect(result.hasUploadData, "result.hasUploadData true");
-        ok &= expect(!result.hasGpuMesh, "result.hasGpuMesh false");
-        ok &= expect(!result.hasRenderObject, "result.hasRenderObject false");
-        ok &= expect(!result.skipped, "result.skipped false");
-        ok &= expect_size(uploadData.vertices.size(), 3, "upload vertices");
-        ok &= expect_size(uploadData.indices.size(), 3, "upload indices");
-        ok &= expect_size(result.uploadResult.vertexCount, 3, "uploadResult.vertexCount");
-        ok &= expect_size(result.uploadResult.triangleCount, 1, "uploadResult.triangleCount");
-        ok &= expect_size(result.uploadResult.indexCount, 3, "uploadResult.indexCount");
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
 
-        ok &= expect_float(uploadData.vertices[0].color[0], 0.20f, "color.r");
-        ok &= expect_float(uploadData.vertices[0].color[1], 0.40f, "color.g");
-        ok &= expect_float(uploadData.vertices[0].color[2], 0.80f, "color.b");
-        ok &= expect_float(uploadData.vertices[0].color[3], 1.00f, "color.a");
+        print_scene_result(result);
+
+        ok &= expect(!renderScene.empty(), "render scene nao vazia");
+        ok &= expect_size(renderScene.object_count(), 1, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 1, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect(!result.has_failures(), "sem falhas");
+
+        const graphics::RenderObject& object = renderScene.objects().front();
+
+        ok &= expect_u64(object.id, 200, "object.id");
+        ok &= expect(object.name == "Visible mesh", "object.name preservado");
+        ok &= expect(object.mesh == nullptr, "object.mesh nullptr permitido no teste sem GPU");
+        ok &= expect(object.visibility.visible, "object visible true");
+        ok &= expect(object.visibility.selectable, "object selectable true");
+        ok &= expect(object.selected, "object selected true");
+        ok &= expect(object.hovered, "object hovered true");
+        ok &= expect(!object.wireframe, "object wireframe false");
+        ok &= expect(object.transform.position.x == 2.0f, "position.x preservada");
+        ok &= expect(object.transform.position.y == 3.0f, "position.y preservada");
+        ok &= expect(object.transform.position.z == 4.0f, "position.z preservada");
+
+        ok &= expect_size(result.nodes.size(), 1, "node result count");
+        ok &= expect(result.nodes[0].meshNode, "node result marcado como mesh");
+        ok &= expect(result.nodes[0].emitted, "node result emitido");
+        ok &= expect(!result.nodes[0].skipped, "node result nao pulado");
+        ok &= expect(!result.nodes[0].failed, "node result sem falha");
 
         return ok;
     }
 
-    bool test_quad_mesh_node_upload()
+    bool test_hidden_mesh_included()
     {
         using namespace locus;
 
-        std::cout << "\n=== MeshNodeRenderAdapter: mesh node quad ===\n";
+        std::cout << "\n=== SceneRenderAdapter: MeshNode invisivel incluido ===\n";
 
         bool ok = true;
 
-        editor::MeshNode node{ editor::SceneNodeId{ 30 }, "Quad mesh node" };
-        kernel::geometry::LEMEditor meshEditor{ node.mesh() };
+        editor::EditorScene scene;
 
+        const editor::SceneNodeId meshId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 300 },
+            "Hidden mesh included"
+        );
+
+        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+
+        editor::MeshNode* meshNode = scene.find_mesh(meshId);
+        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+
+        if (!meshNode) {
+            return false;
+        }
+
+        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
         const auto face = make_quad(meshEditor);
-        ok &= expect(node.mesh().is_valid(face), "face quad criada");
 
-        editor::MeshNodeRenderResult result{};
-        const graphics::MeshUploadData uploadData =
-            editor::MeshNodeRenderAdapter::build_upload_data(node, {}, &result);
+        ok &= expect(meshNode->mesh().is_valid(face), "face quad criada");
 
-        print_upload_summary(uploadData, result);
+        meshNode->metadata().visible = false;
+        meshNode->metadata().selectable = true;
+        meshNode->metadata().locked = false;
 
-        ok &= expect(!uploadData.is_empty(), "upload data nao vazio");
-        ok &= expect(uploadData.has_indices(), "upload data com indices");
-        ok &= expect_size(uploadData.vertices.size(), 4, "upload vertices");
-        ok &= expect_size(uploadData.indices.size(), 6, "upload indices");
-        ok &= expect_size(result.uploadResult.vertexCount, 4, "uploadResult.vertexCount");
-        ok &= expect_size(result.uploadResult.triangleCount, 2, "uploadResult.triangleCount");
-        ok &= expect_size(result.uploadResult.indexCount, 6, "uploadResult.indexCount");
+        editor::SceneRenderOptions options{};
+        options.includeHiddenNodes = true;
+        options.allowNullGpuMeshes = true;
 
-        return ok;
-    }
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
 
-    bool test_build_render_object_metadata()
-    {
-        using namespace locus;
+        print_scene_result(result);
 
-        std::cout << "\n=== MeshNodeRenderAdapter: RenderObject metadata/flags ===\n";
+        ok &= expect_size(renderScene.object_count(), 1, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 1, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
 
-        bool ok = true;
+        const graphics::RenderObject& object = renderScene.objects().front();
 
-        editor::MeshNode node{ editor::SceneNodeId{ 40 }, "Renderable mesh node" };
-
-        node.transform().set_position(glm::vec3{ 3.0f, 4.0f, 5.0f });
-        node.transform().set_scale(glm::vec3{ 2.0f, 3.0f, 4.0f });
-        node.transform().set_rotation(glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f });
-
-        node.metadata().visible = true;
-        node.metadata().selectable = true;
-        node.metadata().locked = false;
-
-        editor::MeshNodeRenderOptions options{};
-        options.layer = graphics::RenderLayer::Default;
-        options.selected = true;
-        options.hovered = true;
-        options.wireframe = true;
-
-        const graphics::RenderObject object =
-            editor::MeshNodeRenderAdapter::build_render_object(node, nullptr, options);
-
-        std::cout
-            << "RenderObject"
-            << " | id: " << object.id
-            << " | name: " << object.name
-            << " | visible: " << (object.visibility.visible ? "true" : "false")
-            << " | selectable: " << (object.visibility.selectable ? "true" : "false")
-            << " | selected: " << (object.selected ? "true" : "false")
-            << " | hovered: " << (object.hovered ? "true" : "false")
-            << " | wireframe: " << (object.wireframe ? "true" : "false")
-            << '\n';
-
-        ok &= expect_u64(object.id, 40, "object.id");
-        ok &= expect(object.name == "Renderable mesh node", "object.name preservado");
-        ok &= expect(object.mesh == nullptr, "object.mesh pode ser nullptr no teste sem GPU");
-        ok &= expect(object.shader == nullptr, "object.shader nullptr");
-        ok &= expect(object.material == nullptr, "object.material nullptr");
-        ok &= expect(object.layer == graphics::RenderLayer::Default, "object.layer Default");
-        ok &= expect(object.selected, "object.selected true");
-        ok &= expect(object.hovered, "object.hovered true");
-        ok &= expect(object.wireframe, "object.wireframe true");
-
-        ok &= expect(object.visibility.visible, "visibility.visible true");
-        ok &= expect(object.visibility.selectable, "visibility.selectable true");
-        ok &= expect(!object.visibility.castsShadow, "visibility.castsShadow false");
-        ok &= expect(!object.visibility.receivesShadow, "visibility.receivesShadow false");
-
-        ok &= expect_float(object.transform.position.x, 3.0f, "transform.position.x");
-        ok &= expect_float(object.transform.position.y, 4.0f, "transform.position.y");
-        ok &= expect_float(object.transform.position.z, 5.0f, "transform.position.z");
-
-        ok &= expect_float(object.transform.scale.x, 2.0f, "transform.scale.x");
-        ok &= expect_float(object.transform.scale.y, 3.0f, "transform.scale.y");
-        ok &= expect_float(object.transform.scale.z, 4.0f, "transform.scale.z");
+        ok &= expect(!object.visibility.visible, "object visible false");
+        ok &= expect(!object.visibility.selectable, "object selectable false por invisivel");
 
         return ok;
     }
 
-    bool test_build_render_object_visibility_rules()
+    bool test_hidden_mesh_skipped()
     {
         using namespace locus;
 
-        std::cout << "\n=== MeshNodeRenderAdapter: RenderObject visibility/selectability ===\n";
+        std::cout << "\n=== SceneRenderAdapter: MeshNode invisivel pulado ===\n";
 
         bool ok = true;
 
-        editor::MeshNode lockedNode{ editor::SceneNodeId{ 50 }, "Locked mesh node" };
-        lockedNode.metadata().visible = true;
-        lockedNode.metadata().selectable = true;
-        lockedNode.metadata().locked = true;
+        editor::EditorScene scene;
 
-        const graphics::RenderObject lockedObject =
-            editor::MeshNodeRenderAdapter::build_render_object(lockedNode, nullptr, {});
+        const editor::SceneNodeId meshId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 400 },
+            "Hidden mesh skipped"
+        );
 
-        ok &= expect(lockedObject.visibility.visible, "lockedObject visible true");
-        ok &= expect(!lockedObject.visibility.selectable, "lockedObject selectable false por locked");
+        ok &= expect(meshId.is_valid(), "MeshNode inserido");
 
-        editor::MeshNode hiddenNode{ editor::SceneNodeId{ 51 }, "Hidden mesh node" };
-        hiddenNode.metadata().visible = false;
-        hiddenNode.metadata().selectable = true;
-        hiddenNode.metadata().locked = false;
+        editor::MeshNode* meshNode = scene.find_mesh(meshId);
+        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
 
-        const graphics::RenderObject hiddenObject =
-            editor::MeshNodeRenderAdapter::build_render_object(hiddenNode, nullptr, {});
+        if (!meshNode) {
+            return false;
+        }
 
-        ok &= expect(!hiddenObject.visibility.visible, "hiddenObject visible false");
-        ok &= expect(!hiddenObject.visibility.selectable, "hiddenObject selectable false por invisivel");
+        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
+        const auto face = make_triangle(meshEditor);
 
-        editor::MeshNode nonSelectableNode{ editor::SceneNodeId{ 52 }, "Non selectable mesh node" };
-        nonSelectableNode.metadata().visible = true;
-        nonSelectableNode.metadata().selectable = false;
-        nonSelectableNode.metadata().locked = false;
+        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
 
-        const graphics::RenderObject nonSelectableObject =
-            editor::MeshNodeRenderAdapter::build_render_object(nonSelectableNode, nullptr, {});
+        meshNode->metadata().visible = false;
+        meshNode->metadata().selectable = true;
+        meshNode->metadata().locked = false;
 
-        ok &= expect(nonSelectableObject.visibility.visible, "nonSelectableObject visible true");
-        ok &= expect(!nonSelectableObject.visibility.selectable, "nonSelectableObject selectable false");
+        editor::SceneRenderOptions options{};
+        options.includeHiddenNodes = false;
+        options.allowNullGpuMeshes = true;
+
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
+
+        print_scene_result(result);
+
+        ok &= expect(renderScene.empty(), "render scene vazia");
+        ok &= expect_size(renderScene.object_count(), 0, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 0, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect_size(result.nodes.size(), 1, "node result count");
+        ok &= expect(result.nodes[0].skipped, "node result pulado");
+        ok &= expect(!result.nodes[0].emitted, "node result nao emitido");
 
         return ok;
     }
 
-    bool test_cache_key()
+    bool test_null_gpu_mesh_disallowed()
     {
         using namespace locus;
 
-        std::cout << "\n=== MeshNodeRenderAdapter: cache key ===\n";
+        std::cout << "\n=== SceneRenderAdapter: nullptr GpuMesh nao permitido ===\n";
 
         bool ok = true;
 
-        editor::MeshNode node{ editor::SceneNodeId{ 60 }, "Cache key mesh node" };
+        editor::EditorScene scene;
 
-        const graphics::MeshRenderCacheKey key =
-            editor::MeshNodeRenderAdapter::build_cache_key(node, 7);
+        const editor::SceneNodeId meshId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 500 },
+            "Mesh without GPU"
+        );
 
-        std::cout
-            << "MeshRenderCacheKey"
-            << " | ownerId: " << key.ownerId
-            << " | revision: " << key.revision
-            << " | valid: " << (key.is_valid() ? "true" : "false")
-            << '\n';
+        ok &= expect(meshId.is_valid(), "MeshNode inserido");
 
-        ok &= expect(key.is_valid(), "cache key valida");
-        ok &= expect_u64(key.ownerId, 60, "cache key ownerId");
-        ok &= expect_u64(key.revision, 7, "cache key revision");
+        editor::MeshNode* meshNode = scene.find_mesh(meshId);
+        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
 
-        editor::MeshNode invalidNode{ editor::SceneNodeId{}, "Invalid id mesh node" };
+        if (!meshNode) {
+            return false;
+        }
 
-        const graphics::MeshRenderCacheKey invalidKey =
-            editor::MeshNodeRenderAdapter::build_cache_key(invalidNode, 1);
+        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
+        const auto face = make_triangle(meshEditor);
 
-        std::cout
-            << "Invalid MeshRenderCacheKey"
-            << " | ownerId: " << invalidKey.ownerId
-            << " | revision: " << invalidKey.revision
-            << " | valid: " << (invalidKey.is_valid() ? "true" : "false")
-            << '\n';
+        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
 
-        /*
-         * Este teste só documenta o comportamento atual do adapter:
-         * SceneNodeId inválido tem valor max uint64, então a chave ainda passa em
-         * MeshRenderCacheKey::is_valid(), que só exige ownerId != 0.
-         *
-         * A validação forte contra node inválido acontece em build_cached_render_object(),
-         * antes de usar a chave no cache.
-         */
-        ok &= expect(invalidKey.is_valid(), "invalidKey documenta regra atual de MeshRenderCacheKey");
-        ok &= expect_u64(invalidKey.revision, 1, "invalidKey revision preservada");
+        editor::SceneRenderOptions options{};
+        options.includeHiddenNodes = true;
+        options.allowNullGpuMeshes = false;
+
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
+
+        print_scene_result(result);
+
+        ok &= expect(renderScene.empty(), "render scene vazia");
+        ok &= expect_size(renderScene.object_count(), 0, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 0, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect_size(result.nodes.size(), 1, "node result count");
+        ok &= expect(result.nodes[0].skipped, "node result pulado por falta de GPU mesh");
+        ok &= expect(!result.nodes[0].failed, "falta de GPU mesh tratada como skip, nao falha");
+
+        return ok;
+    }
+
+    bool test_mixed_scene()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SceneRenderAdapter: cena mista ===\n";
+
+        bool ok = true;
+
+        editor::EditorScene scene;
+
+        const editor::SceneNodeId emptyId = insert_empty_node(
+            scene,
+            editor::SceneNodeId{ 600 },
+            "Group"
+        );
+
+        const editor::SceneNodeId meshAId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 601 },
+            "Mesh A"
+        );
+
+        const editor::SceneNodeId meshBId = insert_mesh_node(
+            scene,
+            editor::SceneNodeId{ 602 },
+            "Mesh B hidden"
+        );
+
+        ok &= expect(emptyId.is_valid(), "EmptyNode inserido");
+        ok &= expect(meshAId.is_valid(), "MeshNode A inserido");
+        ok &= expect(meshBId.is_valid(), "MeshNode B inserido");
+
+        editor::MeshNode* meshA = scene.find_mesh(meshAId);
+        editor::MeshNode* meshB = scene.find_mesh(meshBId);
+
+        ok &= expect(meshA != nullptr, "MeshNode A encontrado");
+        ok &= expect(meshB != nullptr, "MeshNode B encontrado");
+
+        if (!meshA || !meshB) {
+            return false;
+        }
+
+        {
+            kernel::geometry::LEMEditor meshEditor{ meshA->mesh() };
+            ok &= expect(meshA->mesh().is_valid(make_triangle(meshEditor)), "Mesh A triangulo criado");
+        }
+
+        {
+            kernel::geometry::LEMEditor meshEditor{ meshB->mesh() };
+            ok &= expect(meshB->mesh().is_valid(make_quad(meshEditor)), "Mesh B quad criado");
+        }
+
+        meshA->metadata().visible = true;
+        meshA->metadata().selectable = true;
+        meshA->metadata().locked = false;
+
+        meshB->metadata().visible = false;
+        meshB->metadata().selectable = true;
+        meshB->metadata().locked = false;
+
+        editor::SceneRenderOptions options{};
+        options.includeHiddenNodes = false;
+        options.allowNullGpuMeshes = true;
+
+        editor::SceneRenderResult result{};
+        const graphics::RenderScene renderScene =
+            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
+
+        print_scene_result(result);
+
+        ok &= expect_size(scene.tree().size(), 3, "scene tree size");
+        ok &= expect_size(renderScene.object_count(), 1, "object_count");
+        ok &= expect_size(result.visitedNodeCount, 3, "visitedNodeCount");
+        ok &= expect_size(result.meshNodeCount, 2, "meshNodeCount");
+        ok &= expect_size(result.objectCount, 1, "result.objectCount");
+        ok &= expect_size(result.skippedNodeCount, 2, "skippedNodeCount");
+        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
+        ok &= expect(!result.has_failures(), "sem falhas");
+
+        const graphics::RenderObject& object = renderScene.objects().front();
+
+        ok &= expect_u64(object.id, 601, "objeto emitido corresponde ao Mesh A");
+        ok &= expect(object.name == "Mesh A", "nome do objeto emitido");
 
         return ok;
     }
@@ -419,24 +549,25 @@ namespace {
 
 int main()
 {
-    std::cout << "=== Locus3D Editor MeshNodeRenderAdapter Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor SceneRenderAdapter Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_empty_mesh_node_upload();
-    ok &= test_triangle_mesh_node_upload();
-    ok &= test_quad_mesh_node_upload();
-    ok &= test_build_render_object_metadata();
-    ok &= test_build_render_object_visibility_rules();
-    ok &= test_cache_key();
+    ok &= test_empty_scene();
+    ok &= test_scene_with_empty_node_only();
+    ok &= test_scene_with_visible_mesh();
+    ok &= test_hidden_mesh_included();
+    ok &= test_hidden_mesh_skipped();
+    ok &= test_null_gpu_mesh_disallowed();
+    ok &= test_mixed_scene();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (ok) {
-        std::cout << "[OK] Todos os testes de MeshNodeRenderAdapter passaram.\n";
+        std::cout << "[OK] Todos os testes de SceneRenderAdapter passaram.\n";
         return EXIT_SUCCESS;
     }
 
-    std::cout << "[FAIL] Algum teste de MeshNodeRenderAdapter falhou.\n";
+    std::cout << "[FAIL] Algum teste de SceneRenderAdapter falhou.\n";
     return EXIT_FAILURE;
 }
