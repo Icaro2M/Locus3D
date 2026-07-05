@@ -246,12 +246,12 @@ source\editor
 |       AngleSnapProvider.h [!]
 |       AngleSnapProvider.cpp [!]
 |
-+---render [!] < -!- >
-|       RenderAdapterTypes.h [!]
-|       RenderMeshUploadAdapter.h [!]
-|       RenderMeshUploadAdapter.cpp [!]
-|       MeshNodeRenderAdapter.h [!]
-|       MeshNodeRenderAdapter.cpp [!]
++---render
+|       RenderAdapterTypes.h
+|       RenderMeshUploadAdapter.h
+|       RenderMeshUploadAdapter.cpp
+|       MeshNodeRenderAdapter.h
+|       MeshNodeRenderAdapter.cpp
 |       SceneRenderAdapter.h [!]
 |       SceneRenderAdapter.cpp [!]
 |       SelectionRenderAdapter.h [!]
