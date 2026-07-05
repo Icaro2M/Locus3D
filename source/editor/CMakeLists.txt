@@ -120,7 +120,9 @@ target_sources(locus3d_editor
         "render/MeshNodeRenderAdapter.h"
         "render/MeshNodeRenderAdapter.cpp"
         "render/SceneRenderAdapter.h"
-        "render/SceneRenderAdapter.cpp")
+        "render/SceneRenderAdapter.cpp"
+        "render/SelectionRenderAdapter.h"
+        "render/SelectionRenderAdapter.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

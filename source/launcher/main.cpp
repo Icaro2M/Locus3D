@@ -3,22 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/render/SceneRenderAdapter.h"
-#include "editor/scene/EditorScene.h"
-#include "editor/scene/EmptyNode.h"
-#include "editor/scene/MeshNode.h"
+#include "editor/render/SelectionRenderAdapter.h"
+#include "editor/selection/SelectionState.h"
+#include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
-#include "kernel/geometry/mesh/LEMEditor.h"
-
-#include <glm/gtc/quaternion.hpp>
-#include <glm/vec3.hpp>
+#include "kernel/geometry/mesh/LEMHandles.h"
 
 #include <cstdlib>
-#include <iomanip>
 #include <iostream>
-#include <memory>
 #include <string>
-#include <vector>
 
 namespace {
 
@@ -71,69 +64,52 @@ namespace {
         return false;
     }
 
-    locus::editor::SceneNodeId insert_empty_node(
-        locus::editor::EditorScene& scene,
-        locus::editor::SceneNodeId id,
+    locus::graphics::RenderObject make_object(
+        locus::graphics::RenderObject::Id id,
         const std::string& name)
     {
-        return scene.tree().insert_node(
-            std::make_unique<locus::editor::EmptyNode>(id, name)
-        );
+        locus::graphics::RenderObject object{};
+        object.id = id;
+        object.name = name;
+        object.visibility.visible = true;
+        object.visibility.selectable = true;
+        return object;
     }
 
-    locus::editor::SceneNodeId insert_mesh_node(
-        locus::editor::EditorScene& scene,
-        locus::editor::SceneNodeId id,
-        const std::string& name)
+    locus::graphics::RenderScene make_three_object_scene()
     {
-        return scene.tree().insert_node(
-            std::make_unique<locus::editor::MeshNode>(id, name)
-        );
+        locus::graphics::RenderScene scene;
+        scene.add_object(make_object(10, "Object A"));
+        scene.add_object(make_object(20, "Object B"));
+        scene.add_object(make_object(30, "Object C"));
+        return scene;
     }
 
-    locus::kernel::geometry::FaceHandle make_triangle(
-        locus::kernel::geometry::LEMEditor& editor)
-    {
-        const auto v0 = editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
-        const auto v1 = editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
-        const auto v2 = editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        return editor.add_face(std::vector{ v0, v1, v2 });
-    }
-
-    locus::kernel::geometry::FaceHandle make_quad(
-        locus::kernel::geometry::LEMEditor& editor)
-    {
-        const auto v0 = editor.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
-        const auto v1 = editor.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
-        const auto v2 = editor.add_vertex(glm::vec3{ 1.0f,  1.0f, 0.0f });
-        const auto v3 = editor.add_vertex(glm::vec3{ -1.0f,  1.0f, 0.0f });
-
-        return editor.add_face(std::vector{ v0, v1, v2, v3 });
-    }
-
-    void print_scene_result(const locus::editor::SceneRenderResult& result)
+    void print_result(const locus::editor::SelectionRenderResult& result)
     {
         std::cout
-            << "SceneRenderResult"
-            << " | visited: " << result.visitedNodeCount
-            << " | mesh nodes: " << result.meshNodeCount
-            << " | objects: " << result.objectCount
-            << " | skipped: " << result.skippedNodeCount
-            << " | failed: " << result.failedNodeCount
-            << " | has failures: " << (result.has_failures() ? "true" : "false")
+            << "SelectionRenderResult"
+            << " | visited: " << result.visitedObjectCount
+            << " | selected: " << result.selectedObjectCount
+            << " | hovered: " << result.hoveredObjectCount
+            << " | changed: " << result.changedObjectCount
+            << " | activeObjectApplied: " << (result.activeObjectApplied ? "true" : "false")
+            << " | hoveredObjectApplied: " << (result.hoveredObjectApplied ? "true" : "false")
+            << " | activeMeshApplied: " << (result.activeMeshApplied ? "true" : "false")
+            << " | activeMeshHoverApplied: " << (result.activeMeshHoverApplied ? "true" : "false")
             << '\n';
 
-        for (const locus::editor::SceneRenderNodeResult& nodeResult : result.nodes) {
+        for (const locus::editor::SelectionRenderObjectResult& objectResult : result.objects) {
             std::cout
-                << "  node " << nodeResult.nodeId.value
-                << " | meshNode: " << (nodeResult.meshNode ? "true" : "false")
-                << " | emitted: " << (nodeResult.emitted ? "true" : "false")
-                << " | skipped: " << (nodeResult.skipped ? "true" : "false")
-                << " | failed: " << (nodeResult.failed ? "true" : "false");
+                << "  object " << objectResult.objectId
+                << " | wasSelected: " << (objectResult.wasSelected ? "true" : "false")
+                << " | wasHovered: " << (objectResult.wasHovered ? "true" : "false")
+                << " | selected: " << (objectResult.selected ? "true" : "false")
+                << " | hovered: " << (objectResult.hovered ? "true" : "false")
+                << " | changed: " << (objectResult.changed ? "true" : "false");
 
-            if (!nodeResult.message.empty()) {
-                std::cout << " | " << nodeResult.message;
+            if (!objectResult.message.empty()) {
+                std::cout << " | " << objectResult.message;
             }
 
             std::cout << '\n';
@@ -144,403 +120,466 @@ namespace {
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: cena vazia ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: cena vazia ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene;
+        editor::SelectionState selection;
 
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, {}, &result);
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
 
-        print_scene_result(result);
+        print_result(result);
 
-        ok &= expect(renderScene.empty(), "render scene vazia");
-        ok &= expect_size(renderScene.object_count(), 0, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 0, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 0, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 0, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect(!result.has_failures(), "sem falhas");
+        ok &= expect(output.empty(), "output vazio");
+        ok &= expect_size(output.object_count(), 0, "object_count");
+        ok &= expect_size(result.visitedObjectCount, 0, "visitedObjectCount");
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 0, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 0, "changedObjectCount");
+        ok &= expect_size(result.objects.size(), 0, "objects result count");
 
         return ok;
     }
 
-    bool test_scene_with_empty_node_only()
+    bool test_no_selection_clears_existing_flags()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: cena com EmptyNode ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: sem selecao limpa flags antigas ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene;
 
-        const editor::SceneNodeId emptyId = insert_empty_node(
-            scene,
-            editor::SceneNodeId{ 100 },
-            "Empty root"
-        );
+        graphics::RenderObject objectA = make_object(10, "Object A");
+        objectA.selected = true;
+        objectA.hovered = true;
 
-        ok &= expect(emptyId.is_valid(), "EmptyNode inserido");
+        scene.add_object(objectA);
+        scene.add_object(make_object(20, "Object B"));
 
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, {}, &result);
+        editor::SelectionState selection;
 
-        print_scene_result(result);
+        editor::SelectionRenderOptions options{};
+        options.clearExistingFlags = true;
 
-        ok &= expect(renderScene.empty(), "render scene vazia");
-        ok &= expect_size(renderScene.object_count(), 0, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 0, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 0, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect(!result.has_failures(), "sem falhas");
-        ok &= expect_size(result.nodes.size(), 1, "node result count");
-        ok &= expect(result.nodes[0].skipped, "EmptyNode foi pulado");
-        ok &= expect(!result.nodes[0].meshNode, "EmptyNode nao contado como mesh");
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
+
+        print_result(result);
+
+        ok &= expect_size(output.object_count(), 2, "object_count");
+        ok &= expect(!output.objects()[0].selected, "object A selected limpo");
+        ok &= expect(!output.objects()[0].hovered, "object A hovered limpo");
+        ok &= expect(!output.objects()[1].selected, "object B selected false");
+        ok &= expect(!output.objects()[1].hovered, "object B hovered false");
+
+        ok &= expect_size(result.visitedObjectCount, 2, "visitedObjectCount");
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 0, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect_size(result.objects.size(), 2, "objects result count");
+        ok &= expect(result.objects[0].wasSelected, "object A wasSelected true");
+        ok &= expect(result.objects[0].wasHovered, "object A wasHovered true");
+        ok &= expect(result.objects[0].changed, "object A changed true");
 
         return ok;
     }
 
-    bool test_scene_with_visible_mesh()
+    bool test_object_selection()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: cena com MeshNode visivel ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: selecao de objetos ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene = make_three_object_scene();
 
-        const editor::SceneNodeId meshId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 200 },
-            "Visible mesh"
-        );
+        editor::SelectionState selection;
+        selection.objects().add(editor::SceneNodeId{ 10 });
+        selection.objects().add(editor::SceneNodeId{ 30 });
+        selection.objects().set_active(editor::SceneNodeId{ 30 });
 
-        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
 
-        editor::MeshNode* meshNode = scene.find_mesh(meshId);
-        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+        print_result(result);
 
-        if (!meshNode) {
-            return false;
-        }
+        ok &= expect_size(output.object_count(), 3, "object_count");
 
-        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
-        const auto face = make_triangle(meshEditor);
+        ok &= expect(output.objects()[0].selected, "object 10 selected");
+        ok &= expect(!output.objects()[0].hovered, "object 10 hovered false");
 
-        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
+        ok &= expect(!output.objects()[1].selected, "object 20 selected false");
+        ok &= expect(!output.objects()[1].hovered, "object 20 hovered false");
 
-        meshNode->transform().set_position(glm::vec3{ 2.0f, 3.0f, 4.0f });
-        meshNode->metadata().visible = true;
-        meshNode->metadata().selectable = true;
-        meshNode->metadata().locked = false;
+        ok &= expect(output.objects()[2].selected, "object 30 selected");
+        ok &= expect(!output.objects()[2].hovered, "object 30 hovered false");
 
-        editor::SceneRenderOptions options{};
-        options.includeHiddenNodes = true;
-        options.allowNullGpuMeshes = true;
-        options.meshOptions.selected = true;
-        options.meshOptions.hovered = true;
-        options.meshOptions.wireframe = false;
-
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
-
-        print_scene_result(result);
-
-        ok &= expect(!renderScene.empty(), "render scene nao vazia");
-        ok &= expect_size(renderScene.object_count(), 1, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 1, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect(!result.has_failures(), "sem falhas");
-
-        const graphics::RenderObject& object = renderScene.objects().front();
-
-        ok &= expect_u64(object.id, 200, "object.id");
-        ok &= expect(object.name == "Visible mesh", "object.name preservado");
-        ok &= expect(object.mesh == nullptr, "object.mesh nullptr permitido no teste sem GPU");
-        ok &= expect(object.visibility.visible, "object visible true");
-        ok &= expect(object.visibility.selectable, "object selectable true");
-        ok &= expect(object.selected, "object selected true");
-        ok &= expect(object.hovered, "object hovered true");
-        ok &= expect(!object.wireframe, "object wireframe false");
-        ok &= expect(object.transform.position.x == 2.0f, "position.x preservada");
-        ok &= expect(object.transform.position.y == 3.0f, "position.y preservada");
-        ok &= expect(object.transform.position.z == 4.0f, "position.z preservada");
-
-        ok &= expect_size(result.nodes.size(), 1, "node result count");
-        ok &= expect(result.nodes[0].meshNode, "node result marcado como mesh");
-        ok &= expect(result.nodes[0].emitted, "node result emitido");
-        ok &= expect(!result.nodes[0].skipped, "node result nao pulado");
-        ok &= expect(!result.nodes[0].failed, "node result sem falha");
+        ok &= expect_size(result.visitedObjectCount, 3, "visitedObjectCount");
+        ok &= expect_size(result.selectedObjectCount, 2, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 0, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 2, "changedObjectCount");
+        ok &= expect(result.activeObjectApplied, "activeObjectApplied true");
+        ok &= expect(!result.hoveredObjectApplied, "hoveredObjectApplied false");
 
         return ok;
     }
 
-    bool test_hidden_mesh_included()
+    bool test_active_object_selected_even_if_not_in_selected_set()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: MeshNode invisivel incluido ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: active object selecionado mesmo fora do set ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene = make_three_object_scene();
 
-        const editor::SceneNodeId meshId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 300 },
-            "Hidden mesh included"
-        );
+        editor::SelectionState selection;
+        selection.objects().set_active(editor::SceneNodeId{ 20 });
 
-        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+        editor::SelectionRenderOptions options{};
+        options.applyObjectSelection = true;
+        options.applyActiveObject = true;
 
-        editor::MeshNode* meshNode = scene.find_mesh(meshId);
-        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
 
-        if (!meshNode) {
-            return false;
-        }
+        print_result(result);
 
-        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
-        const auto face = make_quad(meshEditor);
+        ok &= expect(!output.objects()[0].selected, "object 10 selected false");
+        ok &= expect(output.objects()[1].selected, "object 20 selected por active");
+        ok &= expect(!output.objects()[2].selected, "object 30 selected false");
 
-        ok &= expect(meshNode->mesh().is_valid(face), "face quad criada");
-
-        meshNode->metadata().visible = false;
-        meshNode->metadata().selectable = true;
-        meshNode->metadata().locked = false;
-
-        editor::SceneRenderOptions options{};
-        options.includeHiddenNodes = true;
-        options.allowNullGpuMeshes = true;
-
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
-
-        print_scene_result(result);
-
-        ok &= expect_size(renderScene.object_count(), 1, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 1, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 0, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-
-        const graphics::RenderObject& object = renderScene.objects().front();
-
-        ok &= expect(!object.visibility.visible, "object visible false");
-        ok &= expect(!object.visibility.selectable, "object selectable false por invisivel");
+        ok &= expect_size(result.selectedObjectCount, 1, "selectedObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect(result.activeObjectApplied, "activeObjectApplied true");
 
         return ok;
     }
 
-    bool test_hidden_mesh_skipped()
+    bool test_disable_active_object_selection()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: MeshNode invisivel pulado ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: active object desativado por option ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene = make_three_object_scene();
 
-        const editor::SceneNodeId meshId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 400 },
-            "Hidden mesh skipped"
-        );
+        editor::SelectionState selection;
+        selection.objects().set_active(editor::SceneNodeId{ 20 });
 
-        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+        editor::SelectionRenderOptions options{};
+        options.applyObjectSelection = false;
+        options.applyActiveObject = false;
 
-        editor::MeshNode* meshNode = scene.find_mesh(meshId);
-        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
 
-        if (!meshNode) {
-            return false;
-        }
+        print_result(result);
 
-        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
-        const auto face = make_triangle(meshEditor);
+        ok &= expect(!output.objects()[0].selected, "object 10 selected false");
+        ok &= expect(!output.objects()[1].selected, "object 20 selected false");
+        ok &= expect(!output.objects()[2].selected, "object 30 selected false");
 
-        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
-
-        meshNode->metadata().visible = false;
-        meshNode->metadata().selectable = true;
-        meshNode->metadata().locked = false;
-
-        editor::SceneRenderOptions options{};
-        options.includeHiddenNodes = false;
-        options.allowNullGpuMeshes = true;
-
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
-
-        print_scene_result(result);
-
-        ok &= expect(renderScene.empty(), "render scene vazia");
-        ok &= expect_size(renderScene.object_count(), 0, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 0, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect_size(result.nodes.size(), 1, "node result count");
-        ok &= expect(result.nodes[0].skipped, "node result pulado");
-        ok &= expect(!result.nodes[0].emitted, "node result nao emitido");
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.changedObjectCount, 0, "changedObjectCount");
+        ok &= expect(!result.activeObjectApplied, "activeObjectApplied false");
 
         return ok;
     }
 
-    bool test_null_gpu_mesh_disallowed()
+    bool test_hovered_object()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: nullptr GpuMesh nao permitido ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: objeto hovered ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene = make_three_object_scene();
 
-        const editor::SceneNodeId meshId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 500 },
-            "Mesh without GPU"
-        );
+        editor::SelectionState selection;
+        selection.objects().set_hovered(editor::SceneNodeId{ 20 });
 
-        ok &= expect(meshId.is_valid(), "MeshNode inserido");
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
 
-        editor::MeshNode* meshNode = scene.find_mesh(meshId);
-        ok &= expect(meshNode != nullptr, "MeshNode encontrado por find_mesh");
+        print_result(result);
 
-        if (!meshNode) {
-            return false;
-        }
+        ok &= expect(!output.objects()[0].hovered, "object 10 hovered false");
+        ok &= expect(output.objects()[1].hovered, "object 20 hovered true");
+        ok &= expect(!output.objects()[2].hovered, "object 30 hovered false");
 
-        kernel::geometry::LEMEditor meshEditor{ meshNode->mesh() };
-        const auto face = make_triangle(meshEditor);
-
-        ok &= expect(meshNode->mesh().is_valid(face), "face triangular criada");
-
-        editor::SceneRenderOptions options{};
-        options.includeHiddenNodes = true;
-        options.allowNullGpuMeshes = false;
-
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
-
-        print_scene_result(result);
-
-        ok &= expect(renderScene.empty(), "render scene vazia");
-        ok &= expect_size(renderScene.object_count(), 0, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 1, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 1, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 0, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 1, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect_size(result.nodes.size(), 1, "node result count");
-        ok &= expect(result.nodes[0].skipped, "node result pulado por falta de GPU mesh");
-        ok &= expect(!result.nodes[0].failed, "falta de GPU mesh tratada como skip, nao falha");
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 1, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect(result.hoveredObjectApplied, "hoveredObjectApplied true");
 
         return ok;
     }
 
-    bool test_mixed_scene()
+    bool test_selected_and_hovered_same_object()
     {
         using namespace locus;
 
-        std::cout << "\n=== SceneRenderAdapter: cena mista ===\n";
+        std::cout << "\n=== SelectionRenderAdapter: mesmo objeto selected e hovered ===\n";
 
         bool ok = true;
 
-        editor::EditorScene scene;
+        graphics::RenderScene scene = make_three_object_scene();
 
-        const editor::SceneNodeId emptyId = insert_empty_node(
-            scene,
-            editor::SceneNodeId{ 600 },
-            "Group"
-        );
+        editor::SelectionState selection;
+        selection.objects().set(editor::SceneNodeId{ 20 });
+        selection.objects().set_hovered(editor::SceneNodeId{ 20 });
 
-        const editor::SceneNodeId meshAId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 601 },
-            "Mesh A"
-        );
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
 
-        const editor::SceneNodeId meshBId = insert_mesh_node(
-            scene,
-            editor::SceneNodeId{ 602 },
-            "Mesh B hidden"
-        );
+        print_result(result);
 
-        ok &= expect(emptyId.is_valid(), "EmptyNode inserido");
-        ok &= expect(meshAId.is_valid(), "MeshNode A inserido");
-        ok &= expect(meshBId.is_valid(), "MeshNode B inserido");
+        ok &= expect(!output.objects()[0].selected, "object 10 selected false");
+        ok &= expect(!output.objects()[0].hovered, "object 10 hovered false");
 
-        editor::MeshNode* meshA = scene.find_mesh(meshAId);
-        editor::MeshNode* meshB = scene.find_mesh(meshBId);
+        ok &= expect(output.objects()[1].selected, "object 20 selected true");
+        ok &= expect(output.objects()[1].hovered, "object 20 hovered true");
 
-        ok &= expect(meshA != nullptr, "MeshNode A encontrado");
-        ok &= expect(meshB != nullptr, "MeshNode B encontrado");
+        ok &= expect(!output.objects()[2].selected, "object 30 selected false");
+        ok &= expect(!output.objects()[2].hovered, "object 30 hovered false");
 
-        if (!meshA || !meshB) {
-            return false;
-        }
+        ok &= expect_size(result.selectedObjectCount, 1, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 1, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect(result.activeObjectApplied, "activeObjectApplied true");
+        ok &= expect(result.hoveredObjectApplied, "hoveredObjectApplied true");
 
-        {
-            kernel::geometry::LEMEditor meshEditor{ meshA->mesh() };
-            ok &= expect(meshA->mesh().is_valid(make_triangle(meshEditor)), "Mesh A triangulo criado");
-        }
+        return ok;
+    }
 
-        {
-            kernel::geometry::LEMEditor meshEditor{ meshB->mesh() };
-            ok &= expect(meshB->mesh().is_valid(make_quad(meshEditor)), "Mesh B quad criado");
-        }
+    bool test_keep_existing_flags_when_clear_disabled()
+    {
+        using namespace locus;
 
-        meshA->metadata().visible = true;
-        meshA->metadata().selectable = true;
-        meshA->metadata().locked = false;
+        std::cout << "\n=== SelectionRenderAdapter: preservar flags antigas ===\n";
 
-        meshB->metadata().visible = false;
-        meshB->metadata().selectable = true;
-        meshB->metadata().locked = false;
+        bool ok = true;
 
-        editor::SceneRenderOptions options{};
-        options.includeHiddenNodes = false;
-        options.allowNullGpuMeshes = true;
+        graphics::RenderScene scene;
 
-        editor::SceneRenderResult result{};
-        const graphics::RenderScene renderScene =
-            editor::SceneRenderAdapter::build_render_scene(scene, {}, options, &result);
+        graphics::RenderObject objectA = make_object(10, "Object A");
+        objectA.selected = true;
 
-        print_scene_result(result);
+        graphics::RenderObject objectB = make_object(20, "Object B");
+        objectB.hovered = true;
 
-        ok &= expect_size(scene.tree().size(), 3, "scene tree size");
-        ok &= expect_size(renderScene.object_count(), 1, "object_count");
-        ok &= expect_size(result.visitedNodeCount, 3, "visitedNodeCount");
-        ok &= expect_size(result.meshNodeCount, 2, "meshNodeCount");
-        ok &= expect_size(result.objectCount, 1, "result.objectCount");
-        ok &= expect_size(result.skippedNodeCount, 2, "skippedNodeCount");
-        ok &= expect_size(result.failedNodeCount, 0, "failedNodeCount");
-        ok &= expect(!result.has_failures(), "sem falhas");
+        scene.add_object(objectA);
+        scene.add_object(objectB);
+        scene.add_object(make_object(30, "Object C"));
 
-        const graphics::RenderObject& object = renderScene.objects().front();
+        editor::SelectionState selection;
+        selection.objects().set(editor::SceneNodeId{ 30 });
 
-        ok &= expect_u64(object.id, 601, "objeto emitido corresponde ao Mesh A");
-        ok &= expect(object.name == "Mesh A", "nome do objeto emitido");
+        editor::SelectionRenderOptions options{};
+        options.clearExistingFlags = false;
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
+
+        print_result(result);
+
+        ok &= expect(output.objects()[0].selected, "object 10 selected preservado");
+        ok &= expect(!output.objects()[0].hovered, "object 10 hovered false");
+
+        ok &= expect(!output.objects()[1].selected, "object 20 selected false");
+        ok &= expect(output.objects()[1].hovered, "object 20 hovered preservado");
+
+        ok &= expect(output.objects()[2].selected, "object 30 selected aplicado");
+        ok &= expect(!output.objects()[2].hovered, "object 30 hovered false");
+
+        ok &= expect_size(result.selectedObjectCount, 2, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 1, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+
+        return ok;
+    }
+
+    bool test_wireframe_selected_objects()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SelectionRenderAdapter: wireframe em objetos selecionados ===\n";
+
+        bool ok = true;
+
+        graphics::RenderScene scene = make_three_object_scene();
+
+        editor::SelectionState selection;
+        selection.objects().set(editor::SceneNodeId{ 20 });
+
+        editor::SelectionRenderOptions options{};
+        options.wireframeSelectedObjects = true;
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
+
+        print_result(result);
+
+        ok &= expect(!output.objects()[0].wireframe, "object 10 wireframe false");
+        ok &= expect(output.objects()[1].selected, "object 20 selected true");
+        ok &= expect(output.objects()[1].wireframe, "object 20 wireframe true");
+        ok &= expect(!output.objects()[2].wireframe, "object 30 wireframe false");
+
+        ok &= expect_size(result.selectedObjectCount, 1, "selectedObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+
+        return ok;
+    }
+
+    bool test_active_mesh_component_selection()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SelectionRenderAdapter: selecao de componente marca mesh ativa ===\n";
+
+        bool ok = true;
+
+        graphics::RenderScene scene = make_three_object_scene();
+
+        editor::SelectionState selection;
+        selection.mesh().set_active_mesh(editor::SceneNodeId{ 30 });
+        selection.mesh().set_vertex(kernel::geometry::VertexHandle{ 7 });
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
+
+        print_result(result);
+
+        ok &= expect(!output.objects()[0].selected, "object 10 selected false");
+        ok &= expect(!output.objects()[1].selected, "object 20 selected false");
+        ok &= expect(output.objects()[2].selected, "object 30 selected por mesh component");
+
+        ok &= expect_size(result.selectedObjectCount, 1, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 0, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect(result.activeMeshApplied, "activeMeshApplied true");
+        ok &= expect(!result.activeMeshHoverApplied, "activeMeshHoverApplied false");
+
+        return ok;
+    }
+
+    bool test_disable_active_mesh_component_selection()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SelectionRenderAdapter: desativar selecao de componente ===\n";
+
+        bool ok = true;
+
+        graphics::RenderScene scene = make_three_object_scene();
+
+        editor::SelectionState selection;
+        selection.mesh().set_active_mesh(editor::SceneNodeId{ 30 });
+        selection.mesh().set_vertex(kernel::geometry::VertexHandle{ 7 });
+
+        editor::SelectionRenderOptions options{};
+        options.applyActiveMeshSelection = false;
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, options, &result);
+
+        print_result(result);
+
+        ok &= expect(!output.objects()[0].selected, "object 10 selected false");
+        ok &= expect(!output.objects()[1].selected, "object 20 selected false");
+        ok &= expect(!output.objects()[2].selected, "object 30 selected false");
+
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.changedObjectCount, 0, "changedObjectCount");
+        ok &= expect(!result.activeMeshApplied, "activeMeshApplied false");
+
+        return ok;
+    }
+
+    bool test_active_mesh_component_hover()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SelectionRenderAdapter: hover de componente marca mesh ativa ===\n";
+
+        bool ok = true;
+
+        graphics::RenderScene scene = make_three_object_scene();
+
+        editor::SelectionState selection;
+        selection.mesh().set_active_mesh(editor::SceneNodeId{ 10 });
+        selection.mesh().set_hovered_vertex(kernel::geometry::VertexHandle{ 3 });
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
+
+        print_result(result);
+
+        ok &= expect(output.objects()[0].hovered, "object 10 hovered por componente");
+        ok &= expect(!output.objects()[1].hovered, "object 20 hovered false");
+        ok &= expect(!output.objects()[2].hovered, "object 30 hovered false");
+
+        ok &= expect_size(result.selectedObjectCount, 0, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 1, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
+        ok &= expect(!result.activeMeshApplied, "activeMeshApplied false");
+        ok &= expect(result.activeMeshHoverApplied, "activeMeshHoverApplied true");
+
+        return ok;
+    }
+
+    bool test_render_object_id_zero_is_valid()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SelectionRenderAdapter: RenderObject id 0 valido ===\n";
+
+        bool ok = true;
+
+        graphics::RenderScene scene;
+        scene.add_object(make_object(0, "Object zero"));
+        scene.add_object(make_object(10, "Valid object"));
+
+        editor::SelectionState selection;
+        selection.objects().set(editor::SceneNodeId{ 0 });
+        selection.objects().set_hovered(editor::SceneNodeId{ 0 });
+
+        editor::SelectionRenderResult result{};
+        const graphics::RenderScene output =
+            editor::SelectionRenderAdapter::apply_selection(scene, selection, {}, &result);
+
+        print_result(result);
+
+        ok &= expect(output.objects()[0].selected, "object id 0 selected true");
+        ok &= expect(output.objects()[0].hovered, "object id 0 hovered true");
+        ok &= expect(!output.objects()[1].selected, "object 10 selected false");
+        ok &= expect(!output.objects()[1].hovered, "object 10 hovered false");
+
+        ok &= expect_size(result.selectedObjectCount, 1, "selectedObjectCount");
+        ok &= expect_size(result.hoveredObjectCount, 1, "hoveredObjectCount");
+        ok &= expect_size(result.changedObjectCount, 1, "changedObjectCount");
 
         return ok;
     }
@@ -549,25 +588,31 @@ namespace {
 
 int main()
 {
-    std::cout << "=== Locus3D Editor SceneRenderAdapter Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor SelectionRenderAdapter Smoke Test ===\n";
 
     bool ok = true;
 
     ok &= test_empty_scene();
-    ok &= test_scene_with_empty_node_only();
-    ok &= test_scene_with_visible_mesh();
-    ok &= test_hidden_mesh_included();
-    ok &= test_hidden_mesh_skipped();
-    ok &= test_null_gpu_mesh_disallowed();
-    ok &= test_mixed_scene();
+    ok &= test_no_selection_clears_existing_flags();
+    ok &= test_object_selection();
+    ok &= test_active_object_selected_even_if_not_in_selected_set();
+    ok &= test_disable_active_object_selection();
+    ok &= test_hovered_object();
+    ok &= test_selected_and_hovered_same_object();
+    ok &= test_keep_existing_flags_when_clear_disabled();
+    ok &= test_wireframe_selected_objects();
+    ok &= test_active_mesh_component_selection();
+    ok &= test_disable_active_mesh_component_selection();
+    ok &= test_active_mesh_component_hover();
+    ok &= ok &= test_render_object_id_zero_is_valid();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (ok) {
-        std::cout << "[OK] Todos os testes de SceneRenderAdapter passaram.\n";
+        std::cout << "[OK] Todos os testes de SelectionRenderAdapter passaram.\n";
         return EXIT_SUCCESS;
     }
 
-    std::cout << "[FAIL] Algum teste de SceneRenderAdapter falhou.\n";
+    std::cout << "[FAIL] Algum teste de SelectionRenderAdapter falhou.\n";
     return EXIT_FAILURE;
 }
