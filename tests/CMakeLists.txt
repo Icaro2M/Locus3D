@@ -137,6 +137,30 @@ set_tests_properties(editor.unit.render PROPERTIES
     LABELS "unit;editor;render"
 )
 
+add_executable(Locus3DEditorTransformTests
+    unit/editor/transform/TransformPivotResolverTests.cpp
+    unit/editor/transform/TransformSessionTests.cpp
+    unit/editor/transform/TransformTargetTests.cpp
+    unit/editor/transform/TransformTestMain.cpp
+)
+
+target_include_directories(Locus3DEditorTransformTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorTransformTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.transform COMMAND Locus3DEditorTransformTests)
+set_tests_properties(editor.unit.transform PROPERTIES
+    LABELS "unit;editor;transform"
+)
+
 add_executable(Locus3DEditorCommandTests
     unit/editor/command/CommandContextTests.cpp
     unit/editor/command/CommandDispatcherTests.cpp
