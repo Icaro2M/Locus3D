@@ -123,7 +123,10 @@ target_sources(locus3d_editor
         "render/SceneRenderAdapter.cpp"
         "render/SelectionRenderAdapter.h"
         "render/SelectionRenderAdapter.cpp"
-        )
+         "sync/RenderSceneSync.h"
+         "sync/RenderSceneSync.cpp"
+         "sync/EditorSync.h"
+         "sync/EditorSync.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

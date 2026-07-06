@@ -264,10 +264,10 @@ source\editor
 |       PickingRenderAdapter.cpp [!]
 |
 +---sync [!]
-|       EditorSync.h [!]
-|       EditorSync.cpp [!]
-|       RenderSceneSync.h [!]
-|       RenderSceneSync.cpp [!]
+|       EditorSync.h
+|       EditorSync.cpp
+|       RenderSceneSync.h
+|       RenderSceneSync.cpp
 |       PickingSync.h [!]
 |       PickingSync.cpp [!]
 |       ManufacturingSync.h [!]
@@ -340,10 +340,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `render/PreviewRenderAdapter.cpp`
 - [!] `render/PickingRenderAdapter.h`
 - [!] `render/PickingRenderAdapter.cpp`
-- [!] `sync/EditorSync.h`
-- [!] `sync/EditorSync.cpp`
-- [!] `sync/RenderSceneSync.h`
-- [!] `sync/RenderSceneSync.cpp`
 - [!] `sync/PickingSync.h`
 - [!] `sync/PickingSync.cpp`
 - [!] `sync/ManufacturingSync.h`
