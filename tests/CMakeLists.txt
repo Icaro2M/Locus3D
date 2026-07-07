@@ -58,6 +58,31 @@ set_tests_properties(kernel.unit.geometry.spatial PROPERTIES
     LABELS "unit;kernel;geometry;spatial"
 )
 
+add_executable(Locus3DGeometryQueryTests
+    unit/kernel/geometry/queries/AdjacencyQueryTests.cpp
+    unit/kernel/geometry/queries/BoundsQueryTests.cpp
+    unit/kernel/geometry/queries/PickingQueryTests.cpp
+    unit/kernel/geometry/queries/QueryTestMain.cpp
+    unit/kernel/geometry/queries/SelectionHitTests.cpp
+)
+
+target_include_directories(Locus3DGeometryQueryTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DGeometryQueryTests
+    PRIVATE
+        Locus3D::Geometry
+)
+
+add_test(NAME kernel.unit.geometry.queries COMMAND Locus3DGeometryQueryTests)
+set_tests_properties(kernel.unit.geometry.queries PROPERTIES
+    LABELS "unit;kernel;geometry;queries"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp
