@@ -83,6 +83,30 @@ set_tests_properties(kernel.unit.geometry.queries PROPERTIES
     LABELS "unit;kernel;geometry;queries"
 )
 
+add_executable(Locus3DTopologyTests
+    unit/kernel/geometry/topology/TopologyBuilderTests.cpp
+    unit/kernel/geometry/topology/TopologyTestMain.cpp
+    unit/kernel/geometry/topology/TopologyTraversalTests.cpp
+    unit/kernel/geometry/topology/TopologyValidatorTests.cpp
+)
+
+target_include_directories(Locus3DTopologyTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DTopologyTests
+    PRIVATE
+        Locus3D::Geometry
+)
+
+add_test(NAME kernel.unit.geometry.topology COMMAND Locus3DTopologyTests)
+set_tests_properties(kernel.unit.geometry.topology PROPERTIES
+    LABELS "unit;kernel;geometry;topology"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp
