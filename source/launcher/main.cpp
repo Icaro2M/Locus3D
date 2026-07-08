@@ -7,13 +7,13 @@
 #include "editor/scene/MeshNode.h"
 #include "editor/scene/SceneNodeId.h"
 #include "editor/snapping/EdgeSnapProvider.h"
+#include "editor/snapping/FaceSnapProvider.h"
 #include "editor/snapping/GridSnapProvider.h"
 #include "editor/snapping/SnapContext.h"
 #include "editor/snapping/SnapMode.h"
 #include "editor/snapping/SnapResult.h"
 #include "editor/snapping/SnapSolver.h"
 #include "editor/snapping/SnapTarget.h"
-#include "editor/snapping/VertexSnapProvider.h"
 #include "kernel/geometry/mesh/LEMHandles.h"
 
 #include <cstdlib>
@@ -22,6 +22,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -74,7 +75,6 @@ namespace {
                 << "[OK] " << message
                 << " = (" << actual.x << ", " << actual.y << ", " << actual.z << ")"
                 << '\n';
-
             return true;
         }
 
@@ -127,7 +127,7 @@ namespace {
             << result.snappedPosition.x << ", "
             << result.snappedPosition.y << ", "
             << result.snappedPosition.z << ")"
-            << " | normal/dir: ("
+            << " | normal: ("
             << result.target.normal.x << ", "
             << result.target.normal.y << ", "
             << result.target.normal.z << ")"
@@ -139,30 +139,50 @@ namespace {
     locus::editor::SnapContext make_context(
         const locus::editor::EditorScene& scene,
         const glm::vec3& original,
-        const glm::vec3& candidate,
-        const glm::vec3& referenceOrigin = glm::vec3{ 0.0f, 0.0f, 0.0f })
+        const glm::vec3& candidate)
     {
         locus::editor::SnapContext context{};
         context.scene = &scene;
         context.originalPosition = original;
         context.candidatePosition = candidate;
-        context.referenceOrigin = referenceOrigin;
+        context.referenceOrigin = { 0.0f, 0.0f, 0.0f };
         return context;
     }
 
-    bool test_edge_provider_without_scene()
+    bool create_quad_face(
+        locus::editor::MeshNode& meshNode,
+        locus::kernel::geometry::FaceHandle& outFace)
+    {
+        using locus::kernel::geometry::VertexHandle;
+
+        const VertexHandle v0 = meshNode.mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
+        const VertexHandle v1 = meshNode.mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
+        const VertexHandle v2 = meshNode.mesh().add_vertex({ 4.0f, 4.0f, 0.0f });
+        const VertexHandle v3 = meshNode.mesh().add_vertex({ 0.0f, 4.0f, 0.0f });
+
+        if (!v0.is_valid() || !v1.is_valid() || !v2.is_valid() || !v3.is_valid()) {
+            return false;
+        }
+
+        const std::vector<VertexHandle> vertices{ v0, v1, v2, v3 };
+        outFace = meshNode.mesh().add_face(vertices);
+
+        return outFace.is_valid();
+    }
+
+    bool test_face_provider_without_scene()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: sem scene ===\n";
+        std::cout << "\n=== FaceSnapProvider: sem scene ===\n";
 
         bool ok = true;
 
         editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Edge);
+        settings.set_modes(editor::SnapMode::Face);
         settings.set_max_distance(10.0f);
 
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         editor::SnapContext context{};
         context.scene = nullptr;
@@ -181,19 +201,19 @@ namespace {
         return ok;
     }
 
-    bool test_edge_provider_empty_scene()
+    bool test_face_provider_empty_scene()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: scene vazia ===\n";
+        std::cout << "\n=== FaceSnapProvider: scene vazia ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(10.0f);
 
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         const editor::SnapContext context = make_context(
             editor.scene(),
@@ -212,58 +232,19 @@ namespace {
         return ok;
     }
 
-    bool test_edge_provider_mesh_without_edges()
+    bool test_face_provider_quad_inside()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: mesh sem arestas ===\n";
+        std::cout << "\n=== FaceSnapProvider: quad ponto dentro ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(10.0f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Sem Aresta");
-        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
-
-        ok &= expect(meshNode != nullptr, "mesh node encontrado");
-
-        if (meshNode == nullptr) {
-            return false;
-        }
-
-        meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        meshNode->mesh().add_vertex({ 2.0f, 0.0f, 0.0f });
-
-        editor::EdgeSnapProvider provider;
-
-        const editor::SnapContext context = make_context(
-            editor.scene(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.0f, 0.2f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
-        print_result(result);
-
-        ok &= expect(!result.is_valid(), "vertices soltos sem edge retornam invalid");
-
-        return ok;
-    }
-
-    bool test_edge_provider_single_edge_midpoint()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== EdgeSnapProvider: aresta simples ===\n";
-
-        bool ok = true;
-
-        editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
-        editor.snap_settings().set_max_distance(10.0f);
-
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Edge");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Quad Face");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
         ok &= expect(meshId.is_valid(), "mesh node criado com id valido");
@@ -273,48 +254,42 @@ namespace {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        const kernel::geometry::EdgeHandle e0 = meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
 
-        ok &= expect(v0.is_valid(), "v0 criado");
-        ok &= expect(v1.is_valid(), "v1 criado");
-        ok &= expect(e0.is_valid(), "edge criada");
-
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 2.2f, 0.7f, 0.0f });
+            glm::vec3{ 2.0f, 2.0f, 3.0f });
 
         const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "edge snap encontrou resultado");
-        ok &= expect(snap_mode_equals(result.mode, editor::SnapMode::Edge), "modo do resultado eh Edge");
-        ok &= expect(result.target.type == editor::SnapTargetType::Edge, "target eh Edge");
+        ok &= expect(result.is_valid(), "face snap encontrou resultado");
+        ok &= expect(snap_mode_equals(result.mode, editor::SnapMode::Face), "modo do resultado eh Face");
+        ok &= expect(result.target.type == editor::SnapTargetType::Face, "target eh Face");
         ok &= expect(result.target.node == meshId, "target aponta para mesh correta");
-        ok &= expect(result.target.component == 0u, "target component aponta para edge 0");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.2f, 0.0f, 0.0f }, "snapped no ponto mais proximo da aresta");
-        ok &= expect_vec3(result.target.normal, glm::vec3{ 1.0f, 0.0f, 0.0f }, "direcao da aresta em mundo");
+        ok &= expect(result.target.component == 0u, "target component aponta para face 0");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.0f, 2.0f, 0.0f }, "projetou ponto no plano da face");
 
         return ok;
     }
 
-    bool test_edge_provider_clamps_to_segment_start()
+    bool test_face_provider_quad_boundary()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: clamp inicio do segmento ===\n";
+        std::cout << "\n=== FaceSnapProvider: quad ponto na borda ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(10.0f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Clamp Start");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Quad Face Boundary");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
         ok &= expect(meshNode != nullptr, "mesh node encontrado");
@@ -323,40 +298,39 @@ namespace {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
 
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ -1.0f, 0.5f, 0.0f });
+            glm::vec3{ 4.0f, 2.0f, 1.0f });
 
         const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "edge snap encontrou resultado");
+        ok &= expect(result.is_valid(), "face snap aceita ponto projetado na borda");
         ok &= expect(result.target.node == meshId, "target aponta para mesh correta");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.0f, 0.0f, 0.0f }, "snap clampou no inicio do segmento");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 4.0f, 2.0f, 0.0f }, "projetou na borda da face");
 
         return ok;
     }
 
-    bool test_edge_provider_clamps_to_segment_end()
+    bool test_face_provider_quad_outside()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: clamp fim do segmento ===\n";
+        std::cout << "\n=== FaceSnapProvider: quad ponto fora ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(10.0f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Clamp End");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Quad Face Outside");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
         ok &= expect(meshNode != nullptr, "mesh node encontrado");
@@ -365,40 +339,37 @@ namespace {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
 
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 5.0f, 0.5f, 0.0f });
+            glm::vec3{ 5.0f, 2.0f, 1.0f });
 
         const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "edge snap encontrou resultado");
-        ok &= expect(result.target.node == meshId, "target aponta para mesh correta");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 4.0f, 0.0f, 0.0f }, "snap clampou no fim do segmento");
+        ok &= expect(!result.is_valid(), "ponto projetado fora da face retorna invalid");
 
         return ok;
     }
 
-    bool test_edge_provider_world_transform()
+    bool test_face_provider_world_transform()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: transform local -> mundo ===\n";
+        std::cout << "\n=== FaceSnapProvider: transform local -> mundo ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(10.0f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Edge Transformada");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Quad Face Transformada");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
         ok &= expect(meshNode != nullptr, "mesh transformada encontrada");
@@ -407,308 +378,109 @@ namespace {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
+
         meshNode->transform().set_position({ 10.0f, 5.0f, -2.0f });
 
-        editor::EdgeSnapProvider provider;
+        editor::FaceSnapProvider provider;
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 12.5f, 5.8f, -2.0f });
+            glm::vec3{ 12.0f, 7.0f, 3.0f });
 
         const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "edge snap com transform encontrou resultado");
+        ok &= expect(result.is_valid(), "face snap com transform encontrou resultado");
         ok &= expect(result.target.node == meshId, "target aponta para mesh transformada");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 12.5f, 5.0f, -2.0f }, "snapped em coordenada de mundo");
-        ok &= expect_vec3(result.target.normal, glm::vec3{ 1.0f, 0.0f, 0.0f }, "direcao da aresta transformada");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 12.0f, 7.0f, -2.0f }, "snapped em coordenada de mundo");
 
         return ok;
     }
 
-    bool test_edge_provider_chooses_nearest_edge()
+    bool test_solver_face_beats_grid()
     {
         using namespace locus;
 
-        std::cout << "\n=== EdgeSnapProvider: escolhe aresta mais proxima ===\n";
+        std::cout << "\n=== SnapSolver: Face vence Grid ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
-        editor.snap_settings().set_max_distance(10.0f);
-
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Multi Edge");
-        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
-
-        ok &= expect(meshNode != nullptr, "mesh multi edge encontrada");
-
-        if (meshNode == nullptr) {
-            return false;
-        }
-
-        const kernel::geometry::VertexHandle a0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle a1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle b0 = meshNode->mesh().add_vertex({ 0.0f, 3.0f, 0.0f });
-        const kernel::geometry::VertexHandle b1 = meshNode->mesh().add_vertex({ 4.0f, 3.0f, 0.0f });
-
-        meshNode->mesh().find_or_create_edge(a0, a1);
-        meshNode->mesh().find_or_create_edge(b0, b1);
-
-        editor::EdgeSnapProvider provider;
-
-        const editor::SnapContext context = make_context(
-            editor.scene(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 2.0f, 2.7f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "edge snap encontrou resultado");
-        ok &= expect(result.target.node == meshId, "target aponta para mesh correta");
-        ok &= expect(result.target.component == 1u, "target component aponta para segunda edge");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.0f, 3.0f, 0.0f }, "snapped na aresta mais proxima");
-
-        return ok;
-    }
-
-    bool test_edge_provider_ignores_invisible_node()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== EdgeSnapProvider: ignora node invisivel ===\n";
-
-        bool ok = true;
-
-        editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
-        editor.snap_settings().set_max_distance(10.0f);
-
-        const editor::SceneNodeId visibleId = editor.scene().create_mesh("Visible Edge Mesh");
-        const editor::SceneNodeId invisibleId = editor.scene().create_mesh("Invisible Edge Mesh");
-
-        editor::MeshNode* visibleNode = editor.scene().find_mesh(visibleId);
-        editor::MeshNode* invisibleNode = editor.scene().find_mesh(invisibleId);
-
-        ok &= expect(visibleNode != nullptr, "visible node encontrado");
-        ok &= expect(invisibleNode != nullptr, "invisible node encontrado");
-
-        if (visibleNode == nullptr || invisibleNode == nullptr) {
-            return false;
-        }
-
-        const kernel::geometry::VertexHandle va0 = visibleNode->mesh().add_vertex({ 5.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle va1 = visibleNode->mesh().add_vertex({ 9.0f, 0.0f, 0.0f });
-        visibleNode->mesh().find_or_create_edge(va0, va1);
-
-        const kernel::geometry::VertexHandle vb0 = invisibleNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle vb1 = invisibleNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        invisibleNode->mesh().find_or_create_edge(vb0, vb1);
-
-        invisibleNode->metadata().visible = false;
-
-        editor::EdgeSnapProvider provider;
-
-        const editor::SnapContext context = make_context(
-            editor.scene(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 2.0f, 0.1f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "snap encontrou apenas node visivel");
-        ok &= expect(result.target.node == visibleId, "node invisivel foi ignorado");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 5.0f, 0.0f, 0.0f }, "snapped na edge visivel restante");
-
-        return ok;
-    }
-
-    bool test_edge_provider_ignores_unselectable_node()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== EdgeSnapProvider: ignora node nao selecionavel ===\n";
-
-        bool ok = true;
-
-        editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
-        editor.snap_settings().set_max_distance(10.0f);
-
-        const editor::SceneNodeId selectableId = editor.scene().create_mesh("Selectable Edge Mesh");
-        const editor::SceneNodeId unselectableId = editor.scene().create_mesh("Unselectable Edge Mesh");
-
-        editor::MeshNode* selectableNode = editor.scene().find_mesh(selectableId);
-        editor::MeshNode* unselectableNode = editor.scene().find_mesh(unselectableId);
-
-        ok &= expect(selectableNode != nullptr, "selectable node encontrado");
-        ok &= expect(unselectableNode != nullptr, "unselectable node encontrado");
-
-        if (selectableNode == nullptr || unselectableNode == nullptr) {
-            return false;
-        }
-
-        const kernel::geometry::VertexHandle va0 = selectableNode->mesh().add_vertex({ 5.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle va1 = selectableNode->mesh().add_vertex({ 9.0f, 0.0f, 0.0f });
-        selectableNode->mesh().find_or_create_edge(va0, va1);
-
-        const kernel::geometry::VertexHandle vb0 = unselectableNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle vb1 = unselectableNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        unselectableNode->mesh().find_or_create_edge(vb0, vb1);
-
-        unselectableNode->metadata().selectable = false;
-
-        editor::EdgeSnapProvider provider;
-
-        const editor::SnapContext context = make_context(
-            editor.scene(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 2.0f, 0.1f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "snap encontrou apenas node selecionavel");
-        ok &= expect(result.target.node == selectableId, "node nao selecionavel foi ignorado");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 5.0f, 0.0f, 0.0f }, "snapped na edge selecionavel restante");
-
-        return ok;
-    }
-
-    bool test_solver_edge_beats_grid()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: Edge vence Grid ===\n";
-
-        bool ok = true;
-
-        editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge | editor::SnapMode::Grid);
+        editor.snap_settings().set_modes(editor::SnapMode::Face | editor::SnapMode::Grid);
         editor.snap_settings().set_grid_size(1.0f);
         editor.snap_settings().set_max_distance(10.0f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Solver Edge");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Solver Face");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
-        ok &= expect(meshNode != nullptr, "mesh solver edge encontrado");
+        ok &= expect(meshNode != nullptr, "mesh solver face encontrada");
 
         if (meshNode == nullptr) {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.45f, 0.45f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 0.95f, 0.45f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
 
         editor::SnapSolver solver;
         solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-        solver.register_provider(std::make_unique<editor::EdgeSnapProvider>());
+        solver.register_provider(std::make_unique<editor::FaceSnapProvider>());
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.70f, 0.46f, 0.0f });
+            glm::vec3{ 2.40f, 2.40f, 0.04f });
 
         const editor::SnapResult result = solver.solve(editor.snap_settings(), context);
         print_result(result);
 
         ok &= expect(result.is_valid(), "solver encontrou resultado");
-        ok &= expect(snap_mode_equals(result.mode, editor::SnapMode::Edge), "edge venceu por estar mais perto que grid");
-        ok &= expect(result.target.node == meshId, "edge vencedora pertence a mesh correta");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.70f, 0.45f, 0.0f }, "snapped na edge vencedora");
+        ok &= expect(snap_mode_equals(result.mode, editor::SnapMode::Face), "face venceu por estar mais perto que grid");
+        ok &= expect(result.target.node == meshId, "face vencedora pertence a mesh correta");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.40f, 2.40f, 0.0f }, "snapped na face vencedora");
 
         return ok;
     }
 
-    bool test_solver_edge_beats_vertex()
+    bool test_solver_rejects_face_by_distance()
     {
         using namespace locus;
 
-        std::cout << "\n=== SnapSolver: Edge vence Vertex ===\n";
+        std::cout << "\n=== SnapSolver: rejeita Face por max distance ===\n";
 
         bool ok = true;
 
         editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Vertex | editor::SnapMode::Edge);
-        editor.snap_settings().set_max_distance(10.0f);
-
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Vertex Edge");
-        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
-
-        ok &= expect(meshNode != nullptr, "mesh vertex edge encontrado");
-
-        if (meshNode == nullptr) {
-            return false;
-        }
-
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 4.0f, 0.0f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
-
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::EdgeSnapProvider>());
-        solver.register_provider(std::make_unique<editor::VertexSnapProvider>());
-
-        const editor::SnapContext context = make_context(
-            editor.scene(),
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.05f, 0.20f, 0.0f });
-
-        const editor::SnapResult result = solver.solve(editor.snap_settings(), context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "solver encontrou resultado");
-        ok &= expect(snap_mode_equals(result.mode, editor::SnapMode::Edge), "edge venceu por estar mais perto que vertex");
-        ok &= expect(result.target.node == meshId, "edge vencedora pertence a mesh correta");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.05f, 0.0f, 0.0f }, "snapped no ponto mais proximo da edge");
-
-        return ok;
-    }
-
-    bool test_solver_rejects_edge_by_distance()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: rejeita Edge por max distance ===\n";
-
-        bool ok = true;
-
-        editor::Editor editor;
-        editor.snap_settings().set_modes(editor::SnapMode::Edge);
+        editor.snap_settings().set_modes(editor::SnapMode::Face);
         editor.snap_settings().set_max_distance(0.10f);
 
-        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Edge Distante");
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Face Distante");
         editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
 
-        ok &= expect(meshNode != nullptr, "mesh edge distante encontrado");
+        ok &= expect(meshNode != nullptr, "mesh face distante encontrada");
 
         if (meshNode == nullptr) {
             return false;
         }
 
-        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 10.0f, 0.0f, 0.0f });
-        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 14.0f, 0.0f, 0.0f });
-        meshNode->mesh().find_or_create_edge(v0, v1);
+        kernel::geometry::FaceHandle face{};
+        ok &= expect(create_quad_face(*meshNode, face), "quad face criada");
 
         editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::EdgeSnapProvider>());
+        solver.register_provider(std::make_unique<editor::FaceSnapProvider>());
 
         const editor::SnapContext context = make_context(
             editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.0f, 0.0f, 0.0f });
+            glm::vec3{ 2.0f, 2.0f, 5.0f });
 
         const editor::SnapResult result = solver.solve(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(!result.is_valid(), "solver rejeitou edge fora do max_distance");
+        ok &= expect(!result.is_valid(), "solver rejeitou face fora do max_distance");
 
         return ok;
     }
@@ -718,31 +490,26 @@ namespace {
 int main()
 {
     std::cout << std::fixed << std::setprecision(4);
-    std::cout << "=== Locus3D Editor Edge Snapping Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor Face Snapping Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_edge_provider_without_scene();
-    ok &= test_edge_provider_empty_scene();
-    ok &= test_edge_provider_mesh_without_edges();
-    ok &= test_edge_provider_single_edge_midpoint();
-    ok &= test_edge_provider_clamps_to_segment_start();
-    ok &= test_edge_provider_clamps_to_segment_end();
-    ok &= test_edge_provider_world_transform();
-    ok &= test_edge_provider_chooses_nearest_edge();
-    ok &= test_edge_provider_ignores_invisible_node();
-    ok &= test_edge_provider_ignores_unselectable_node();
-    ok &= test_solver_edge_beats_grid();
-    ok &= test_solver_edge_beats_vertex();
-    ok &= test_solver_rejects_edge_by_distance();
+    ok &= test_face_provider_without_scene();
+    ok &= test_face_provider_empty_scene();
+    ok &= test_face_provider_quad_inside();
+    ok &= test_face_provider_quad_boundary();
+    ok &= test_face_provider_quad_outside();
+    ok &= test_face_provider_world_transform();
+    ok &= test_solver_face_beats_grid();
+    ok &= test_solver_rejects_face_by_distance();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (ok) {
-        std::cout << "[OK] Todos os testes de EdgeSnapProvider passaram.\n";
+        std::cout << "[OK] Todos os testes de FaceSnapProvider passaram.\n";
         return EXIT_SUCCESS;
     }
 
-    std::cout << "[FAIL] Algum teste de EdgeSnapProvider falhou.\n";
+    std::cout << "[FAIL] Algum teste de FaceSnapProvider falhou.\n";
     return EXIT_FAILURE;
 }

@@ -145,7 +145,9 @@ target_sources(locus3d_editor
          "snapping/VertexSnapProvider.h"
          "snapping/VertexSnapProvider.cpp"
          "snapping/EdgeSnapProvider.h"
-         "snapping/EdgeSnapProvider.cpp" )
+         "snapping/EdgeSnapProvider.cpp" 
+         "snapping/FaceSnapProvider.h"
+         "snapping/FaceSnapProvider.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
