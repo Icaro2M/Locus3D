@@ -223,28 +223,28 @@ source\editor
 |       TransformPivotResolver.h
 |       TransformPivotResolver.cpp
 |
-+---snapping [!]
-|       SnapMode.h [!]
-|       SnapSettings.h [!]
-|       SnapSettings.cpp [!]
-|       SnapTarget.h [!]
-|       SnapResult.h [!]
-|       SnapContext.h [!]
-|       ISnapProvider.h [!]
-|       SnapSolver.h [!]
-|       SnapSolver.cpp [!]
-|       GridSnapProvider.h [!]
-|       GridSnapProvider.cpp [!]
-|       VertexSnapProvider.h [!]
-|       VertexSnapProvider.cpp [!]
++---snapping
+|       SnapMode.h
+|       SnapSettings.h
+|       SnapSettings.cpp
+|       SnapTarget.h
+|       SnapResult.h
+|       SnapContext.h
+|       ISnapProvider.h
+|       SnapSolver.h
+|       SnapSolver.cpp
+|       GridSnapProvider.h
+|       GridSnapProvider.cpp
+|       VertexSnapProvider.h
+|       VertexSnapProvider.cpp
 |       EdgeSnapProvider.h [!]
 |       EdgeSnapProvider.cpp [!]
 |       FaceSnapProvider.h [!]
 |       FaceSnapProvider.cpp [!]
-|       IncrementSnapProvider.h [!]
-|       IncrementSnapProvider.cpp [!]
-|       AngleSnapProvider.h [!]
-|       AngleSnapProvider.cpp [!]
+|       IncrementSnapProvider.h
+|       IncrementSnapProvider.cpp
+|       AngleSnapProvider.h
+|       AngleSnapProvider.cpp
 |
 +---render
 |       RenderAdapterTypes.h
@@ -263,7 +263,7 @@ source\editor
 |       PickingRenderAdapter.h [!]
 |       PickingRenderAdapter.cpp [!]
 |
-+---sync [!]
++---sync
 |       EditorSync.h
 |       EditorSync.cpp
 |       RenderSceneSync.h
@@ -313,27 +313,10 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `gizmo/GizmoConstraint.cpp`
 - [!] `gizmo/TransformGizmo.h`
 - [!] `gizmo/TransformGizmo.cpp`
-- [!] `snapping/SnapMode.h`
-- [!] `snapping/SnapSettings.h`
-- [!] `snapping/SnapSettings.cpp`
-- [!] `snapping/SnapTarget.h`
-- [!] `snapping/SnapResult.h`
-- [!] `snapping/SnapContext.h`
-- [!] `snapping/ISnapProvider.h`
-- [!] `snapping/SnapSolver.h`
-- [!] `snapping/SnapSolver.cpp`
-- [!] `snapping/GridSnapProvider.h`
-- [!] `snapping/GridSnapProvider.cpp`
-- [!] `snapping/VertexSnapProvider.h`
-- [!] `snapping/VertexSnapProvider.cpp`
 - [!] `snapping/EdgeSnapProvider.h`
 - [!] `snapping/EdgeSnapProvider.cpp`
 - [!] `snapping/FaceSnapProvider.h`
 - [!] `snapping/FaceSnapProvider.cpp`
-- [!] `snapping/IncrementSnapProvider.h`
-- [!] `snapping/IncrementSnapProvider.cpp`
-- [!] `snapping/AngleSnapProvider.h`
-- [!] `snapping/AngleSnapProvider.cpp`
 - [!] `render/OverlayRenderAdapter.h`
 - [!] `render/OverlayRenderAdapter.cpp`
 - [!] `render/PreviewRenderAdapter.h`

@@ -8,6 +8,7 @@
 #include "editor/EditorContext.h"
 #include "editor/EditorState.h"
 #include "editor/selection/SelectionController.h"
+#include "editor/snapping/SnapSettings.h"
 
 #include <memory>
 
@@ -37,7 +38,6 @@ namespace locus::editor {
 
         Editor(const Editor&) = delete;
         Editor& operator=(const Editor&) = delete;
-
         Editor(Editor&&) = delete;
         Editor& operator=(Editor&&) = delete;
 
@@ -98,6 +98,20 @@ namespace locus::editor {
         [[nodiscard]] const SelectionState& selection() const;
 
         /**
+         * @brief Returns mutable access to snapping settings.
+         *
+         * @return Mutable snapping settings reference.
+         */
+        [[nodiscard]] SnapSettings& snap_settings();
+
+        /**
+         * @brief Returns read-only access to snapping settings.
+         *
+         * @return Read-only snapping settings reference.
+         */
+        [[nodiscard]] const SnapSettings& snap_settings() const;
+
+        /**
          * @brief Returns the selection controller.
          *
          * @return Selection controller reference.
@@ -154,4 +168,4 @@ namespace locus::editor {
         std::unique_ptr<SelectionController> selectionController_{};
     };
 
-}
+} // namespace locus::editor

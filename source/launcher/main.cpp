@@ -3,15 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/snapping/AngleSnapProvider.h"
+#include "editor/Editor.h"
+#include "editor/scene/MeshNode.h"
+#include "editor/scene/SceneNodeId.h"
 #include "editor/snapping/GridSnapProvider.h"
-#include "editor/snapping/IncrementSnapProvider.h"
 #include "editor/snapping/SnapContext.h"
 #include "editor/snapping/SnapMode.h"
 #include "editor/snapping/SnapResult.h"
-#include "editor/snapping/SnapSettings.h"
 #include "editor/snapping/SnapSolver.h"
 #include "editor/snapping/SnapTarget.h"
+#include "editor/snapping/VertexSnapProvider.h"
+#include "kernel/geometry/mesh/LEMHandles.h"
 
 #include <cstdlib>
 #include <iomanip>
@@ -52,26 +54,6 @@ namespace {
         return false;
     }
 
-    bool expect_float(
-        float actual,
-        float expected,
-        const std::string& message,
-        float epsilon = kEpsilon)
-    {
-        if (almost_equal(actual, expected, epsilon)) {
-            std::cout << "[OK] " << message << " = " << actual << '\n';
-            return true;
-        }
-
-        std::cout
-            << "[FAIL] " << message
-            << " | actual=" << actual
-            << " expected=" << expected
-            << '\n';
-
-        return false;
-    }
-
     bool expect_vec3(
         const glm::vec3& actual,
         const glm::vec3& expected,
@@ -91,25 +73,6 @@ namespace {
             << "[FAIL] " << message
             << " | actual=(" << actual.x << ", " << actual.y << ", " << actual.z << ")"
             << " expected=(" << expected.x << ", " << expected.y << ", " << expected.z << ")"
-            << '\n';
-
-        return false;
-    }
-
-    bool expect_size(
-        std::size_t actual,
-        std::size_t expected,
-        const std::string& message)
-    {
-        if (actual == expected) {
-            std::cout << "[OK] " << message << " = " << actual << '\n';
-            return true;
-        }
-
-        std::cout
-            << "[FAIL] " << message
-            << " | actual=" << actual
-            << " expected=" << expected
             << '\n';
 
         return false;
@@ -143,12 +106,10 @@ namespace {
     {
         std::cout
             << "SnapResult"
-            << " | valid: " << (result.valid ? "true" : "false")
+            << " | valid: " << (result.is_valid() ? "true" : "false")
             << " | target: " << snap_target_type_name(result.target.type)
-            << " | original: ("
-            << result.originalPosition.x << ", "
-            << result.originalPosition.y << ", "
-            << result.originalPosition.z << ")"
+            << " | node valid: " << (result.target.node.is_valid() ? "true" : "false")
+            << " | component: " << result.target.component
             << " | candidate: ("
             << result.candidatePosition.x << ", "
             << result.candidatePosition.y << ", "
@@ -163,435 +124,345 @@ namespace {
     }
 
     locus::editor::SnapContext make_context(
+        const locus::editor::EditorScene& scene,
         const glm::vec3& original,
         const glm::vec3& candidate,
         const glm::vec3& referenceOrigin = glm::vec3{ 0.0f, 0.0f, 0.0f })
     {
         locus::editor::SnapContext context{};
+        context.scene = &scene;
         context.originalPosition = original;
         context.candidatePosition = candidate;
         context.referenceOrigin = referenceOrigin;
         return context;
     }
 
-    bool test_settings_defaults()
+    bool test_vertex_provider_without_scene()
     {
         using namespace locus;
 
-        std::cout << "\n=== SnapSettings: defaults ===\n";
+        std::cout << "\n=== VertexSnapProvider: sem scene ===\n";
 
         bool ok = true;
 
         editor::SnapSettings settings;
-
-        ok &= expect(settings.snapping_enabled(), "snapping comeca ligado");
-        ok &= expect(settings.is_enabled(editor::SnapMode::Grid), "grid comeca ligado");
-        ok &= expect(settings.is_enabled(editor::SnapMode::Increment), "increment comeca ligado");
-        ok &= expect(settings.is_enabled(editor::SnapMode::Angle), "angle comeca ligado");
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Vertex), "vertex comeca desligado");
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Edge), "edge comeca desligado");
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Face), "face comeca desligado");
-
-        ok &= expect_float(settings.grid_size(), 1.0f, "grid_size default");
-        ok &= expect_float(settings.linear_increment(), 1.0f, "linear_increment default");
-        ok &= expect_float(settings.angle_increment(), 0.2617993878f, "angle_increment default");
-        ok &= expect_float(settings.max_distance(), 0.25f, "max_distance default");
-
-        return ok;
-    }
-
-    bool test_settings_enable_disable()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSettings: enable/disable ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::None);
-
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Grid), "grid desligado por set_modes None");
-
-        settings.enable(editor::SnapMode::Grid);
-        ok &= expect(settings.is_enabled(editor::SnapMode::Grid), "grid ligado por enable");
-
-        settings.disable(editor::SnapMode::Grid);
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Grid), "grid desligado por disable");
-
-        settings.set_modes(editor::SnapMode::Grid | editor::SnapMode::Vertex);
-        ok &= expect(settings.is_enabled(editor::SnapMode::Grid), "grid ligado em mascara combinada");
-        ok &= expect(settings.is_enabled(editor::SnapMode::Vertex), "vertex ligado em mascara combinada");
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Edge), "edge segue desligado");
-
-        settings.set_snapping_enabled(false);
-        ok &= expect(!settings.snapping_enabled(), "snapping global desligado");
-        ok &= expect(!settings.is_enabled(editor::SnapMode::Grid), "grid nao roda com snapping global desligado");
-
-        settings.set_snapping_enabled(true);
-        ok &= expect(settings.is_enabled(editor::SnapMode::Grid), "grid volta ao ligar snapping global");
-
-        return ok;
-    }
-
-    bool test_settings_clamps()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSettings: clamps ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-
-        settings.set_grid_size(-10.0f);
-        settings.set_linear_increment(0.0f);
-        settings.set_angle_increment(-1.0f);
-        settings.set_max_distance(-5.0f);
-
-        ok &= expect(settings.grid_size() > 0.0f, "grid_size negativo vira valor positivo minimo");
-        ok &= expect(settings.linear_increment() > 0.0f, "linear_increment zero vira valor positivo minimo");
-        ok &= expect(settings.angle_increment() > 0.0f, "angle_increment negativo vira valor positivo minimo");
-        ok &= expect_float(settings.max_distance(), 0.0f, "max_distance negativo vira zero");
-
-        return ok;
-    }
-
-    bool test_grid_snap_provider()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== GridSnapProvider ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid);
-        settings.set_grid_size(1.0f);
-
-        editor::GridSnapProvider provider;
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.21f, 2.76f, -0.49f });
-
-        const editor::SnapResult result = provider.snap(settings, context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "grid snap gerou resultado valido");
-        ok &= expect(result.mode == editor::SnapMode::Grid, "modo do resultado eh Grid");
-        ok &= expect(result.target.type == editor::SnapTargetType::GridPoint, "target eh GridPoint");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 1.0f, 3.0f, 0.0f }, "posicao snapped no grid");
-        ok &= expect_vec3(result.target.position, result.snappedPosition, "target position igual snapped position");
-
-        return ok;
-    }
-
-    bool test_grid_snap_custom_step()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== GridSnapProvider: step 0.5 ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid);
-        settings.set_grid_size(0.5f);
-
-        editor::GridSnapProvider provider;
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.24f, 2.76f, -0.26f });
-
-        const editor::SnapResult result = provider.snap(settings, context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "grid snap com step 0.5 gerou resultado valido");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 1.0f, 3.0f, -0.5f }, "posicao snapped no grid 0.5");
-
-        return ok;
-    }
-
-    bool test_increment_snap_provider()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== IncrementSnapProvider ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Increment);
-        settings.set_linear_increment(0.5f);
-
-        editor::IncrementSnapProvider provider;
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 10.0f, 10.0f, 10.0f },
-            glm::vec3{ 2.26f, 2.74f, 0.24f },
-            glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(settings, context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "increment snap gerou resultado valido");
-        ok &= expect(result.mode == editor::SnapMode::Increment, "modo do resultado eh Increment");
-        ok &= expect(result.target.type == editor::SnapTargetType::Increment, "target eh Increment");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.5f, 2.5f, 0.0f }, "posicao snapped por incremento");
-
-        return ok;
-    }
-
-    bool test_angle_snap_provider()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== AngleSnapProvider ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Angle);
-        settings.set_angle_increment(1.57079632679f);
-
-        editor::AngleSnapProvider provider;
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.0f, 0.30f, 2.0f },
-            glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(settings, context);
-        print_result(result);
-
-        const float radius = glm::length(glm::vec2{ 1.0f, 0.30f });
-
-        ok &= expect(result.is_valid(), "angle snap gerou resultado valido");
-        ok &= expect(result.mode == editor::SnapMode::Angle, "modo do resultado eh Angle");
-        ok &= expect(result.target.type == editor::SnapTargetType::Angle, "target eh Angle");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ radius, 0.0f, 2.0f }, "posicao snapped por angulo");
-
-        return ok;
-    }
-
-    bool test_angle_snap_zero_radius_returns_none()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== AngleSnapProvider: raio zero ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Angle);
-        settings.set_angle_increment(1.57079632679f);
-
-        editor::AngleSnapProvider provider;
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.0f, 1.0f, 5.0f },
-            glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const editor::SnapResult result = provider.snap(settings, context);
-        print_result(result);
-
-        ok &= expect(!result.is_valid(), "angle snap com raio zero retorna invalid");
-
-        return ok;
-    }
-
-    bool test_solver_empty()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: vazio ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        editor::SnapSolver solver;
-
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.2f, 2.7f, 0.0f });
-
-        const editor::SnapResult result = solver.solve(settings, context);
-        print_result(result);
-
-        ok &= expect_size(solver.provider_count(), 0, "provider_count");
-        ok &= expect(!result.is_valid(), "solver vazio retorna invalid");
-
-        return ok;
-    }
-
-    bool test_solver_disabled()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: snapping global desligado ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_snapping_enabled(false);
-
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 1.2f, 2.7f, 0.0f });
-
-        const editor::SnapResult result = solver.solve(settings, context);
-        print_result(result);
-
-        ok &= expect_size(solver.provider_count(), 1, "provider_count");
-        ok &= expect(!result.is_valid(), "solver nao roda com snapping global desligado");
-
-        return ok;
-    }
-
-    bool test_solver_rejects_by_max_distance()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: rejeita por max distance ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid);
-        settings.set_grid_size(1.0f);
-        settings.set_max_distance(0.10f);
-
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.49f, 0.49f, 0.0f });
-
-        const editor::SnapResult result = solver.solve(settings, context);
-        print_result(result);
-
-        ok &= expect(!result.is_valid(), "resultado distante demais foi rejeitado");
-
-        return ok;
-    }
-
-    bool test_solver_accepts_by_context_override()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: max distance override ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid);
-        settings.set_grid_size(1.0f);
-        settings.set_max_distance(0.10f);
-
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-
-        editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.49f, 0.49f, 0.0f });
-
-        context.maxDistanceOverride = 1.0f;
-
-        const editor::SnapResult result = solver.solve(settings, context);
-        print_result(result);
-
-        ok &= expect(result.is_valid(), "override permitiu aceitar resultado");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.0f, 0.0f, 0.0f }, "posicao snapped aceita por override");
-
-        return ok;
-    }
-
-    bool test_solver_chooses_best_result()
-    {
-        using namespace locus;
-
-        std::cout << "\n=== SnapSolver: escolhe melhor resultado ===\n";
-
-        bool ok = true;
-
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid | editor::SnapMode::Increment);
-        settings.set_grid_size(1.0f);
-        settings.set_linear_increment(0.25f);
+        settings.set_modes(editor::SnapMode::Vertex);
         settings.set_max_distance(10.0f);
 
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-        solver.register_provider(std::make_unique<editor::IncrementSnapProvider>());
+        editor::VertexSnapProvider provider;
 
-        const editor::SnapContext context = make_context(
-            glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.26f, 0.26f, 0.0f },
-            glm::vec3{ 0.0f, 0.0f, 0.0f });
+        editor::SnapContext context{};
+        context.scene = nullptr;
+        context.originalPosition = { 0.0f, 0.0f, 0.0f };
+        context.candidatePosition = { 1.0f, 1.0f, 1.0f };
 
-        const editor::SnapResult result = solver.solve(settings, context);
+        ok &= expect(
+            !provider.is_enabled(settings, context),
+            "provider nao fica habilitado sem scene");
+
+        const editor::SnapResult result = provider.snap(settings, context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "solver encontrou resultado valido");
-        ok &= expect(result.mode == editor::SnapMode::Increment, "increment venceu por estar mais perto");
-        ok &= expect(result.target.type == editor::SnapTargetType::Increment, "target vencedor eh Increment");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.25f, 0.25f, 0.0f }, "posicao snapped vencedora");
+        ok &= expect(!result.is_valid(), "snap sem scene retorna invalid");
 
         return ok;
     }
 
-    bool test_solver_respects_enabled_modes()
+    bool test_vertex_provider_empty_scene()
     {
         using namespace locus;
 
-        std::cout << "\n=== SnapSolver: respeita modos habilitados ===\n";
+        std::cout << "\n=== VertexSnapProvider: scene vazia ===\n";
 
         bool ok = true;
 
-        editor::SnapSettings settings;
-        settings.set_modes(editor::SnapMode::Grid);
-        settings.set_grid_size(1.0f);
-        settings.set_linear_increment(0.25f);
-        settings.set_max_distance(10.0f);
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(10.0f);
 
-        editor::SnapSolver solver;
-        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
-        solver.register_provider(std::make_unique<editor::IncrementSnapProvider>());
+        editor::VertexSnapProvider provider;
 
         const editor::SnapContext context = make_context(
+            editor.scene(),
             glm::vec3{ 0.0f, 0.0f, 0.0f },
-            glm::vec3{ 0.26f, 0.26f, 0.0f },
-            glm::vec3{ 0.0f, 0.0f, 0.0f });
+            glm::vec3{ 1.0f, 1.0f, 1.0f });
 
-        const editor::SnapResult result = solver.solve(settings, context);
+        ok &= expect(
+            provider.is_enabled(editor.snap_settings(), context),
+            "provider habilitado com scene valida");
+
+        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
         print_result(result);
 
-        ok &= expect(result.is_valid(), "solver encontrou resultado valido");
-        ok &= expect(result.mode == editor::SnapMode::Grid, "grid venceu porque increment esta desabilitado");
-        ok &= expect(result.target.type == editor::SnapTargetType::GridPoint, "target vencedor eh GridPoint");
-        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.0f, 0.0f, 0.0f }, "posicao snapped por grid");
+        ok &= expect(!result.is_valid(), "scene vazia retorna invalid");
 
         return ok;
     }
 
-    bool test_solver_clear()
+    bool test_vertex_provider_single_mesh_local_vertices()
     {
         using namespace locus;
 
-        std::cout << "\n=== SnapSolver: clear ===\n";
+        std::cout << "\n=== VertexSnapProvider: mesh simples local ===\n";
 
         bool ok = true;
 
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(10.0f);
+
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh A");
+        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
+
+        ok &= expect(meshId.is_valid(), "mesh node criado com id valido");
+        ok &= expect(meshNode != nullptr, "mesh node encontrado");
+
+        if (meshNode == nullptr) {
+            return false;
+        }
+
+        const kernel::geometry::VertexHandle v0 = meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
+        const kernel::geometry::VertexHandle v1 = meshNode->mesh().add_vertex({ 2.0f, 0.0f, 0.0f });
+        const kernel::geometry::VertexHandle v2 = meshNode->mesh().add_vertex({ 0.0f, 3.0f, 0.0f });
+
+        ok &= expect(v0.is_valid(), "v0 criado");
+        ok &= expect(v1.is_valid(), "v1 criado");
+        ok &= expect(v2.is_valid(), "v2 criado");
+
+        editor::VertexSnapProvider provider;
+
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 1.80f, 0.15f, 0.0f });
+
+        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(result.is_valid(), "vertex snap encontrou resultado");
+        ok &= expect(result.mode == editor::SnapMode::Vertex, "modo do resultado eh Vertex");
+        ok &= expect(result.target.type == editor::SnapTargetType::Vertex, "target eh Vertex");
+        ok &= expect(result.target.node == meshId, "target aponta para mesh correta");
+        ok &= expect(result.target.component == 1u, "target component aponta para v1");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 2.0f, 0.0f, 0.0f }, "snapped no vertice local mais proximo");
+
+        return ok;
+    }
+
+    bool test_vertex_provider_world_transform()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== VertexSnapProvider: transform local -> mundo ===\n";
+
+        bool ok = true;
+
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(10.0f);
+
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Transformada");
+        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
+
+        ok &= expect(meshNode != nullptr, "mesh transformada encontrada");
+
+        if (meshNode == nullptr) {
+            return false;
+        }
+
+        meshNode->mesh().add_vertex({ 0.0f, 0.0f, 0.0f });
+        meshNode->mesh().add_vertex({ 1.0f, 0.0f, 0.0f });
+        meshNode->transform().set_position({ 10.0f, 5.0f, -2.0f });
+
+        editor::VertexSnapProvider provider;
+
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 10.90f, 5.10f, -2.0f });
+
+        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(result.is_valid(), "vertex snap com transform encontrou resultado");
+        ok &= expect(result.target.node == meshId, "target aponta para mesh transformada");
+        ok &= expect(result.target.component == 1u, "target component aponta para vertice local 1");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 11.0f, 5.0f, -2.0f }, "snapped em coordenada de mundo");
+
+        return ok;
+    }
+
+    bool test_vertex_provider_ignores_invisible_node()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== VertexSnapProvider: ignora node invisivel ===\n";
+
+        bool ok = true;
+
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(10.0f);
+
+        const editor::SceneNodeId visibleId = editor.scene().create_mesh("Visible Mesh");
+        const editor::SceneNodeId invisibleId = editor.scene().create_mesh("Invisible Mesh");
+
+        editor::MeshNode* visibleNode = editor.scene().find_mesh(visibleId);
+        editor::MeshNode* invisibleNode = editor.scene().find_mesh(invisibleId);
+
+        ok &= expect(visibleNode != nullptr, "visible node encontrado");
+        ok &= expect(invisibleNode != nullptr, "invisible node encontrado");
+
+        if (visibleNode == nullptr || invisibleNode == nullptr) {
+            return false;
+        }
+
+        visibleNode->mesh().add_vertex({ 5.0f, 0.0f, 0.0f });
+        invisibleNode->mesh().add_vertex({ 1.0f, 0.0f, 0.0f });
+        invisibleNode->metadata().visible = false;
+
+        editor::VertexSnapProvider provider;
+
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 1.05f, 0.0f, 0.0f });
+
+        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(result.is_valid(), "snap encontrou apenas node visivel");
+        ok &= expect(result.target.node == visibleId, "node invisivel foi ignorado");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 5.0f, 0.0f, 0.0f }, "snapped no vertice visivel restante");
+
+        return ok;
+    }
+
+    bool test_vertex_provider_ignores_unselectable_node()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== VertexSnapProvider: ignora node nao selecionavel ===\n";
+
+        bool ok = true;
+
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(10.0f);
+
+        const editor::SceneNodeId selectableId = editor.scene().create_mesh("Selectable Mesh");
+        const editor::SceneNodeId unselectableId = editor.scene().create_mesh("Unselectable Mesh");
+
+        editor::MeshNode* selectableNode = editor.scene().find_mesh(selectableId);
+        editor::MeshNode* unselectableNode = editor.scene().find_mesh(unselectableId);
+
+        ok &= expect(selectableNode != nullptr, "selectable node encontrado");
+        ok &= expect(unselectableNode != nullptr, "unselectable node encontrado");
+
+        if (selectableNode == nullptr || unselectableNode == nullptr) {
+            return false;
+        }
+
+        selectableNode->mesh().add_vertex({ 5.0f, 0.0f, 0.0f });
+        unselectableNode->mesh().add_vertex({ 1.0f, 0.0f, 0.0f });
+        unselectableNode->metadata().selectable = false;
+
+        editor::VertexSnapProvider provider;
+
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 1.05f, 0.0f, 0.0f });
+
+        const editor::SnapResult result = provider.snap(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(result.is_valid(), "snap encontrou apenas node selecionavel");
+        ok &= expect(result.target.node == selectableId, "node nao selecionavel foi ignorado");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 5.0f, 0.0f, 0.0f }, "snapped no vertice selecionavel restante");
+
+        return ok;
+    }
+
+    bool test_solver_with_vertex_and_grid()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SnapSolver: Vertex vence Grid ===\n";
+
+        bool ok = true;
+
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex | editor::SnapMode::Grid);
+        editor.snap_settings().set_grid_size(1.0f);
+        editor.snap_settings().set_max_distance(10.0f);
+
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Solver");
+        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
+
+        ok &= expect(meshNode != nullptr, "mesh solver encontrado");
+
+        if (meshNode == nullptr) {
+            return false;
+        }
+
+        meshNode->mesh().add_vertex({ 0.45f, 0.45f, 0.0f });
+
         editor::SnapSolver solver;
-        ok &= expect(solver.register_provider(std::make_unique<editor::GridSnapProvider>()), "registrou GridSnapProvider");
-        ok &= expect(solver.register_provider(std::make_unique<editor::IncrementSnapProvider>()), "registrou IncrementSnapProvider");
-        ok &= expect_size(solver.provider_count(), 2, "provider_count antes do clear");
+        solver.register_provider(std::make_unique<editor::GridSnapProvider>());
+        solver.register_provider(std::make_unique<editor::VertexSnapProvider>());
 
-        solver.clear();
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 0.46f, 0.46f, 0.0f });
 
-        ok &= expect_size(solver.provider_count(), 0, "provider_count depois do clear");
+        const editor::SnapResult result = solver.solve(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(result.is_valid(), "solver encontrou resultado");
+        ok &= expect(result.mode == editor::SnapMode::Vertex, "vertex venceu por estar mais perto que grid");
+        ok &= expect(result.target.node == meshId, "vertex vencedor pertence a mesh correta");
+        ok &= expect_vec3(result.snappedPosition, glm::vec3{ 0.45f, 0.45f, 0.0f }, "snapped no vertex vencedor");
+
+        return ok;
+    }
+
+    bool test_solver_rejects_vertex_by_distance()
+    {
+        using namespace locus;
+
+        std::cout << "\n=== SnapSolver: rejeita Vertex por max distance ===\n";
+
+        bool ok = true;
+
+        editor::Editor editor;
+        editor.snap_settings().set_modes(editor::SnapMode::Vertex);
+        editor.snap_settings().set_max_distance(0.10f);
+
+        const editor::SceneNodeId meshId = editor.scene().create_mesh("Mesh Distante");
+        editor::MeshNode* meshNode = editor.scene().find_mesh(meshId);
+
+        ok &= expect(meshNode != nullptr, "mesh distante encontrado");
+
+        if (meshNode == nullptr) {
+            return false;
+        }
+
+        meshNode->mesh().add_vertex({ 10.0f, 0.0f, 0.0f });
+
+        editor::SnapSolver solver;
+        solver.register_provider(std::make_unique<editor::VertexSnapProvider>());
+
+        const editor::SnapContext context = make_context(
+            editor.scene(),
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const editor::SnapResult result = solver.solve(editor.snap_settings(), context);
+        print_result(result);
+
+        ok &= expect(!result.is_valid(), "solver rejeitou vertex fora do max_distance");
 
         return ok;
     }
@@ -601,35 +472,26 @@ namespace {
 int main()
 {
     std::cout << std::fixed << std::setprecision(4);
-    std::cout << "=== Locus3D Editor Snapping Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor Vertex Snapping Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_settings_defaults();
-    ok &= test_settings_enable_disable();
-    ok &= test_settings_clamps();
-
-    ok &= test_grid_snap_provider();
-    ok &= test_grid_snap_custom_step();
-    ok &= test_increment_snap_provider();
-    ok &= test_angle_snap_provider();
-    ok &= test_angle_snap_zero_radius_returns_none();
-
-    ok &= test_solver_empty();
-    ok &= test_solver_disabled();
-    ok &= test_solver_rejects_by_max_distance();
-    ok &= test_solver_accepts_by_context_override();
-    ok &= test_solver_chooses_best_result();
-    ok &= test_solver_respects_enabled_modes();
-    ok &= test_solver_clear();
+    ok &= test_vertex_provider_without_scene();
+    ok &= test_vertex_provider_empty_scene();
+    ok &= test_vertex_provider_single_mesh_local_vertices();
+    ok &= test_vertex_provider_world_transform();
+    ok &= test_vertex_provider_ignores_invisible_node();
+    ok &= test_vertex_provider_ignores_unselectable_node();
+    ok &= test_solver_with_vertex_and_grid();
+    ok &= test_solver_rejects_vertex_by_distance();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (ok) {
-        std::cout << "[OK] Todos os testes de snapping passaram.\n";
+        std::cout << "[OK] Todos os testes de VertexSnapProvider passaram.\n";
         return EXIT_SUCCESS;
     }
 
-    std::cout << "[FAIL] Algum teste de snapping falhou.\n";
+    std::cout << "[FAIL] Algum teste de VertexSnapProvider falhou.\n";
     return EXIT_FAILURE;
 }

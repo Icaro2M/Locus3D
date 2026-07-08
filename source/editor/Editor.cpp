@@ -62,6 +62,16 @@ namespace locus::editor {
         return state_.selection;
     }
 
+    SnapSettings& Editor::snap_settings()
+    {
+        return state_.snapSettings;
+    }
+
+    const SnapSettings& Editor::snap_settings() const
+    {
+        return state_.snapSettings;
+    }
+
     SelectionController& Editor::selection_controller()
     {
         mark_dirty(EditorDirtyFlags::Selection);
@@ -96,8 +106,7 @@ namespace locus::editor {
     void Editor::clear_dirty(EditorDirtyFlags flags)
     {
         state_.dirtyFlags = static_cast<EditorDirtyFlags>(
-            static_cast<std::uint32_t>(state_.dirtyFlags) &
-            ~static_cast<std::uint32_t>(flags));
+            static_cast<unsigned int>(state_.dirtyFlags) & ~static_cast<unsigned int>(flags));
     }
 
     EditorDirtyFlags Editor::dirty_flags() const
@@ -107,8 +116,9 @@ namespace locus::editor {
 
     void Editor::rebuild_controllers()
     {
-        selectionController_ =
-            std::make_unique<SelectionController>(state_.scene, state_.selection);
+        selectionController_ = std::make_unique<SelectionController>(
+            state_.scene,
+            state_.selection);
     }
 
-}
+} // namespace locus::editor

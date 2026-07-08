@@ -8,6 +8,7 @@
 #include "editor/EditorTypes.h"
 #include "editor/scene/EditorScene.h"
 #include "editor/selection/SelectionState.h"
+#include "editor/snapping/SnapSettings.h"
 
 namespace locus::editor {
 
@@ -26,6 +27,11 @@ namespace locus::editor {
         SelectionState selection;
 
         /**
+         * @brief Runtime snapping configuration used by tools and gizmos.
+         */
+        SnapSettings snapSettings;
+
+        /**
          * @brief Current high-level editor interaction mode.
          */
         EditorMode mode = EditorMode::Object;
@@ -36,4 +42,4 @@ namespace locus::editor {
         EditorDirtyFlags dirtyFlags = EditorDirtyFlags::All;
     };
 
-}
+} // namespace locus::editor
