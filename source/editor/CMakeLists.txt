@@ -157,7 +157,9 @@ target_sources(locus3d_editor
          "gizmo/GizmoSnap.h"
          "gizmo/GizmoSnap.cpp"
          "gizmo/TransformGizmo.h"
-         "gizmo/TransformGizmo.cpp")
+         "gizmo/TransformGizmo.cpp"
+         "gizmo/GizmoController.h"
+         "gizmo/GizmoController.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

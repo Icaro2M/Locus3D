@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/gizmo/GizmoAxis.h"
-#include "editor/gizmo/GizmoConstraint.h"
-#include "editor/gizmo/GizmoHit.h"
+#include "editor/gizmo/GizmoController.h"
 #include "editor/gizmo/GizmoMode.h"
-#include "editor/gizmo/GizmoSnap.h"
-#include "editor/gizmo/GizmoState.h"
-#include "editor/snapping/SnapSettings.h"
+#include "editor/scene/EditorScene.h"
+#include "editor/scene/SceneNode.h"
+#include "editor/scene/SceneNodeId.h"
+#include "editor/scene/NodeTransform.h"
+#include "editor/transform/TransformPivotResolver.h"
+#include "editor/transform/TransformSession.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -18,6 +19,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -56,217 +58,346 @@ namespace {
         return ray;
     }
 
-    bool test_axis_helpers()
+    GizmoPointerInput make_pointer(const glm::vec3& origin, const glm::vec3& direction)
     {
-        std::cout << "\n=== GizmoAxis helpers ===\n";
-
-        bool ok = true;
-
-        const bool xIsSingle = is_gizmo_single_axis(GizmoAxis::X);
-        const bool xyIsPlane = is_gizmo_plane_axis(GizmoAxis::XY);
-        const bool xyzIsFree = is_gizmo_free_axis(GizmoAxis::XYZ);
-        const bool viewIsNotPlane = !is_gizmo_plane_axis(GizmoAxis::View);
-
-        print_result(xIsSingle, "X reconhecido como eixo simples");
-        print_result(xyIsPlane, "XY reconhecido como plano");
-        print_result(xyzIsFree, "XYZ reconhecido como manipulacao livre");
-        print_result(viewIsNotPlane, "View nao e tratado como plano cartesiano direto");
-
-        ok = ok && xIsSingle && xyIsPlane && xyzIsFree && viewIsNotPlane;
-        return ok;
-    }
-
-    bool test_gizmo_hit_and_state()
-    {
-        std::cout << "\n=== GizmoHit / GizmoState ===\n";
-
-        bool ok = true;
-
-        GizmoHit invalid = GizmoHit::none();
-        print_result(!invalid.is_valid(), "GizmoHit::none retorna hit invalido");
-        ok = ok && !invalid.is_valid();
-
-        GizmoHit hit = GizmoHit::make(
-            GizmoMode::Translate,
-            GizmoAxis::X,
-            glm::vec3{ 1.0f, 2.0f, 3.0f },
-            0.15f,
-            4.0f);
-
-        const bool validHit = hit.is_valid()
-            && hit.mode == GizmoMode::Translate
-            && hit.axis == GizmoAxis::X
-            && nearly_equal_vec3(hit.worldPosition, glm::vec3{ 1.0f, 2.0f, 3.0f });
-
-        print_result(validHit, "GizmoHit::make cria hit valido");
-        ok = ok && validHit;
-
-        GizmoState state{};
-        state.hovered = hit;
-        state.active = hit;
-        state.dragging = true;
-
-        print_result(state.can_interact(), "GizmoState pode interagir quando enabled e visible");
-        ok = ok && state.can_interact();
-
-        state.clear_hover();
-        print_result(!state.hovered.is_valid(), "clear_hover limpa hovered");
-        ok = ok && !state.hovered.is_valid();
-
-        state.clear_active();
-        print_result(!state.active.is_valid() && !state.dragging, "clear_active limpa active e dragging");
-        ok = ok && !state.active.is_valid() && !state.dragging;
-
-        state.enabled = false;
-        print_result(!state.can_interact(), "GizmoState nao interage quando disabled");
-        ok = ok && !state.can_interact();
-
-        return ok;
-    }
-
-    bool test_translation_axis()
-    {
-        std::cout << "\n=== GizmoConstraint: translate X ===\n";
-
-        GizmoConstraintInput input{};
-        input.mode = GizmoMode::Translate;
-        input.axis = GizmoAxis::X;
-        input.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startPoint = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startRay = make_ray(glm::vec3{ 0.0f, 1.0f, 0.0f }, glm::vec3{ 0.0f, -1.0f, 0.0f });
-        input.currentRay = make_ray(glm::vec3{ 2.0f, 1.0f, 0.0f }, glm::vec3{ 0.0f, -1.0f, 0.0f });
-
-        const GizmoConstraintResult result = GizmoConstraint::solve_translation(input);
-
-        print_result(result.is_valid(), "resultado valido");
-        print_vec3("translation", result.translation);
-
-        const bool ok = result.is_valid()
-            && nearly_equal_vec3(result.translation, glm::vec3{ 2.0f, 0.0f, 0.0f })
-            && nearly_equal(result.signedAmount, 2.0f);
-
-        print_result(ok, "translate X gerou delta esperado");
-        return ok;
-    }
-
-    bool test_translation_plane()
-    {
-        std::cout << "\n=== GizmoConstraint: translate XY ===\n";
-
-        GizmoConstraintInput input{};
-        input.mode = GizmoMode::Translate;
-        input.axis = GizmoAxis::XY;
-        input.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startPoint = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.currentRay = make_ray(glm::vec3{ 1.5f, -2.0f, 5.0f }, glm::vec3{ 0.0f, 0.0f, -1.0f });
-
-        const GizmoConstraintResult result = GizmoConstraint::solve_translation(input);
-
-        print_result(result.is_valid(), "resultado valido");
-        print_vec3("translation", result.translation);
-
-        const bool ok = result.is_valid()
-            && nearly_equal_vec3(result.translation, glm::vec3{ 1.5f, -2.0f, 0.0f });
-
-        print_result(ok, "translate XY manteve movimento no plano XY");
-        return ok;
-    }
-
-    bool test_scale_axis()
-    {
-        std::cout << "\n=== GizmoConstraint: scale X ===\n";
-
-        GizmoConstraintInput input{};
-        input.mode = GizmoMode::Scale;
-        input.axis = GizmoAxis::X;
-        input.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startPoint = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.currentRay = make_ray(glm::vec3{ 2.0f, 1.0f, 0.0f }, glm::vec3{ 0.0f, -1.0f, 0.0f });
-        input.scaleSensitivity = 1.0f;
-
-        const GizmoConstraintResult result = GizmoConstraint::solve_scale(input);
-
-        print_result(result.is_valid(), "resultado valido");
-        print_vec3("scale", result.scale);
-
-        const bool ok = result.is_valid()
-            && nearly_equal_vec3(result.scale, glm::vec3{ 3.0f, 1.0f, 1.0f });
-
-        print_result(ok, "scale X gerou fator esperado");
-        return ok;
-    }
-
-    bool test_scale_plane()
-    {
-        std::cout << "\n=== GizmoConstraint: scale XY ===\n";
-
-        GizmoConstraintInput input{};
-        input.mode = GizmoMode::Scale;
-        input.axis = GizmoAxis::XY;
-        input.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startPoint = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.currentRay = make_ray(glm::vec3{ 1.0f, 1.0f, 5.0f }, glm::vec3{ 0.0f, 0.0f, -1.0f });
+        GizmoPointerInput input{};
+        input.ray = make_ray(origin, direction);
+        input.viewDirection = glm::vec3{ 0.0f, 0.0f, -1.0f };
         input.viewRight = glm::vec3{ 1.0f, 0.0f, 0.0f };
         input.viewUp = glm::vec3{ 0.0f, 1.0f, 0.0f };
-        input.scaleSensitivity = 1.0f;
+        input.visualScale = 1.0f;
+        return input;
+    }
 
-        const GizmoConstraintResult result = GizmoConstraint::solve_scale(input);
+    void print_controller_result(const std::string& label, const GizmoControllerResult& result)
+    {
+        std::cout << label << '\n';
+        std::cout << "  success: " << (result.success ? "true" : "false") << '\n';
+        std::cout << "  changed: " << (result.changed ? "true" : "false") << '\n';
+        std::cout << "  message: " << result.message << '\n';
+        std::cout << "  hit valid: " << (result.hit.is_valid() ? "true" : "false") << '\n';
+        std::cout << "  hit mode: " << static_cast<int>(result.hit.mode) << '\n';
+        std::cout << "  hit axis: " << static_cast<int>(result.hit.axis) << '\n';
+        print_vec3("  constraint translation", result.constraint.translation);
+        print_vec3("  constraint scale", result.constraint.scale);
+        std::cout << "  constraint angle: " << result.constraint.angle << '\n';
+    }
 
-        print_result(result.is_valid(), "resultado valido");
-        print_vec3("scale", result.scale);
+    bool test_controller_translate_x()
+    {
+        std::cout << "\n=== GizmoController: translate X em node real ===\n";
 
-        const bool ok = result.is_valid()
-            && nearly_equal_vec3(result.scale, glm::vec3{ 2.0f, 2.0f, 1.0f });
+        EditorScene scene{};
+        const SceneNodeId nodeId = scene.create_empty("Node Translate X");
+        SceneNode* node = scene.find_node(nodeId);
 
-        print_result(ok, "scale XY gerou fator em X e Y");
+        if (!node) {
+            print_result(false, "node criado pode ser encontrado");
+            return false;
+        }
+
+        node->transform().set_position(glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        GizmoController controller{};
+
+        GizmoHoverInput hover{};
+        hover.mode = GizmoMode::Translate;
+        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
+        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        hover.pointer = make_pointer(
+            glm::vec3{ 0.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoHit hovered = controller.update_hover(hover);
+        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::X, "hover acertou eixo X");
+
+        GizmoBeginDragTargetsInput begin{};
+        begin.scene = &scene;
+        begin.targets = std::vector<SceneNodeId>{ nodeId };
+        begin.active = nodeId;
+        begin.mode = GizmoMode::Translate;
+        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        begin.sessionOptions.space = TransformSpace::World;
+        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
+        begin.pointer = hover.pointer;
+
+        const GizmoControllerResult started = controller.begin_drag(begin);
+        print_controller_result("begin_drag", started);
+
+        GizmoDragInput drag{};
+        drag.pointer = make_pointer(
+            glm::vec3{ 2.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated = controller.update_drag(scene, drag);
+        print_controller_result("update_drag", updated);
+
+        const glm::vec3 positionAfterDrag = node->transform().position();
+        print_vec3("node position after drag", positionAfterDrag);
+
+        const bool confirmed = controller.end_drag();
+        const glm::vec3 positionAfterConfirm = node->transform().position();
+        print_vec3("node position after confirm", positionAfterConfirm);
+
+        const bool ok = started.success
+            && updated.success
+            && updated.changed
+            && confirmed
+            && nearly_equal_vec3(positionAfterDrag, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f)
+            && nearly_equal_vec3(positionAfterConfirm, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f);
+
+        print_result(ok, "translate X atualizou e confirmou preview no node");
         return ok;
     }
 
-    bool test_rotation_z()
+    bool test_controller_incremental_translate_x()
     {
-        std::cout << "\n=== GizmoConstraint: rotate Z ===\n";
+        std::cout << "\n=== GizmoController: translate X incremental ===\n";
 
-        GizmoConstraintInput input{};
-        input.mode = GizmoMode::Rotate;
-        input.axis = GizmoAxis::Z;
-        input.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        input.startPoint = glm::vec3{ 1.0f, 0.0f, 0.0f };
-        input.currentRay = make_ray(glm::vec3{ 0.0f, 1.0f, 5.0f }, glm::vec3{ 0.0f, 0.0f, -1.0f });
-        input.rotationSensitivity = 1.0f;
+        EditorScene scene{};
+        const SceneNodeId nodeId = scene.create_empty("Node Incremental Translate");
+        SceneNode* node = scene.find_node(nodeId);
 
-        const GizmoConstraintResult result = GizmoConstraint::solve_rotation(input);
+        if (!node) {
+            print_result(false, "node criado pode ser encontrado");
+            return false;
+        }
 
-        print_result(result.is_valid(), "resultado valido");
-        std::cout << "angle rad: " << result.angle << '\n';
+        GizmoController controller{};
 
-        const glm::vec3 rotated = result.rotation * glm::vec3{ 1.0f, 0.0f, 0.0f };
-        print_vec3("rotated X", rotated);
+        GizmoHoverInput hover{};
+        hover.mode = GizmoMode::Translate;
+        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
+        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        hover.pointer = make_pointer(
+            glm::vec3{ 0.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
 
-        const bool ok = result.is_valid()
-            && nearly_equal(result.angle, glm::half_pi<float>())
-            && nearly_equal_vec3(rotated, glm::vec3{ 0.0f, 1.0f, 0.0f }, 0.001f);
+        controller.update_hover(hover);
 
-        print_result(ok, "rotate Z gerou 90 graus no sentido esperado");
+        GizmoBeginDragTargetsInput begin{};
+        begin.scene = &scene;
+        begin.targets = std::vector<SceneNodeId>{ nodeId };
+        begin.active = nodeId;
+        begin.mode = GizmoMode::Translate;
+        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        begin.sessionOptions.space = TransformSpace::World;
+        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
+        begin.pointer = hover.pointer;
+
+        const GizmoControllerResult started = controller.begin_drag(begin);
+
+        GizmoDragInput drag1{};
+        drag1.pointer = make_pointer(
+            glm::vec3{ 1.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated1 = controller.update_drag(scene, drag1);
+        const glm::vec3 positionAfterFirst = node->transform().position();
+
+        GizmoDragInput drag2{};
+        drag2.pointer = make_pointer(
+            glm::vec3{ 2.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated2 = controller.update_drag(scene, drag2);
+        const glm::vec3 positionAfterSecond = node->transform().position();
+
+        controller.end_drag();
+
+        print_vec3("position after first drag", positionAfterFirst);
+        print_vec3("position after second drag", positionAfterSecond);
+
+        const bool ok = started.success
+            && updated1.success
+            && updated2.success
+            && nearly_equal_vec3(positionAfterFirst, glm::vec3{ 1.0f, 0.0f, 0.0f }, 0.001f)
+            && nearly_equal_vec3(positionAfterSecond, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f);
+
+        print_result(ok, "updates incrementais nao acumulam delta absoluto duplicado");
         return ok;
     }
 
-    bool test_snap_angle()
+    bool test_controller_cancel_translate_x()
     {
-        std::cout << "\n=== GizmoSnap: angle ===\n";
+        std::cout << "\n=== GizmoController: cancel restaura node ===\n";
 
-        SnapSettings settings{};
-        settings.set_snapping_enabled(true);
-        settings.set_angle_increment(glm::quarter_pi<float>());
+        EditorScene scene{};
+        const SceneNodeId nodeId = scene.create_empty("Node Cancel Translate");
+        SceneNode* node = scene.find_node(nodeId);
 
-        const float inputAngle = glm::radians(50.0f);
-        const float snapped = GizmoSnap::snap_angle(inputAngle, settings);
+        if (!node) {
+            print_result(false, "node criado pode ser encontrado");
+            return false;
+        }
 
-        std::cout << "input deg: 50\n";
-        std::cout << "snapped deg: " << glm::degrees(snapped) << '\n';
+        node->transform().set_position(glm::vec3{ 10.0f, 0.0f, 0.0f });
 
-        const bool ok = nearly_equal(snapped, glm::quarter_pi<float>());
-        print_result(ok, "50 graus arredondou para 45 graus com incremento de 45");
+        GizmoController controller{};
 
+        GizmoHoverInput hover{};
+        hover.mode = GizmoMode::Translate;
+        hover.pivot = glm::vec3{ 10.0f, 0.0f, 0.0f };
+        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        hover.pointer = make_pointer(
+            glm::vec3{ 10.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        controller.update_hover(hover);
+
+        GizmoBeginDragTargetsInput begin{};
+        begin.scene = &scene;
+        begin.targets = std::vector<SceneNodeId>{ nodeId };
+        begin.active = nodeId;
+        begin.mode = GizmoMode::Translate;
+        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        begin.sessionOptions.space = TransformSpace::World;
+        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
+        begin.pointer = hover.pointer;
+
+        const GizmoControllerResult started = controller.begin_drag(begin);
+
+        GizmoDragInput drag{};
+        drag.pointer = make_pointer(
+            glm::vec3{ 12.75f, 0.02f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated = controller.update_drag(scene, drag);
+        const glm::vec3 positionAfterDrag = node->transform().position();
+
+        const bool cancelled = controller.cancel_drag(scene);
+        const glm::vec3 positionAfterCancel = node->transform().position();
+
+        print_vec3("position after drag", positionAfterDrag);
+        print_vec3("position after cancel", positionAfterCancel);
+
+        const bool ok = started.success
+            && updated.success
+            && cancelled
+            && nearly_equal_vec3(positionAfterDrag, glm::vec3{ 12.0f, 0.0f, 0.0f }, 0.001f)
+            && nearly_equal_vec3(positionAfterCancel, glm::vec3{ 10.0f, 0.0f, 0.0f }, 0.001f);
+
+        print_result(ok, "cancel_drag restaurou transform inicial");
+        return ok;
+    }
+
+    bool test_controller_scale_y()
+    {
+        std::cout << "\n=== GizmoController: scale Y em node real ===\n";
+
+        EditorScene scene{};
+        const SceneNodeId nodeId = scene.create_empty("Node Scale Y");
+        SceneNode* node = scene.find_node(nodeId);
+
+        if (!node) {
+            print_result(false, "node criado pode ser encontrado");
+            return false;
+        }
+
+        GizmoController controller{};
+
+        GizmoHoverInput hover{};
+        hover.mode = GizmoMode::Scale;
+        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
+        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        hover.pointer = make_pointer(
+            glm::vec3{ 0.02f, 0.75f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoHit hovered = controller.update_hover(hover);
+        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::Y, "hover acertou eixo Y");
+
+        GizmoBeginDragTargetsInput begin{};
+        begin.scene = &scene;
+        begin.targets = std::vector<SceneNodeId>{ nodeId };
+        begin.active = nodeId;
+        begin.mode = GizmoMode::Scale;
+        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        begin.sessionOptions.space = TransformSpace::World;
+        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
+        begin.pointer = hover.pointer;
+
+        const GizmoControllerResult started = controller.begin_drag(begin);
+
+        GizmoDragInput drag{};
+        drag.pointer = make_pointer(
+            glm::vec3{ 0.02f, 1.75f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated = controller.update_drag(scene, drag);
+        const glm::vec3 scaleAfterDrag = node->transform().scale();
+
+        controller.end_drag();
+
+        print_controller_result("update_drag", updated);
+        print_vec3("node scale after drag", scaleAfterDrag);
+
+        const bool ok = started.success
+            && updated.success
+            && updated.changed
+            && nearly_equal_vec3(scaleAfterDrag, glm::vec3{ 1.0f, 2.0f, 1.0f }, 0.001f);
+
+        print_result(ok, "scale Y aplicou fator esperado no node");
+        return ok;
+    }
+
+    bool test_controller_rotate_z()
+    {
+        std::cout << "\n=== GizmoController: rotate Z em node real ===\n";
+
+        EditorScene scene{};
+        const SceneNodeId nodeId = scene.create_empty("Node Rotate Z");
+        SceneNode* node = scene.find_node(nodeId);
+
+        if (!node) {
+            print_result(false, "node criado pode ser encontrado");
+            return false;
+        }
+
+        GizmoController controller{};
+
+        GizmoHoverInput hover{};
+        hover.mode = GizmoMode::Rotate;
+        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
+        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        hover.pointer = make_pointer(
+            glm::vec3{ 1.05f, 0.0f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoHit hovered = controller.update_hover(hover);
+        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::Z, "hover acertou anel Z");
+
+        GizmoBeginDragTargetsInput begin{};
+        begin.scene = &scene;
+        begin.targets = std::vector<SceneNodeId>{ nodeId };
+        begin.active = nodeId;
+        begin.mode = GizmoMode::Rotate;
+        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
+        begin.sessionOptions.space = TransformSpace::World;
+        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
+        begin.pointer = hover.pointer;
+
+        const GizmoControllerResult started = controller.begin_drag(begin);
+
+        GizmoDragInput drag{};
+        drag.pointer = make_pointer(
+            glm::vec3{ 0.0f, 1.05f, 5.0f },
+            glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const GizmoControllerResult updated = controller.update_drag(scene, drag);
+        const glm::vec3 rotatedX = node->transform().rotation() * glm::vec3{ 1.0f, 0.0f, 0.0f };
+
+        controller.end_drag();
+
+        print_controller_result("update_drag", updated);
+        print_vec3("rotated local X", rotatedX);
+
+        const bool ok = started.success
+            && updated.success
+            && updated.changed
+            && nearly_equal_vec3(rotatedX, glm::vec3{ 0.0f, 1.0f, 0.0f }, 0.001f);
+
+        print_result(ok, "rotate Z aplicou 90 graus no node");
         return ok;
     }
 
@@ -274,21 +405,18 @@ namespace {
 
 int main()
 {
-    std::cout << "=== Locus3D Editor Gizmo Core Smoke Test ===\n";
+    std::cout << "=== Locus3D Editor GizmoController Smoke Test ===\n";
 
     bool ok = true;
 
-    ok = test_axis_helpers() && ok;
-    ok = test_gizmo_hit_and_state() && ok;
-    ok = test_translation_axis() && ok;
-    ok = test_translation_plane() && ok;
-    ok = test_scale_axis() && ok;
-    ok = test_scale_plane() && ok;
-    ok = test_rotation_z() && ok;
-    ok = test_snap_angle() && ok;
+    ok = test_controller_translate_x() && ok;
+    ok = test_controller_incremental_translate_x() && ok;
+    ok = test_controller_cancel_translate_x() && ok;
+    ok = test_controller_scale_y() && ok;
+    ok = test_controller_rotate_z() && ok;
 
     std::cout << "\n=== Resultado final ===\n";
-    print_result(ok, "Gizmo core smoke test");
+    print_result(ok, "GizmoController smoke test");
 
     return ok ? 0 : 1;
 }
