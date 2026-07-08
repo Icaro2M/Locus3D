@@ -200,19 +200,19 @@ source\editor
 |           MeasureTool.h [!]
 |           MeasureTool.cpp [!]
 |
-+---gizmo [!]
-|       GizmoMode.h [!]
-|       GizmoState.h [!]
-|       GizmoController.h [!]
-|       GizmoController.cpp [!]
-|       GizmoAxis.h [!]
-|       GizmoHit.h [!]
-|       GizmoSnap.h [!]
-|       GizmoSnap.cpp [!]
-|       GizmoConstraint.h [!]
-|       GizmoConstraint.cpp [!]
-|       TransformGizmo.h [!]
-|       TransformGizmo.cpp [!]
++---gizmo
+|       GizmoMode.h
+|       GizmoState.h
+|       GizmoController.h
+|       GizmoController.cpp
+|       GizmoAxis.h
+|       GizmoHit.h
+|       GizmoSnap.h
+|       GizmoSnap.cpp
+|       GizmoConstraint.h
+|       GizmoConstraint.cpp
+|       TransformGizmo.h
+|       TransformGizmo.cpp
 |
 +---transform
 |       TransformSpace.h
@@ -301,18 +301,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/impl/PivotTool.cpp`
 - [!] `tools/impl/MeasureTool.h`
 - [!] `tools/impl/MeasureTool.cpp`
-- [!] `gizmo/GizmoMode.h`
-- [!] `gizmo/GizmoState.h`
-- [!] `gizmo/GizmoController.h`
-- [!] `gizmo/GizmoController.cpp`
-- [!] `gizmo/GizmoAxis.h`
-- [!] `gizmo/GizmoHit.h`
-- [!] `gizmo/GizmoSnap.h`
-- [!] `gizmo/GizmoSnap.cpp`
-- [!] `gizmo/GizmoConstraint.h`
-- [!] `gizmo/GizmoConstraint.cpp`
-- [!] `gizmo/TransformGizmo.h`
-- [!] `gizmo/TransformGizmo.cpp`
 - [!] `render/OverlayRenderAdapter.h`
 - [!] `render/OverlayRenderAdapter.cpp`
 - [!] `render/PreviewRenderAdapter.h`

@@ -147,7 +147,17 @@ target_sources(locus3d_editor
          "snapping/EdgeSnapProvider.h"
          "snapping/EdgeSnapProvider.cpp" 
          "snapping/FaceSnapProvider.h"
-         "snapping/FaceSnapProvider.cpp")
+         "snapping/FaceSnapProvider.cpp"
+         "gizmo/GizmoMode.h"
+         "gizmo/GizmoAxis.h"
+         "gizmo/GizmoHit.h"
+         "gizmo/GizmoState.h"
+         "gizmo/GizmoConstraint.h"
+         "gizmo/GizmoConstraint.cpp"
+         "gizmo/GizmoSnap.h"
+         "gizmo/GizmoSnap.cpp"
+         "gizmo/TransformGizmo.h"
+         "gizmo/TransformGizmo.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
