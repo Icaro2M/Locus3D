@@ -237,8 +237,8 @@ source\editor
 |       GridSnapProvider.cpp
 |       VertexSnapProvider.h
 |       VertexSnapProvider.cpp
-|       EdgeSnapProvider.h [!]
-|       EdgeSnapProvider.cpp [!]
+|       EdgeSnapProvider.h
+|       EdgeSnapProvider.cpp
 |       FaceSnapProvider.h [!]
 |       FaceSnapProvider.cpp [!]
 |       IncrementSnapProvider.h
@@ -313,8 +313,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `gizmo/GizmoConstraint.cpp`
 - [!] `gizmo/TransformGizmo.h`
 - [!] `gizmo/TransformGizmo.cpp`
-- [!] `snapping/EdgeSnapProvider.h`
-- [!] `snapping/EdgeSnapProvider.cpp`
 - [!] `snapping/FaceSnapProvider.h`
 - [!] `snapping/FaceSnapProvider.cpp`
 - [!] `render/OverlayRenderAdapter.h`
