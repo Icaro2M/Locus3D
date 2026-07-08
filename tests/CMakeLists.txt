@@ -210,6 +210,30 @@ set_tests_properties(editor.unit.transform PROPERTIES
     LABELS "unit;editor;transform"
 )
 
+add_executable(Locus3DEditorSnappingTests
+    unit/editor/snapping/NumericSnapProviderTests.cpp
+    unit/editor/snapping/SceneSnapProviderTests.cpp
+    unit/editor/snapping/SnapSettingsAndSolverTests.cpp
+    unit/editor/snapping/SnappingTestMain.cpp
+)
+
+target_include_directories(Locus3DEditorSnappingTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorSnappingTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.snapping COMMAND Locus3DEditorSnappingTests)
+set_tests_properties(editor.unit.snapping PROPERTIES
+    LABELS "unit;editor;snapping"
+)
+
 add_executable(Locus3DEditorCommandTests
     unit/editor/command/CommandContextTests.cpp
     unit/editor/command/CommandDispatcherTests.cpp
