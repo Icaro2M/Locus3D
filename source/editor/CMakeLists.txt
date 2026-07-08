@@ -126,7 +126,22 @@ target_sources(locus3d_editor
          "sync/RenderSceneSync.h"
          "sync/RenderSceneSync.cpp"
          "sync/EditorSync.h"
-         "sync/EditorSync.cpp")
+         "sync/EditorSync.cpp"
+         "snapping/SnapMode.h"
+         "snapping/SnapSettings.h"
+         "snapping/SnapSettings.cpp"
+         "snapping/SnapTarget.h"
+         "snapping/SnapResult.h"
+         "snapping/SnapContext.h"
+         "snapping/ISnapProvider.h"
+         "snapping/SnapSolver.h"
+         "snapping/SnapSolver.cpp"
+         "snapping/GridSnapProvider.h"
+         "snapping/GridSnapProvider.cpp"
+         "snapping/IncrementSnapProvider.h"
+         "snapping/IncrementSnapProvider.cpp"
+         "snapping/AngleSnapProvider.h"
+         "snapping/AngleSnapProvider.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
