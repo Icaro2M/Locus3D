@@ -234,6 +234,32 @@ set_tests_properties(editor.unit.snapping PROPERTIES
     LABELS "unit;editor;snapping"
 )
 
+add_executable(Locus3DEditorGizmoTests
+    unit/editor/gizmo/GizmoConstraintTests.cpp
+    unit/editor/gizmo/GizmoControllerTests.cpp
+    unit/editor/gizmo/GizmoSnapTests.cpp
+    unit/editor/gizmo/GizmoStateTests.cpp
+    unit/editor/gizmo/GizmoTestMain.cpp
+    unit/editor/gizmo/TransformGizmoTests.cpp
+)
+
+target_include_directories(Locus3DEditorGizmoTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DEditorGizmoTests
+    PRIVATE
+        Locus3D::Editor
+)
+
+add_test(NAME editor.unit.gizmo COMMAND Locus3DEditorGizmoTests)
+set_tests_properties(editor.unit.gizmo PROPERTIES
+    LABELS "unit;editor;gizmo"
+)
+
 add_executable(Locus3DEditorCommandTests
     unit/editor/command/CommandContextTests.cpp
     unit/editor/command/CommandDispatcherTests.cpp
