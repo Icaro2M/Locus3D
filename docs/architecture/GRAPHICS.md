@@ -82,6 +82,7 @@ source\graphics
 |   GraphicsOverlay.h
 |   GraphicsPicking.h
 |   GraphicsRenderer.h
+|   GraphicsPrimitives.h
 |
 +---appearance
 |       BuiltinVisualMaterials.h
@@ -143,6 +144,14 @@ source\graphics
 |       Light.h
 |       LightEnvironment.h
 |       ShadingMode.h
+|
++---primitives
+|       PrimitiveVertex.h
+|       PrimitiveMesh.h
+|       PrimitiveBuilder.h
+|       PrimitiveBuilder.cpp
+|       PrimitiveMeshConverter.h
+|       PrimitiveMeshConverter.cpp
 |
 +---mesh
 |       GpuMesh.cpp

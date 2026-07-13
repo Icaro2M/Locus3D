@@ -47,7 +47,7 @@ target_sources(locus3d_graphics PRIVATE
     "primitives/PrimitiveBuilder.h"
     "primitives/PrimitiveBuilder.cpp"
     "primitives/PrimitiveMeshConverter.h"
-    "primitives/PrimitiveMeshConverter.cpp")
+    "primitives/PrimitiveMeshConverter.cpp" "GraphicsPrimitives.h")
 
 target_include_directories(locus3d_graphics PUBLIC
     ${LOCUS3D_SOURCE_DIR}
