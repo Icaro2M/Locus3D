@@ -19,6 +19,7 @@
  */
 #include "graphics/GraphicsCore.h"
 #include "graphics/GraphicsGpu.h"
+#include "graphics/GraphicsPrimitives.h"
 #include "graphics/GraphicsRenderer.h"
 #include "graphics/GraphicsOverlay.h"
 #include "graphics/GraphicsPicking.h"

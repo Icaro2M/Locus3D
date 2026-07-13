@@ -256,8 +256,8 @@ source\editor
 |       SceneRenderAdapter.cpp
 |       SelectionRenderAdapter.h 
 |       SelectionRenderAdapter.cpp 
-|       OverlayRenderAdapter.h [!]
-|       OverlayRenderAdapter.cpp [!]
+|       OverlayRenderAdapter.h
+|       OverlayRenderAdapter.cpp
 |       PreviewRenderAdapter.h [!]
 |       PreviewRenderAdapter.cpp [!]
 |       PickingRenderAdapter.h [!]
@@ -301,8 +301,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/impl/PivotTool.cpp`
 - [!] `tools/impl/MeasureTool.h`
 - [!] `tools/impl/MeasureTool.cpp`
-- [!] `render/OverlayRenderAdapter.h`
-- [!] `render/OverlayRenderAdapter.cpp`
 - [!] `render/PreviewRenderAdapter.h`
 - [!] `render/PreviewRenderAdapter.cpp`
 - [!] `render/PickingRenderAdapter.h`

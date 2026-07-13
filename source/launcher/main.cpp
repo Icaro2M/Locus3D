@@ -3,17 +3,39 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "graphics/primitives/PrimitiveBuilder.h"
-#include "graphics/primitives/PrimitiveMeshConverter.h"
+#include "editor/render/OverlayRenderAdapter.h"
+#include "editor/scene/MeshNode.h"
+#include "editor/selection/MeshSelection.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include <glm/vec3.hpp>
 
 namespace {
+
+    using locus::editor::MeshNode;
+    using locus::editor::MeshSelection;
+    using locus::editor::OverlayGeometry;
+    using locus::editor::OverlayPrimitiveGroup;
+    using locus::editor::OverlayPrimitiveRole;
+    using locus::editor::OverlayRenderAdapter;
+    using locus::editor::OverlayRenderOptions;
+    using locus::editor::OverlayRenderResult;
+    using locus::editor::SceneNodeId;
+
+    using locus::graphics::ColorRGBA;
+    using locus::graphics::PrimitiveTopology;
+
+    using locus::kernel::geometry::EdgeHandle;
+    using locus::kernel::geometry::FaceHandle;
+    using locus::kernel::geometry::LEM;
+    using locus::kernel::geometry::TopologyTraversal;
+    using locus::kernel::geometry::VertexHandle;
 
     constexpr float FloatTolerance = 0.0001f;
 
@@ -38,541 +60,798 @@ namespace {
         return std::abs(lhs - rhs) <= tolerance;
     }
 
-    bool mesh_vertex_position_equals(
-        const locus::graphics::MeshVertex& vertex,
-        const glm::vec3& expected
+    bool color_equals(
+        const ColorRGBA& lhs,
+        const ColorRGBA& rhs,
+        const float tolerance = FloatTolerance
     ) {
-        return nearly_equal(vertex.position[0], expected.x)
-            && nearly_equal(vertex.position[1], expected.y)
-            && nearly_equal(vertex.position[2], expected.z);
+        return nearly_equal(lhs.r, rhs.r, tolerance)
+            && nearly_equal(lhs.g, rhs.g, tolerance)
+            && nearly_equal(lhs.b, rhs.b, tolerance)
+            && nearly_equal(lhs.a, rhs.a, tolerance);
     }
 
-    bool mesh_vertex_normal_equals(
-        const locus::graphics::MeshVertex& vertex,
-        const glm::vec3& expected
+    struct QuadFixture {
+        MeshNode node{
+            SceneNodeId{ 42 },
+            "Overlay Quad"
+        };
+
+        VertexHandle vertex0{};
+        VertexHandle vertex1{};
+        VertexHandle vertex2{};
+        VertexHandle vertex3{};
+
+        EdgeHandle edge01{};
+        EdgeHandle edge12{};
+        EdgeHandle edge23{};
+        EdgeHandle edge30{};
+
+        FaceHandle face{};
+
+        QuadFixture() {
+            LEM& mesh = node.mesh();
+
+            vertex0 = mesh.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, 0.0f }
+            );
+
+            vertex1 = mesh.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, 0.0f }
+            );
+
+            vertex2 = mesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f }
+            );
+
+            vertex3 = mesh.add_vertex(
+                glm::vec3{ -1.0f, 1.0f, 0.0f }
+            );
+
+            face = mesh.add_face({
+                vertex0,
+                vertex1,
+                vertex2,
+                vertex3
+                });
+
+            edge01 = mesh.find_edge(
+                vertex0,
+                vertex1
+            );
+
+            edge12 = mesh.find_edge(
+                vertex1,
+                vertex2
+            );
+
+            edge23 = mesh.find_edge(
+                vertex2,
+                vertex3
+            );
+
+            edge30 = mesh.find_edge(
+                vertex3,
+                vertex0
+            );
+        }
+
+        QuadFixture(const QuadFixture&) = delete;
+        QuadFixture& operator=(const QuadFixture&) = delete;
+    };
+
+
+    const OverlayPrimitiveGroup* find_group(
+        const OverlayGeometry& geometry,
+        const OverlayPrimitiveRole role
     ) {
-        return nearly_equal(vertex.normal[0], expected.x)
-            && nearly_equal(vertex.normal[1], expected.y)
-            && nearly_equal(vertex.normal[2], expected.z);
+        return geometry.find_group(role);
     }
 
-    bool mesh_vertex_color_equals(
-        const locus::graphics::MeshVertex& vertex,
-        const locus::graphics::ColorRGBA& expected
-    ) {
-        return nearly_equal(vertex.color[0], expected.r)
-            && nearly_equal(vertex.color[1], expected.g)
-            && nearly_equal(vertex.color[2], expected.b)
-            && nearly_equal(vertex.color[3], expected.a);
-    }
-
-    bool test_empty_mesh_conversion() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Empty PrimitiveMesh conversion ===\n";
+    bool test_fixture_creation() {
+        std::cout << "\n=== Quad fixture ===\n";
 
         bool ok = true;
 
-        PrimitiveMesh primitiveMesh;
-        primitiveMesh.topology = PrimitiveTopology::Lines;
-
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(
-                primitiveMesh,
-                BufferUsage::Stream
-            );
+        QuadFixture fixture;
+        const LEM& mesh = fixture.node.mesh();
 
         ok &= expect(
-            uploadData.vertices.empty(),
-            "mesh vazia produz vertices vazios"
+            fixture.node.id() == SceneNodeId{ 42 },
+            "MeshNode preserva SceneNodeId"
         );
 
         ok &= expect(
-            uploadData.indices.empty(),
-            "mesh vazia produz indices vazios"
+            mesh.vertex_count() == 4,
+            "quad possui quatro vertices"
         );
 
         ok &= expect(
-            uploadData.topology == PrimitiveTopology::Lines,
-            "mesh vazia preserva topologia"
+            TopologyTraversal::vertices(mesh).size() == 4,
+            "quad possui quatro vertices ativos"
         );
 
         ok &= expect(
-            uploadData.usage == BufferUsage::Stream,
-            "mesh vazia preserva BufferUsage solicitado"
+            TopologyTraversal::edges(mesh).size() == 4,
+            "quad possui quatro arestas ativas"
+        );
+
+        ok &= expect(
+            TopologyTraversal::faces(mesh).size() == 1,
+            "quad possui uma face ativa"
+        );
+
+        ok &= expect(
+            mesh.is_valid(fixture.face),
+            "face do quad possui handle valido"
+        );
+
+        ok &= expect(
+            mesh.is_valid(fixture.edge01)
+            && mesh.is_valid(fixture.edge12)
+            && mesh.is_valid(fixture.edge23)
+            && mesh.is_valid(fixture.edge30),
+            "arestas do quad possuem handles validos"
         );
 
         return ok;
     }
 
-    bool test_point_conversion() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Point conversion ===\n";
+    bool test_complete_overlay() {
+        std::cout << "\n=== Complete mesh overlay ===\n";
 
         bool ok = true;
 
-        PrimitiveBuilder builder{ PrimitiveTopology::Points };
+        QuadFixture fixture;
 
-        const glm::vec3 position{
-            1.5f,
-            -2.0f,
-            4.25f
-        };
+        MeshSelection selection;
+        selection.set_active_mesh(fixture.node.id());
 
-        const ColorRGBA color{
-            0.25f,
-            0.5f,
-            0.75f,
+        selection.add_vertex(fixture.vertex0);
+        selection.add_edge(fixture.edge01);
+        selection.add_face(fixture.face);
+
+        selection.set_hovered_vertex(fixture.vertex1);
+        selection.set_hovered_edge(fixture.edge12);
+        selection.set_hovered_face(fixture.face);
+
+        OverlayRenderResult result;
+
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                {},
+                &result
+            );
+
+        ok &= expect(
+            geometry.nodeId == fixture.node.id(),
+            "overlay preserva node id"
+        );
+
+        ok &= expect(
+            geometry.has_geometry(),
+            "overlay completo possui geometria"
+        );
+
+        ok &= expect(
+            geometry.groups.size() == 7,
+            "overlay completo gera sete grupos semanticos"
+        );
+
+        ok &= expect(
+            result.groupCount == 7,
+            "resultado informa sete grupos"
+        );
+
+        ok &= expect(
+            result.visitedVertexCount == 4,
+            "resultado informa quatro vertices visitados"
+        );
+
+        ok &= expect(
+            result.visitedEdgeCount == 4,
+            "resultado informa quatro arestas visitadas"
+        );
+
+        ok &= expect(
+            result.visitedFaceCount == 1,
+            "resultado informa uma face visitada"
+        );
+
+        ok &= expect(
+            result.invalidHandleCount == 0,
+            "overlay valido nao encontra handles invalidos"
+        );
+
+        const OverlayPrimitiveGroup* wireframe =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::Wireframe
+            );
+
+        ok &= expect(
+            wireframe != nullptr,
+            "grupo de wireframe foi gerado"
+        );
+
+        if (wireframe) {
+            ok &= expect(
+                wireframe->mesh.topology
+                == PrimitiveTopology::Lines,
+                "wireframe usa topologia Lines"
+            );
+
+            ok &= expect(
+                wireframe->mesh.vertices.size() == 8,
+                "quatro arestas geram oito vertices de linha"
+            );
+
+            ok &= expect(
+                wireframe->mesh.is_valid(),
+                "mesh do wireframe e valida"
+            );
+        }
+
+        const OverlayPrimitiveGroup* selectedVertices =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedVertices
+            );
+
+        ok &= expect(
+            selectedVertices != nullptr,
+            "grupo de vertices selecionados foi gerado"
+        );
+
+        if (selectedVertices) {
+            ok &= expect(
+                selectedVertices->mesh.topology
+                == PrimitiveTopology::Points,
+                "vertices selecionados usam Points"
+            );
+
+            ok &= expect(
+                selectedVertices->mesh.vertices.size() == 1,
+                "um vertice selecionado gera um ponto"
+            );
+        }
+
+        const OverlayPrimitiveGroup* selectedEdges =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedEdges
+            );
+
+        ok &= expect(
+            selectedEdges != nullptr,
+            "grupo de arestas selecionadas foi gerado"
+        );
+
+        if (selectedEdges) {
+            ok &= expect(
+                selectedEdges->mesh.topology
+                == PrimitiveTopology::Lines,
+                "arestas selecionadas usam Lines"
+            );
+
+            ok &= expect(
+                selectedEdges->mesh.vertices.size() == 2,
+                "uma aresta selecionada gera dois vertices"
+            );
+        }
+
+        const OverlayPrimitiveGroup* selectedFaces =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedFaces
+            );
+
+        ok &= expect(
+            selectedFaces != nullptr,
+            "grupo de faces selecionadas foi gerado"
+        );
+
+        if (selectedFaces) {
+            ok &= expect(
+                selectedFaces->mesh.topology
+                == PrimitiveTopology::Triangles,
+                "faces selecionadas usam Triangles"
+            );
+
+            ok &= expect(
+                selectedFaces->mesh.vertices.size() == 6,
+                "face quad gera dois triangulos"
+            );
+
+            ok &= expect(
+                selectedFaces->mesh.is_valid(),
+                "mesh da face selecionada e valida"
+            );
+        }
+
+        const OverlayPrimitiveGroup* hoveredVertex =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::HoveredVertex
+            );
+
+        ok &= expect(
+            hoveredVertex != nullptr,
+            "grupo de vertice em hover foi gerado"
+        );
+
+        if (hoveredVertex) {
+            ok &= expect(
+                hoveredVertex->mesh.vertices.size() == 1,
+                "hover de vertice gera um ponto"
+            );
+        }
+
+        const OverlayPrimitiveGroup* hoveredEdge =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::HoveredEdge
+            );
+
+        ok &= expect(
+            hoveredEdge != nullptr,
+            "grupo de aresta em hover foi gerado"
+        );
+
+        if (hoveredEdge) {
+            ok &= expect(
+                hoveredEdge->mesh.vertices.size() == 2,
+                "hover de aresta gera dois vertices"
+            );
+        }
+
+        const OverlayPrimitiveGroup* hoveredFace =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::HoveredFace
+            );
+
+        ok &= expect(
+            hoveredFace != nullptr,
+            "grupo de face em hover foi gerado"
+        );
+
+        if (hoveredFace) {
+            ok &= expect(
+                hoveredFace->mesh.vertices.size() == 6,
+                "hover de face quad gera seis vertices"
+            );
+        }
+
+        ok &= expect(
+            result.pointVertexCount == 2,
+            "resultado conta dois vertices de pontos"
+        );
+
+        ok &= expect(
+            result.lineVertexCount == 12,
+            "resultado conta doze vertices de linhas"
+        );
+
+        ok &= expect(
+            result.triangleVertexCount == 12,
+            "resultado conta doze vertices de triangulos"
+        );
+
+        return ok;
+    }
+
+    bool test_selection_from_other_node() {
+        std::cout << "\n=== Selection from another node ===\n";
+
+        bool ok = true;
+
+        QuadFixture fixture;
+
+        MeshSelection selection;
+        selection.set_active_mesh(SceneNodeId{ 999 });
+
+        selection.add_vertex(fixture.vertex0);
+        selection.add_edge(fixture.edge01);
+        selection.add_face(fixture.face);
+
+        selection.set_hovered_vertex(fixture.vertex1);
+        selection.set_hovered_edge(fixture.edge12);
+        selection.set_hovered_face(fixture.face);
+
+        OverlayRenderResult result;
+
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                {},
+                &result
+            );
+
+        ok &= expect(
+            geometry.groups.size() == 1,
+            "selecao de outro node gera apenas wireframe"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::Wireframe
+            ) != nullptr,
+            "wireframe continua sendo gerado"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedVertices
+            ) == nullptr,
+            "vertices de outro node nao sao emitidos"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedEdges
+            ) == nullptr,
+            "arestas de outro node nao sao emitidas"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedFaces
+            ) == nullptr,
+            "faces de outro node nao sao emitidas"
+        );
+
+        ok &= expect(
+            result.groupCount == 1,
+            "resultado registra somente um grupo"
+        );
+
+        return ok;
+    }
+
+    bool test_overlay_options() {
+        std::cout << "\n=== Overlay options ===\n";
+
+        bool ok = true;
+
+        QuadFixture fixture;
+
+        MeshSelection selection;
+        selection.set_active_mesh(fixture.node.id());
+        selection.add_vertex(fixture.vertex0);
+        selection.add_edge(fixture.edge01);
+        selection.add_face(fixture.face);
+        selection.set_hovered_vertex(fixture.vertex1);
+        selection.set_hovered_edge(fixture.edge12);
+        selection.set_hovered_face(fixture.face);
+
+        OverlayRenderOptions options;
+        options.includeWireframe = false;
+        options.includeSelectedVertices = true;
+        options.includeSelectedEdges = false;
+        options.includeSelectedFaces = false;
+        options.includeHoveredVertex = false;
+        options.includeHoveredEdge = false;
+        options.includeHoveredFace = false;
+
+        OverlayRenderResult result;
+
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                options,
+                &result
+            );
+
+        ok &= expect(
+            geometry.groups.size() == 1,
+            "opcoes geram somente o grupo solicitado"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedVertices
+            ) != nullptr,
+            "grupo solicitado foi gerado"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::Wireframe
+            ) == nullptr,
+            "wireframe desabilitado nao foi gerado"
+        );
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedEdges
+            ) == nullptr,
+            "arestas selecionadas desabilitadas nao foram geradas"
+        );
+
+        ok &= expect(
+            result.pointVertexCount == 1,
+            "resultado conta apenas um ponto"
+        );
+
+        ok &= expect(
+            result.lineVertexCount == 0,
+            "resultado nao conta linhas"
+        );
+
+        ok &= expect(
+            result.triangleVertexCount == 0,
+            "resultado nao conta triangulos"
+        );
+
+        return ok;
+    }
+
+    bool test_overlay_colors() {
+        std::cout << "\n=== Overlay colors ===\n";
+
+        bool ok = true;
+
+        QuadFixture fixture;
+
+        MeshSelection selection;
+        selection.set_active_mesh(fixture.node.id());
+        selection.add_vertex(fixture.vertex0);
+
+        OverlayRenderOptions options;
+        options.includeWireframe = false;
+        options.includeSelectedVertices = true;
+        options.includeSelectedEdges = false;
+        options.includeSelectedFaces = false;
+        options.includeHoveredVertex = false;
+        options.includeHoveredEdge = false;
+        options.includeHoveredFace = false;
+
+        options.selectedVertexColor = ColorRGBA{
+            0.2f,
+            0.4f,
+            0.6f,
             0.8f
         };
 
-        builder.add_point(position, color);
-
-        const PrimitiveMesh primitiveMesh = builder.build();
-
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(primitiveMesh);
-
-        ok &= expect(
-            uploadData.vertices.size() == 1,
-            "ponto produz um MeshVertex"
-        );
-
-        ok &= expect(
-            uploadData.indices.empty(),
-            "ponto nao indexado preserva indices vazios"
-        );
-
-        ok &= expect(
-            uploadData.topology == PrimitiveTopology::Points,
-            "ponto preserva PrimitiveTopology::Points"
-        );
-
-        ok &= expect(
-            uploadData.usage == BufferUsage::Dynamic,
-            "conversao usa Dynamic por padrao"
-        );
-
-        if (!uploadData.vertices.empty()) {
-            const MeshVertex& vertex = uploadData.vertices[0];
-
-            ok &= expect(
-                mesh_vertex_position_equals(vertex, position),
-                "posicao do ponto e convertida corretamente"
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                options
             );
 
+        const OverlayPrimitiveGroup* group =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedVertices
+            );
+
+        ok &= expect(
+            group != nullptr,
+            "grupo colorido foi gerado"
+        );
+
+        if (group && !group->mesh.vertices.empty()) {
             ok &= expect(
-                mesh_vertex_normal_equals(
-                    vertex,
-                    glm::vec3{ 0.0f }
+                color_equals(
+                    group->mesh.vertices[0].color,
+                    options.selectedVertexColor
                 ),
-                "normal neutra do ponto e preservada"
+                "cor configurada foi preservada"
             );
-
+        }
+        else {
             ok &= expect(
-                mesh_vertex_color_equals(vertex, color),
-                "cor do ponto e convertida corretamente"
+                false,
+                "grupo colorido possui pelo menos um vertice"
             );
         }
 
         return ok;
     }
 
-    bool test_line_conversion() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Line conversion ===\n";
+    bool test_hidden_components() {
+        std::cout << "\n=== Hidden components ===\n";
 
         bool ok = true;
 
-        PrimitiveBuilder builder{ PrimitiveTopology::Lines };
+        QuadFixture fixture;
 
-        const glm::vec3 start{
-            -3.0f,
-            1.0f,
-            2.0f
-        };
+        fixture.node.mesh().edge(fixture.edge01).hidden = true;
 
-        const glm::vec3 end{
-            5.0f,
-            -1.0f,
-            7.0f
-        };
+        MeshSelection selection;
+        selection.set_active_mesh(fixture.node.id());
+        selection.add_edge(fixture.edge01);
 
-        const ColorRGBA startColor{
-            1.0f,
-            0.0f,
-            0.0f,
-            1.0f
-        };
+        OverlayRenderOptions options;
+        options.includeWireframe = true;
+        options.includeSelectedVertices = false;
+        options.includeSelectedEdges = true;
+        options.includeSelectedFaces = false;
+        options.includeHoveredVertex = false;
+        options.includeHoveredEdge = false;
+        options.includeHoveredFace = false;
+        options.skipHiddenComponents = true;
 
-        const ColorRGBA endColor{
-            0.0f,
-            0.0f,
-            1.0f,
-            0.5f
-        };
+        OverlayRenderResult result;
 
-        builder.add_line(
-            start,
-            end,
-            startColor,
-            endColor
-        );
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                options,
+                &result
+            );
 
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(
-                builder.build(),
-                BufferUsage::Stream
+        const OverlayPrimitiveGroup* wireframe =
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::Wireframe
             );
 
         ok &= expect(
-            uploadData.vertices.size() == 2,
-            "linha produz dois MeshVertex"
+            wireframe != nullptr,
+            "wireframe restante foi gerado"
         );
 
-        ok &= expect(
-            uploadData.indices.empty(),
-            "linha nao indexada preserva indices vazios"
-        );
-
-        ok &= expect(
-            uploadData.topology == PrimitiveTopology::Lines,
-            "linha preserva PrimitiveTopology::Lines"
-        );
-
-        ok &= expect(
-            uploadData.usage == BufferUsage::Stream,
-            "linha preserva BufferUsage::Stream"
-        );
-
-        if (uploadData.vertices.size() == 2) {
+        if (wireframe) {
             ok &= expect(
-                mesh_vertex_position_equals(
-                    uploadData.vertices[0],
-                    start
-                ),
-                "vertice inicial preserva posicao"
-            );
-
-            ok &= expect(
-                mesh_vertex_position_equals(
-                    uploadData.vertices[1],
-                    end
-                ),
-                "vertice final preserva posicao"
-            );
-
-            ok &= expect(
-                mesh_vertex_normal_equals(
-                    uploadData.vertices[0],
-                    glm::vec3{ 0.0f }
-                )
-                && mesh_vertex_normal_equals(
-                    uploadData.vertices[1],
-                    glm::vec3{ 0.0f }
-                ),
-                "linha preserva normais neutras"
-            );
-
-            ok &= expect(
-                mesh_vertex_color_equals(
-                    uploadData.vertices[0],
-                    startColor
-                ),
-                "vertice inicial preserva cor"
-            );
-
-            ok &= expect(
-                mesh_vertex_color_equals(
-                    uploadData.vertices[1],
-                    endColor
-                ),
-                "vertice final preserva cor"
+                wireframe->mesh.vertices.size() == 6,
+                "aresta oculta e removida do wireframe"
             );
         }
+
+        ok &= expect(
+            find_group(
+                geometry,
+                OverlayPrimitiveRole::SelectedEdges
+            ) == nullptr,
+            "aresta selecionada oculta nao gera grupo"
+        );
+
+        options.skipHiddenComponents = false;
+
+        const OverlayGeometry visibleHiddenGeometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                fixture.node,
+                selection,
+                options
+            );
+
+        const OverlayPrimitiveGroup* completeWireframe =
+            find_group(
+                visibleHiddenGeometry,
+                OverlayPrimitiveRole::Wireframe
+            );
+
+        const OverlayPrimitiveGroup* selectedEdge =
+            find_group(
+                visibleHiddenGeometry,
+                OverlayPrimitiveRole::SelectedEdges
+            );
+
+        ok &= expect(
+            completeWireframe != nullptr
+            && completeWireframe->mesh.vertices.size() == 8,
+            "skipHiddenComponents false restaura a aresta no wireframe"
+        );
+
+        ok &= expect(
+            selectedEdge != nullptr
+            && selectedEdge->mesh.vertices.size() == 2,
+            "skipHiddenComponents false restaura a aresta selecionada"
+        );
 
         return ok;
     }
 
-    bool test_triangle_conversion() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Triangle conversion ===\n";
+    bool test_empty_mesh() {
+        std::cout << "\n=== Empty mesh overlay ===\n";
 
         bool ok = true;
 
-        PrimitiveBuilder builder{
-            PrimitiveTopology::Triangles
+        MeshNode node{
+            SceneNodeId{ 100 },
+            "Empty Mesh"
         };
 
-        const glm::vec3 a{
-            0.0f,
-            0.0f,
-            0.0f
-        };
+        MeshSelection selection;
+        selection.set_active_mesh(node.id());
 
-        const glm::vec3 b{
-            1.0f,
-            0.0f,
-            0.0f
-        };
+        OverlayRenderResult result;
 
-        const glm::vec3 c{
-            0.0f,
-            1.0f,
-            0.0f
-        };
-
-        const ColorRGBA color{
-            0.2f,
-            0.8f,
-            0.4f,
-            1.0f
-        };
-
-        builder.add_triangle(a, b, c, color);
-
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(
-                builder.build(),
-                BufferUsage::Static
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                node,
+                selection,
+                {},
+                &result
             );
 
         ok &= expect(
-            uploadData.vertices.size() == 3,
-            "triangulo produz tres MeshVertex"
+            !geometry.has_geometry(),
+            "mesh vazia nao gera geometria"
         );
 
         ok &= expect(
-            uploadData.indices.empty(),
-            "triangulo do builder permanece nao indexado"
+            geometry.groups.empty(),
+            "mesh vazia nao gera grupos"
         );
 
         ok &= expect(
-            uploadData.topology
-            == PrimitiveTopology::Triangles,
-            "triangulo preserva PrimitiveTopology::Triangles"
+            result.groupCount == 0,
+            "resultado de mesh vazia informa zero grupos"
         );
 
         ok &= expect(
-            uploadData.usage == BufferUsage::Static,
-            "triangulo preserva BufferUsage::Static"
+            result.visitedVertexCount == 0
+            && result.visitedEdgeCount == 0
+            && result.visitedFaceCount == 0,
+            "mesh vazia nao possui componentes visitados"
         );
-
-        const glm::vec3 expectedNormal{
-            0.0f,
-            0.0f,
-            1.0f
-        };
-
-        if (uploadData.vertices.size() == 3) {
-            ok &= expect(
-                mesh_vertex_position_equals(
-                    uploadData.vertices[0],
-                    a
-                )
-                && mesh_vertex_position_equals(
-                    uploadData.vertices[1],
-                    b
-                )
-                && mesh_vertex_position_equals(
-                    uploadData.vertices[2],
-                    c
-                ),
-                "triangulo preserva as tres posicoes"
-            );
-
-            ok &= expect(
-                mesh_vertex_normal_equals(
-                    uploadData.vertices[0],
-                    expectedNormal
-                )
-                && mesh_vertex_normal_equals(
-                    uploadData.vertices[1],
-                    expectedNormal
-                )
-                && mesh_vertex_normal_equals(
-                    uploadData.vertices[2],
-                    expectedNormal
-                ),
-                "triangulo preserva a normal calculada"
-            );
-
-            ok &= expect(
-                mesh_vertex_color_equals(
-                    uploadData.vertices[0],
-                    color
-                )
-                && mesh_vertex_color_equals(
-                    uploadData.vertices[1],
-                    color
-                )
-                && mesh_vertex_color_equals(
-                    uploadData.vertices[2],
-                    color
-                ),
-                "triangulo preserva as cores"
-            );
-        }
 
         return ok;
     }
 
-    bool test_indexed_mesh_conversion() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Indexed PrimitiveMesh conversion ===\n";
+    bool test_invalid_node_id() {
+        std::cout << "\n=== Invalid node id ===\n";
 
         bool ok = true;
 
-        const ColorRGBA colorA{
-            1.0f,
-            0.0f,
-            0.0f,
-            1.0f
+        MeshNode node{
+            SceneNodeId{},
+            "Invalid Mesh"
         };
 
-        const ColorRGBA colorB{
-            0.0f,
-            1.0f,
-            0.0f,
-            1.0f
-        };
+        LEM& mesh = node.mesh();
 
-        const ColorRGBA colorC{
-            0.0f,
-            0.0f,
-            1.0f,
-            1.0f
-        };
-
-        PrimitiveMesh primitiveMesh;
-        primitiveMesh.topology =
-            PrimitiveTopology::Triangles;
-
-        primitiveMesh.vertices = {
-            PrimitiveVertex{
-                glm::vec3{ 0.0f, 0.0f, 0.0f },
-                glm::vec3{ 0.0f, 0.0f, 1.0f },
-                colorA
-            },
-            PrimitiveVertex{
-                glm::vec3{ 1.0f, 0.0f, 0.0f },
-                glm::vec3{ 0.0f, 0.0f, 1.0f },
-                colorB
-            },
-            PrimitiveVertex{
-                glm::vec3{ 0.0f, 1.0f, 0.0f },
-                glm::vec3{ 0.0f, 0.0f, 1.0f },
-                colorC
-            }
-        };
-
-        primitiveMesh.indices = {
-            0,
-            1,
-            2
-        };
-
-        ok &= expect(
-            primitiveMesh.is_valid(),
-            "PrimitiveMesh indexada de entrada e valida"
+        const VertexHandle vertex0 = mesh.add_vertex(
+            glm::vec3{ 0.0f, 0.0f, 0.0f }
         );
 
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(
-                primitiveMesh
-            );
-
-        ok &= expect(
-            uploadData.vertices.size()
-            == primitiveMesh.vertices.size(),
-            "mesh indexada preserva quantidade de vertices"
-        );
-
-        ok &= expect(
-            uploadData.indices
-            == primitiveMesh.indices,
-            "mesh indexada preserva os indices"
-        );
-
-        ok &= expect(
-            uploadData.topology
-            == PrimitiveTopology::Triangles,
-            "mesh indexada preserva topologia"
-        );
-
-        if (uploadData.vertices.size() == 3) {
-            ok &= expect(
-                mesh_vertex_color_equals(
-                    uploadData.vertices[0],
-                    colorA
-                )
-                && mesh_vertex_color_equals(
-                    uploadData.vertices[1],
-                    colorB
-                )
-                && mesh_vertex_color_equals(
-                    uploadData.vertices[2],
-                    colorC
-                ),
-                "mesh indexada preserva cores individuais"
-            );
-        }
-
-        return ok;
-    }
-
-    bool test_source_mesh_is_not_modified() {
-        using namespace locus::graphics;
-
-        std::cout << "\n=== Source mesh immutability ===\n";
-
-        bool ok = true;
-
-        PrimitiveBuilder builder{ PrimitiveTopology::Lines };
-
-        builder.add_line(
-            glm::vec3{ -1.0f, 0.0f, 0.0f },
+        const VertexHandle vertex1 = mesh.add_vertex(
             glm::vec3{ 1.0f, 0.0f, 0.0f }
         );
 
-        const PrimitiveMesh primitiveMesh = builder.build();
+        mesh.find_or_create_edge(vertex0, vertex1);
 
-        const std::size_t originalVertexCount =
-            primitiveMesh.vertices.size();
+        MeshSelection selection;
 
-        const std::size_t originalIndexCount =
-            primitiveMesh.indices.size();
+        OverlayRenderResult result;
 
-        const PrimitiveTopology originalTopology =
-            primitiveMesh.topology;
-
-        const MeshUploadData uploadData =
-            PrimitiveMeshConverter::to_upload_data(
-                primitiveMesh
+        const OverlayGeometry geometry =
+            OverlayRenderAdapter::build_mesh_overlay(
+                node,
+                selection,
+                {},
+                &result
             );
 
-        static_cast<void>(uploadData);
-
         ok &= expect(
-            primitiveMesh.vertices.size()
-            == originalVertexCount,
-            "conversao nao altera vertices de origem"
+            !geometry.has_geometry(),
+            "node com id invalido nao gera overlay"
         );
 
         ok &= expect(
-            primitiveMesh.indices.size()
-            == originalIndexCount,
-            "conversao nao altera indices de origem"
+            result.groupCount == 0,
+            "node invalido informa zero grupos"
         );
 
         ok &= expect(
-            primitiveMesh.topology
-            == originalTopology,
-            "conversao nao altera topologia de origem"
+            !result.message.empty(),
+            "node invalido produz diagnostico"
         );
 
         return ok;
@@ -582,31 +861,33 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Graphics PrimitiveMeshConverter "
+        << "=== Locus3D Editor OverlayRenderAdapter "
         "Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_empty_mesh_conversion();
-    ok &= test_point_conversion();
-    ok &= test_line_conversion();
-    ok &= test_triangle_conversion();
-    ok &= test_indexed_mesh_conversion();
-    ok &= test_source_mesh_is_not_modified();
+    ok &= test_fixture_creation();
+    ok &= test_complete_overlay();
+    ok &= test_selection_from_other_node();
+    ok &= test_overlay_options();
+    ok &= test_overlay_colors();
+    ok &= test_hidden_components();
+    ok &= test_empty_mesh();
+    ok &= test_invalid_node_id();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (!ok) {
         std::cout
-            << "[FAIL] Um ou mais testes do converter "
-            "falharam.\n";
+            << "[FAIL] Um ou mais testes do "
+            "OverlayRenderAdapter falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
         << "[OK] Todos os testes do "
-        "PrimitiveMeshConverter passaram.\n";
+        "OverlayRenderAdapter passaram.\n";
 
     return EXIT_SUCCESS;
 }
