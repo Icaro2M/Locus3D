@@ -3,420 +3,755 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/gizmo/GizmoController.h"
-#include "editor/gizmo/GizmoMode.h"
-#include "editor/scene/EditorScene.h"
-#include "editor/scene/SceneNode.h"
-#include "editor/scene/SceneNodeId.h"
-#include "editor/scene/NodeTransform.h"
-#include "editor/transform/TransformPivotResolver.h"
-#include "editor/transform/TransformSession.h"
-
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
-#include <glm/gtc/quaternion.hpp>
+#include "graphics/primitives/PrimitiveBuilder.h"
+#include "graphics/primitives/PrimitiveMesh.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <string>
-#include <vector>
+
+#include <glm/geometric.hpp>
+#include <glm/vec3.hpp>
 
 namespace {
 
-    using namespace locus::editor;
+    constexpr float FloatTolerance = 0.0001f;
 
-    bool nearly_equal(float a, float b, float epsilon = 0.0001f)
-    {
-        return std::abs(a - b) <= epsilon;
-    }
-
-    bool nearly_equal_vec3(const glm::vec3& a, const glm::vec3& b, float epsilon = 0.0001f)
-    {
-        return nearly_equal(a.x, b.x, epsilon)
-            && nearly_equal(a.y, b.y, epsilon)
-            && nearly_equal(a.z, b.z, epsilon);
-    }
-
-    void print_vec3(const std::string& label, const glm::vec3& value)
-    {
-        std::cout << label << ": "
-            << value.x << ", "
-            << value.y << ", "
-            << value.z << '\n';
-    }
-
-    void print_result(bool condition, const std::string& message)
-    {
-        std::cout << (condition ? "[OK] " : "[FAIL] ") << message << '\n';
-    }
-
-    GizmoRay make_ray(const glm::vec3& origin, const glm::vec3& direction)
-    {
-        GizmoRay ray{};
-        ray.origin = origin;
-        ray.direction = direction;
-        return ray;
-    }
-
-    GizmoPointerInput make_pointer(const glm::vec3& origin, const glm::vec3& direction)
-    {
-        GizmoPointerInput input{};
-        input.ray = make_ray(origin, direction);
-        input.viewDirection = glm::vec3{ 0.0f, 0.0f, -1.0f };
-        input.viewRight = glm::vec3{ 1.0f, 0.0f, 0.0f };
-        input.viewUp = glm::vec3{ 0.0f, 1.0f, 0.0f };
-        input.visualScale = 1.0f;
-        return input;
-    }
-
-    void print_controller_result(const std::string& label, const GizmoControllerResult& result)
-    {
-        std::cout << label << '\n';
-        std::cout << "  success: " << (result.success ? "true" : "false") << '\n';
-        std::cout << "  changed: " << (result.changed ? "true" : "false") << '\n';
-        std::cout << "  message: " << result.message << '\n';
-        std::cout << "  hit valid: " << (result.hit.is_valid() ? "true" : "false") << '\n';
-        std::cout << "  hit mode: " << static_cast<int>(result.hit.mode) << '\n';
-        std::cout << "  hit axis: " << static_cast<int>(result.hit.axis) << '\n';
-        print_vec3("  constraint translation", result.constraint.translation);
-        print_vec3("  constraint scale", result.constraint.scale);
-        std::cout << "  constraint angle: " << result.constraint.angle << '\n';
-    }
-
-    bool test_controller_translate_x()
-    {
-        std::cout << "\n=== GizmoController: translate X em node real ===\n";
-
-        EditorScene scene{};
-        const SceneNodeId nodeId = scene.create_empty("Node Translate X");
-        SceneNode* node = scene.find_node(nodeId);
-
-        if (!node) {
-            print_result(false, "node criado pode ser encontrado");
-            return false;
+    bool expect(
+        const bool condition,
+        const std::string& message
+    ) {
+        if (condition) {
+            std::cout << "[OK] " << message << '\n';
+            return true;
         }
 
-        node->transform().set_position(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        std::cout << "[FAIL] " << message << '\n';
+        return false;
+    }
 
-        GizmoController controller{};
+    bool nearly_equal(
+        const float lhs,
+        const float rhs,
+        const float tolerance = FloatTolerance
+    ) {
+        return std::abs(lhs - rhs) <= tolerance;
+    }
 
-        GizmoHoverInput hover{};
-        hover.mode = GizmoMode::Translate;
-        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        hover.pointer = make_pointer(
-            glm::vec3{ 0.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+    bool nearly_equal(
+        const glm::vec3& lhs,
+        const glm::vec3& rhs,
+        const float tolerance = FloatTolerance
+    ) {
+        return nearly_equal(lhs.x, rhs.x, tolerance)
+            && nearly_equal(lhs.y, rhs.y, tolerance)
+            && nearly_equal(lhs.z, rhs.z, tolerance);
+    }
 
-        const GizmoHit hovered = controller.update_hover(hover);
-        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::X, "hover acertou eixo X");
+    bool color_equal(
+        const locus::graphics::ColorRGBA& lhs,
+        const locus::graphics::ColorRGBA& rhs,
+        const float tolerance = FloatTolerance
+    ) {
+        return nearly_equal(lhs.r, rhs.r, tolerance)
+            && nearly_equal(lhs.g, rhs.g, tolerance)
+            && nearly_equal(lhs.b, rhs.b, tolerance)
+            && nearly_equal(lhs.a, rhs.a, tolerance);
+    }
 
-        GizmoBeginDragTargetsInput begin{};
-        begin.scene = &scene;
-        begin.targets = std::vector<SceneNodeId>{ nodeId };
-        begin.active = nodeId;
-        begin.mode = GizmoMode::Translate;
-        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        begin.sessionOptions.space = TransformSpace::World;
-        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
-        begin.pointer = hover.pointer;
+    bool test_primitive_mesh_validation() {
+        using namespace locus::graphics;
 
-        const GizmoControllerResult started = controller.begin_drag(begin);
-        print_controller_result("begin_drag", started);
+        std::cout << "\n=== PrimitiveMesh validation ===\n";
 
-        GizmoDragInput drag{};
-        drag.pointer = make_pointer(
-            glm::vec3{ 2.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        bool ok = true;
 
-        const GizmoControllerResult updated = controller.update_drag(scene, drag);
-        print_controller_result("update_drag", updated);
+        PrimitiveMesh emptyMesh;
+        emptyMesh.topology = PrimitiveTopology::Triangles;
 
-        const glm::vec3 positionAfterDrag = node->transform().position();
-        print_vec3("node position after drag", positionAfterDrag);
+        ok &= expect(
+            emptyMesh.is_empty(),
+            "mesh vazia informa is_empty"
+        );
 
-        const bool confirmed = controller.end_drag();
-        const glm::vec3 positionAfterConfirm = node->transform().position();
-        print_vec3("node position after confirm", positionAfterConfirm);
+        ok &= expect(
+            !emptyMesh.has_indices(),
+            "mesh vazia nao possui indices"
+        );
 
-        const bool ok = started.success
-            && updated.success
-            && updated.changed
-            && confirmed
-            && nearly_equal_vec3(positionAfterDrag, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f)
-            && nearly_equal_vec3(positionAfterConfirm, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f);
+        ok &= expect(
+            emptyMesh.element_count() == 0,
+            "mesh vazia possui element_count igual a zero"
+        );
 
-        print_result(ok, "translate X atualizou e confirmou preview no node");
+        ok &= expect(
+            !emptyMesh.is_valid(),
+            "mesh vazia e invalida"
+        );
+
+        PrimitiveMesh validPoints;
+        validPoints.topology = PrimitiveTopology::Points;
+        validPoints.vertices.push_back(PrimitiveVertex{});
+
+        ok &= expect(
+            validPoints.is_valid(),
+            "mesh Points com um vertice e valida"
+        );
+
+        PrimitiveMesh invalidLines;
+        invalidLines.topology = PrimitiveTopology::Lines;
+        invalidLines.vertices.push_back(PrimitiveVertex{});
+
+        ok &= expect(
+            !invalidLines.is_valid(),
+            "mesh Lines com quantidade impar de vertices e invalida"
+        );
+
+        invalidLines.vertices.push_back(PrimitiveVertex{});
+
+        ok &= expect(
+            invalidLines.is_valid(),
+            "mesh Lines com dois vertices e valida"
+        );
+
+        PrimitiveMesh invalidTriangles;
+        invalidTriangles.topology = PrimitiveTopology::Triangles;
+        invalidTriangles.vertices.resize(2);
+
+        ok &= expect(
+            !invalidTriangles.is_valid(),
+            "mesh Triangles com dois vertices e invalida"
+        );
+
+        invalidTriangles.vertices.push_back(PrimitiveVertex{});
+
+        ok &= expect(
+            invalidTriangles.is_valid(),
+            "mesh Triangles com tres vertices e valida"
+        );
+
+        PrimitiveMesh validIndexedTriangle;
+        validIndexedTriangle.topology = PrimitiveTopology::Triangles;
+        validIndexedTriangle.vertices.resize(3);
+        validIndexedTriangle.indices = { 0, 1, 2 };
+
+        ok &= expect(
+            validIndexedTriangle.has_indices(),
+            "mesh indexada informa has_indices"
+        );
+
+        ok &= expect(
+            validIndexedTriangle.element_count() == 3,
+            "mesh indexada usa quantidade de indices como element_count"
+        );
+
+        ok &= expect(
+            validIndexedTriangle.is_valid(),
+            "triangulo indexado valido e aceito"
+        );
+
+        PrimitiveMesh invalidIndexMesh;
+        invalidIndexMesh.topology = PrimitiveTopology::Triangles;
+        invalidIndexMesh.vertices.resize(3);
+        invalidIndexMesh.indices = { 0, 1, 9 };
+
+        ok &= expect(
+            !invalidIndexMesh.is_valid(),
+            "indice fora do intervalo torna a mesh invalida"
+        );
+
+        PrimitiveMesh validLineStrip;
+        validLineStrip.topology = PrimitiveTopology::LineStrip;
+        validLineStrip.vertices.resize(2);
+
+        ok &= expect(
+            validLineStrip.is_valid(),
+            "LineStrip com dois vertices e valido"
+        );
+
+        PrimitiveMesh validTriangleStrip;
+        validTriangleStrip.topology = PrimitiveTopology::TriangleStrip;
+        validTriangleStrip.vertices.resize(3);
+
+        ok &= expect(
+            validTriangleStrip.is_valid(),
+            "TriangleStrip com tres vertices e valido"
+        );
+
         return ok;
     }
 
-    bool test_controller_incremental_translate_x()
-    {
-        std::cout << "\n=== GizmoController: translate X incremental ===\n";
+    bool test_point_builder() {
+        using namespace locus::graphics;
 
-        EditorScene scene{};
-        const SceneNodeId nodeId = scene.create_empty("Node Incremental Translate");
-        SceneNode* node = scene.find_node(nodeId);
+        std::cout << "\n=== PrimitiveBuilder Points ===\n";
 
-        if (!node) {
-            print_result(false, "node criado pode ser encontrado");
-            return false;
-        }
+        bool ok = true;
 
-        GizmoController controller{};
+        PrimitiveBuilder builder{ PrimitiveTopology::Points };
 
-        GizmoHoverInput hover{};
-        hover.mode = GizmoMode::Translate;
-        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        hover.pointer = make_pointer(
-            glm::vec3{ 0.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        const glm::vec3 position{ 1.0f, 2.0f, 3.0f };
+        const ColorRGBA color{ 1.0f, 0.25f, 0.5f, 0.75f };
 
-        controller.update_hover(hover);
+        ok &= expect(
+            builder.topology() == PrimitiveTopology::Points,
+            "builder preserva topologia Points"
+        );
 
-        GizmoBeginDragTargetsInput begin{};
-        begin.scene = &scene;
-        begin.targets = std::vector<SceneNodeId>{ nodeId };
-        begin.active = nodeId;
-        begin.mode = GizmoMode::Translate;
-        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        begin.sessionOptions.space = TransformSpace::World;
-        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
-        begin.pointer = hover.pointer;
+        ok &= expect(
+            builder.is_empty(),
+            "builder Points inicia vazio"
+        );
 
-        const GizmoControllerResult started = controller.begin_drag(begin);
+        ok &= expect(
+            builder.add_point(position, color),
+            "add_point e aceito em builder Points"
+        );
 
-        GizmoDragInput drag1{};
-        drag1.pointer = make_pointer(
-            glm::vec3{ 1.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        ok &= expect(
+            builder.vertex_count() == 1,
+            "add_point adiciona um vertice"
+        );
 
-        const GizmoControllerResult updated1 = controller.update_drag(scene, drag1);
-        const glm::vec3 positionAfterFirst = node->transform().position();
+        ok &= expect(
+            nearly_equal(builder.mesh().vertices[0].position, position),
+            "add_point preserva posicao"
+        );
 
-        GizmoDragInput drag2{};
-        drag2.pointer = make_pointer(
-            glm::vec3{ 2.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        ok &= expect(
+            nearly_equal(
+                builder.mesh().vertices[0].normal,
+                glm::vec3{ 0.0f }
+            ),
+            "add_point usa normal neutra"
+        );
 
-        const GizmoControllerResult updated2 = controller.update_drag(scene, drag2);
-        const glm::vec3 positionAfterSecond = node->transform().position();
+        ok &= expect(
+            color_equal(builder.mesh().vertices[0].color, color),
+            "add_point preserva cor"
+        );
 
-        controller.end_drag();
+        ok &= expect(
+            !builder.add_line(
+                glm::vec3{ 0.0f },
+                glm::vec3{ 1.0f }
+            ),
+            "builder Points rejeita add_line"
+        );
 
-        print_vec3("position after first drag", positionAfterFirst);
-        print_vec3("position after second drag", positionAfterSecond);
+        ok &= expect(
+            builder.vertex_count() == 1,
+            "operacao rejeitada nao altera a geometria"
+        );
 
-        const bool ok = started.success
-            && updated1.success
-            && updated2.success
-            && nearly_equal_vec3(positionAfterFirst, glm::vec3{ 1.0f, 0.0f, 0.0f }, 0.001f)
-            && nearly_equal_vec3(positionAfterSecond, glm::vec3{ 2.0f, 0.0f, 0.0f }, 0.001f);
+        PrimitiveMesh mesh = builder.build();
 
-        print_result(ok, "updates incrementais nao acumulam delta absoluto duplicado");
+        ok &= expect(
+            mesh.topology == PrimitiveTopology::Points,
+            "build retorna mesh Points"
+        );
+
+        ok &= expect(
+            mesh.vertices.size() == 1,
+            "build retorna o ponto acumulado"
+        );
+
+        ok &= expect(
+            mesh.is_valid(),
+            "mesh de pontos produzida e valida"
+        );
+
+        ok &= expect(
+            builder.is_empty(),
+            "build limpa o builder"
+        );
+
+        ok &= expect(
+            builder.topology() == PrimitiveTopology::Points,
+            "build preserva a topologia do builder"
+        );
+
         return ok;
     }
 
-    bool test_controller_cancel_translate_x()
-    {
-        std::cout << "\n=== GizmoController: cancel restaura node ===\n";
+    bool test_line_builder() {
+        using namespace locus::graphics;
 
-        EditorScene scene{};
-        const SceneNodeId nodeId = scene.create_empty("Node Cancel Translate");
-        SceneNode* node = scene.find_node(nodeId);
+        std::cout << "\n=== PrimitiveBuilder Lines ===\n";
 
-        if (!node) {
-            print_result(false, "node criado pode ser encontrado");
-            return false;
-        }
+        bool ok = true;
 
-        node->transform().set_position(glm::vec3{ 10.0f, 0.0f, 0.0f });
+        PrimitiveBuilder builder{ PrimitiveTopology::Lines };
 
-        GizmoController controller{};
+        const glm::vec3 start{ -1.0f, 0.0f, 0.0f };
+        const glm::vec3 end{ 1.0f, 0.0f, 0.0f };
 
-        GizmoHoverInput hover{};
-        hover.mode = GizmoMode::Translate;
-        hover.pivot = glm::vec3{ 10.0f, 0.0f, 0.0f };
-        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        hover.pointer = make_pointer(
-            glm::vec3{ 10.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        const ColorRGBA startColor{
+            1.0f,
+            0.0f,
+            0.0f,
+            1.0f
+        };
 
-        controller.update_hover(hover);
+        const ColorRGBA endColor{
+            0.0f,
+            0.0f,
+            1.0f,
+            1.0f
+        };
 
-        GizmoBeginDragTargetsInput begin{};
-        begin.scene = &scene;
-        begin.targets = std::vector<SceneNodeId>{ nodeId };
-        begin.active = nodeId;
-        begin.mode = GizmoMode::Translate;
-        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        begin.sessionOptions.space = TransformSpace::World;
-        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
-        begin.pointer = hover.pointer;
+        ok &= expect(
+            builder.add_line(
+                start,
+                end,
+                startColor,
+                endColor
+            ),
+            "add_line e aceito em builder Lines"
+        );
 
-        const GizmoControllerResult started = controller.begin_drag(begin);
+        ok &= expect(
+            builder.vertex_count() == 2,
+            "add_line adiciona dois vertices"
+        );
 
-        GizmoDragInput drag{};
-        drag.pointer = make_pointer(
-            glm::vec3{ 12.75f, 0.02f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        ok &= expect(
+            nearly_equal(builder.mesh().vertices[0].position, start)
+            && nearly_equal(builder.mesh().vertices[1].position, end),
+            "add_line preserva os extremos"
+        );
 
-        const GizmoControllerResult updated = controller.update_drag(scene, drag);
-        const glm::vec3 positionAfterDrag = node->transform().position();
+        ok &= expect(
+            color_equal(
+                builder.mesh().vertices[0].color,
+                startColor
+            ),
+            "add_line preserva a cor inicial"
+        );
 
-        const bool cancelled = controller.cancel_drag(scene);
-        const glm::vec3 positionAfterCancel = node->transform().position();
+        ok &= expect(
+            color_equal(
+                builder.mesh().vertices[1].color,
+                endColor
+            ),
+            "add_line preserva a cor final"
+        );
 
-        print_vec3("position after drag", positionAfterDrag);
-        print_vec3("position after cancel", positionAfterCancel);
+        ok &= expect(
+            !builder.add_point(glm::vec3{ 0.0f }),
+            "builder Lines rejeita add_point"
+        );
 
-        const bool ok = started.success
-            && updated.success
-            && cancelled
-            && nearly_equal_vec3(positionAfterDrag, glm::vec3{ 12.0f, 0.0f, 0.0f }, 0.001f)
-            && nearly_equal_vec3(positionAfterCancel, glm::vec3{ 10.0f, 0.0f, 0.0f }, 0.001f);
+        ok &= expect(
+            !builder.add_triangle(
+                glm::vec3{ 0.0f, 0.0f, 0.0f },
+                glm::vec3{ 1.0f, 0.0f, 0.0f },
+                glm::vec3{ 0.0f, 1.0f, 0.0f }
+            ),
+            "builder Lines rejeita add_triangle"
+        );
 
-        print_result(ok, "cancel_drag restaurou transform inicial");
+        ok &= expect(
+            builder.vertex_count() == 2,
+            "operacoes rejeitadas nao alteram as linhas"
+        );
+
+        PrimitiveMesh mesh = builder.build();
+
+        ok &= expect(
+            mesh.vertices.size() == 2,
+            "build retorna os dois vertices da linha"
+        );
+
+        ok &= expect(
+            mesh.is_valid(),
+            "mesh de linha produzida e valida"
+        );
+
         return ok;
     }
 
-    bool test_controller_scale_y()
-    {
-        std::cout << "\n=== GizmoController: scale Y em node real ===\n";
+    bool test_triangle_builder() {
+        using namespace locus::graphics;
 
-        EditorScene scene{};
-        const SceneNodeId nodeId = scene.create_empty("Node Scale Y");
-        SceneNode* node = scene.find_node(nodeId);
+        std::cout << "\n=== PrimitiveBuilder Triangles ===\n";
 
-        if (!node) {
-            print_result(false, "node criado pode ser encontrado");
-            return false;
-        }
+        bool ok = true;
 
-        GizmoController controller{};
+        PrimitiveBuilder builder{ PrimitiveTopology::Triangles };
 
-        GizmoHoverInput hover{};
-        hover.mode = GizmoMode::Scale;
-        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        hover.pointer = make_pointer(
-            glm::vec3{ 0.02f, 0.75f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        const glm::vec3 a{ 0.0f, 0.0f, 0.0f };
+        const glm::vec3 b{ 1.0f, 0.0f, 0.0f };
+        const glm::vec3 c{ 0.0f, 1.0f, 0.0f };
 
-        const GizmoHit hovered = controller.update_hover(hover);
-        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::Y, "hover acertou eixo Y");
+        const ColorRGBA color{
+            0.25f,
+            0.75f,
+            1.0f,
+            1.0f
+        };
 
-        GizmoBeginDragTargetsInput begin{};
-        begin.scene = &scene;
-        begin.targets = std::vector<SceneNodeId>{ nodeId };
-        begin.active = nodeId;
-        begin.mode = GizmoMode::Scale;
-        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        begin.sessionOptions.space = TransformSpace::World;
-        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
-        begin.pointer = hover.pointer;
+        ok &= expect(
+            builder.add_triangle(a, b, c, color),
+            "add_triangle e aceito em builder Triangles"
+        );
 
-        const GizmoControllerResult started = controller.begin_drag(begin);
+        ok &= expect(
+            builder.vertex_count() == 3,
+            "add_triangle adiciona tres vertices"
+        );
 
-        GizmoDragInput drag{};
-        drag.pointer = make_pointer(
-            glm::vec3{ 0.02f, 1.75f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        const glm::vec3 expectedNormal{
+            0.0f,
+            0.0f,
+            1.0f
+        };
 
-        const GizmoControllerResult updated = controller.update_drag(scene, drag);
-        const glm::vec3 scaleAfterDrag = node->transform().scale();
+        ok &= expect(
+            nearly_equal(
+                builder.mesh().vertices[0].normal,
+                expectedNormal
+            ),
+            "triangulo recebe normal correta"
+        );
 
-        controller.end_drag();
+        ok &= expect(
+            nearly_equal(
+                builder.mesh().vertices[1].normal,
+                expectedNormal
+            )
+            && nearly_equal(
+                builder.mesh().vertices[2].normal,
+                expectedNormal
+            ),
+            "normal calculada e aplicada aos tres vertices"
+        );
 
-        print_controller_result("update_drag", updated);
-        print_vec3("node scale after drag", scaleAfterDrag);
+        ok &= expect(
+            nearly_equal(
+                glm::length(builder.mesh().vertices[0].normal),
+                1.0f
+            ),
+            "normal do triangulo possui comprimento unitario"
+        );
 
-        const bool ok = started.success
-            && updated.success
-            && updated.changed
-            && nearly_equal_vec3(scaleAfterDrag, glm::vec3{ 1.0f, 2.0f, 1.0f }, 0.001f);
+        ok &= expect(
+            color_equal(builder.mesh().vertices[0].color, color)
+            && color_equal(builder.mesh().vertices[1].color, color)
+            && color_equal(builder.mesh().vertices[2].color, color),
+            "cor e aplicada aos tres vertices"
+        );
 
-        print_result(ok, "scale Y aplicou fator esperado no node");
+        ok &= expect(
+            !builder.add_line(a, b),
+            "builder Triangles rejeita add_line"
+        );
+
+        PrimitiveMesh mesh = builder.build();
+
+        ok &= expect(
+            mesh.vertices.size() == 3,
+            "build retorna os tres vertices do triangulo"
+        );
+
+        ok &= expect(
+            mesh.is_valid(),
+            "mesh triangular produzida e valida"
+        );
+
         return ok;
     }
 
-    bool test_controller_rotate_z()
-    {
-        std::cout << "\n=== GizmoController: rotate Z em node real ===\n";
+    bool test_degenerate_triangle() {
+        using namespace locus::graphics;
 
-        EditorScene scene{};
-        const SceneNodeId nodeId = scene.create_empty("Node Rotate Z");
-        SceneNode* node = scene.find_node(nodeId);
+        std::cout << "\n=== Degenerate triangle ===\n";
 
-        if (!node) {
-            print_result(false, "node criado pode ser encontrado");
-            return false;
+        bool ok = true;
+
+        PrimitiveBuilder builder{ PrimitiveTopology::Triangles };
+
+        const glm::vec3 a{ 0.0f, 0.0f, 0.0f };
+        const glm::vec3 b{ 1.0f, 0.0f, 0.0f };
+        const glm::vec3 c{ 2.0f, 0.0f, 0.0f };
+
+        ok &= expect(
+            builder.add_triangle(a, b, c),
+            "triangulo degenerado ainda pode ser armazenado"
+        );
+
+        ok &= expect(
+            builder.vertex_count() == 3,
+            "triangulo degenerado adiciona tres vertices"
+        );
+
+        const glm::vec3 zeroNormal{ 0.0f };
+
+        ok &= expect(
+            nearly_equal(
+                builder.mesh().vertices[0].normal,
+                zeroNormal
+            )
+            && nearly_equal(
+                builder.mesh().vertices[1].normal,
+                zeroNormal
+            )
+            && nearly_equal(
+                builder.mesh().vertices[2].normal,
+                zeroNormal
+            ),
+            "triangulo degenerado recebe normal zero"
+        );
+
+        return ok;
+    }
+
+    bool test_quad_builder() {
+        using namespace locus::graphics;
+
+        std::cout << "\n=== PrimitiveBuilder Quad ===\n";
+
+        bool ok = true;
+
+        PrimitiveBuilder builder{ PrimitiveTopology::Triangles };
+
+        const glm::vec3 a{ -1.0f, -1.0f, 0.0f };
+        const glm::vec3 b{ 1.0f, -1.0f, 0.0f };
+        const glm::vec3 c{ 1.0f, 1.0f, 0.0f };
+        const glm::vec3 d{ -1.0f, 1.0f, 0.0f };
+
+        ok &= expect(
+            builder.add_quad(a, b, c, d),
+            "add_quad e aceito em builder Triangles"
+        );
+
+        ok &= expect(
+            builder.vertex_count() == 6,
+            "add_quad gera dois triangulos e seis vertices"
+        );
+
+        PrimitiveMesh mesh = builder.build();
+
+        ok &= expect(
+            mesh.is_valid(),
+            "mesh produzida por add_quad e valida"
+        );
+
+        ok &= expect(
+            nearly_equal(mesh.vertices[0].position, a)
+            && nearly_equal(mesh.vertices[1].position, b)
+            && nearly_equal(mesh.vertices[2].position, c),
+            "primeiro triangulo do quad usa a, b, c"
+        );
+
+        ok &= expect(
+            nearly_equal(mesh.vertices[3].position, a)
+            && nearly_equal(mesh.vertices[4].position, c)
+            && nearly_equal(mesh.vertices[5].position, d),
+            "segundo triangulo do quad usa a, c, d"
+        );
+
+        return ok;
+    }
+
+    bool test_box_edges_builder() {
+        using namespace locus::graphics;
+
+        std::cout << "\n=== PrimitiveBuilder Box Edges ===\n";
+
+        bool ok = true;
+
+        PrimitiveBuilder builder{ PrimitiveTopology::Lines };
+
+        const glm::vec3 firstCorner{
+            1.0f,
+            2.0f,
+            3.0f
+        };
+
+        const glm::vec3 secondCorner{
+            -1.0f,
+            -2.0f,
+            -3.0f
+        };
+
+        const ColorRGBA color{
+            1.0f,
+            0.75f,
+            0.1f,
+            1.0f
+        };
+
+        ok &= expect(
+            builder.add_box_edges(
+                firstCorner,
+                secondCorner,
+                color
+            ),
+            "add_box_edges aceita bounds invertidos"
+        );
+
+        ok &= expect(
+            builder.vertex_count() == 24,
+            "caixa possui doze arestas e vinte e quatro vertices"
+        );
+
+        ok &= expect(
+            builder.mesh().is_valid(),
+            "mesh de arestas da caixa e valida"
+        );
+
+        bool allColorsMatch = true;
+        bool allNormalsAreZero = true;
+
+        for (const PrimitiveVertex& vertex : builder.mesh().vertices) {
+            allColorsMatch &= color_equal(vertex.color, color);
+
+            allNormalsAreZero &= nearly_equal(
+                vertex.normal,
+                glm::vec3{ 0.0f }
+            );
         }
 
-        GizmoController controller{};
+        ok &= expect(
+            allColorsMatch,
+            "todas as arestas preservam a cor solicitada"
+        );
 
-        GizmoHoverInput hover{};
-        hover.mode = GizmoMode::Rotate;
-        hover.pivot = glm::vec3{ 0.0f, 0.0f, 0.0f };
-        hover.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        hover.pointer = make_pointer(
-            glm::vec3{ 1.05f, 0.0f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        ok &= expect(
+            allNormalsAreZero,
+            "vertices das linhas usam normal neutra"
+        );
 
-        const GizmoHit hovered = controller.update_hover(hover);
-        print_result(hovered.is_valid() && hovered.axis == GizmoAxis::Z, "hover acertou anel Z");
+        return ok;
+    }
 
-        GizmoBeginDragTargetsInput begin{};
-        begin.scene = &scene;
-        begin.targets = std::vector<SceneNodeId>{ nodeId };
-        begin.active = nodeId;
-        begin.mode = GizmoMode::Rotate;
-        begin.orientation = glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f };
-        begin.sessionOptions.space = TransformSpace::World;
-        begin.sessionOptions.pivotMode = TransformPivotMode::SelectionCenter;
-        begin.pointer = hover.pointer;
+    bool test_explicit_triangle_vertices() {
+        using namespace locus::graphics;
 
-        const GizmoControllerResult started = controller.begin_drag(begin);
+        std::cout << "\n=== Explicit PrimitiveVertex triangle ===\n";
 
-        GizmoDragInput drag{};
-        drag.pointer = make_pointer(
-            glm::vec3{ 0.0f, 1.05f, 5.0f },
-            glm::vec3{ 0.0f, 0.0f, -1.0f });
+        bool ok = true;
 
-        const GizmoControllerResult updated = controller.update_drag(scene, drag);
-        const glm::vec3 rotatedX = node->transform().rotation() * glm::vec3{ 1.0f, 0.0f, 0.0f };
+        PrimitiveBuilder builder{ PrimitiveTopology::Triangles };
 
-        controller.end_drag();
+        const PrimitiveVertex a{
+            glm::vec3{ 0.0f, 0.0f, 0.0f },
+            glm::vec3{ 1.0f, 0.0f, 0.0f },
+            ColorRGBA{ 1.0f, 0.0f, 0.0f, 1.0f }
+        };
 
-        print_controller_result("update_drag", updated);
-        print_vec3("rotated local X", rotatedX);
+        const PrimitiveVertex b{
+            glm::vec3{ 1.0f, 0.0f, 0.0f },
+            glm::vec3{ 0.0f, 1.0f, 0.0f },
+            ColorRGBA{ 0.0f, 1.0f, 0.0f, 1.0f }
+        };
 
-        const bool ok = started.success
-            && updated.success
-            && updated.changed
-            && nearly_equal_vec3(rotatedX, glm::vec3{ 0.0f, 1.0f, 0.0f }, 0.001f);
+        const PrimitiveVertex c{
+            glm::vec3{ 0.0f, 1.0f, 0.0f },
+            glm::vec3{ 0.0f, 0.0f, 1.0f },
+            ColorRGBA{ 0.0f, 0.0f, 1.0f, 1.0f }
+        };
 
-        print_result(ok, "rotate Z aplicou 90 graus no node");
+        ok &= expect(
+            builder.add_triangle(a, b, c),
+            "add_triangle aceita PrimitiveVertex explicito"
+        );
+
+        ok &= expect(
+            nearly_equal(builder.mesh().vertices[0].normal, a.normal)
+            && nearly_equal(builder.mesh().vertices[1].normal, b.normal)
+            && nearly_equal(builder.mesh().vertices[2].normal, c.normal),
+            "add_triangle explicito preserva normais individuais"
+        );
+
+        ok &= expect(
+            color_equal(builder.mesh().vertices[0].color, a.color)
+            && color_equal(builder.mesh().vertices[1].color, b.color)
+            && color_equal(builder.mesh().vertices[2].color, c.color),
+            "add_triangle explicito preserva cores individuais"
+        );
+
+        return ok;
+    }
+
+    bool test_clear_preserves_topology() {
+        using namespace locus::graphics;
+
+        std::cout << "\n=== PrimitiveBuilder clear ===\n";
+
+        bool ok = true;
+
+        PrimitiveBuilder builder{ PrimitiveTopology::Lines };
+
+        builder.add_line(
+            glm::vec3{ 0.0f },
+            glm::vec3{ 1.0f }
+        );
+
+        ok &= expect(
+            !builder.is_empty(),
+            "builder possui geometria antes de clear"
+        );
+
+        builder.clear();
+
+        ok &= expect(
+            builder.is_empty(),
+            "clear remove a geometria acumulada"
+        );
+
+        ok &= expect(
+            builder.vertex_count() == 0,
+            "clear zera a quantidade de vertices"
+        );
+
+        ok &= expect(
+            builder.topology() == PrimitiveTopology::Lines,
+            "clear preserva a topologia"
+        );
+
+        ok &= expect(
+            builder.add_line(
+                glm::vec3{ 0.0f },
+                glm::vec3{ 2.0f }
+            ),
+            "builder continua utilizavel depois de clear"
+        );
+
         return ok;
     }
 
 } // namespace
 
-int main()
-{
-    std::cout << "=== Locus3D Editor GizmoController Smoke Test ===\n";
+int main() {
+    std::cout
+        << "=== Locus3D Graphics PrimitiveBuilder Smoke Test ===\n";
 
     bool ok = true;
 
-    ok = test_controller_translate_x() && ok;
-    ok = test_controller_incremental_translate_x() && ok;
-    ok = test_controller_cancel_translate_x() && ok;
-    ok = test_controller_scale_y() && ok;
-    ok = test_controller_rotate_z() && ok;
+    ok &= test_primitive_mesh_validation();
+    ok &= test_point_builder();
+    ok &= test_line_builder();
+    ok &= test_triangle_builder();
+    ok &= test_degenerate_triangle();
+    ok &= test_quad_builder();
+    ok &= test_box_edges_builder();
+    ok &= test_explicit_triangle_vertices();
+    ok &= test_clear_preserves_topology();
 
     std::cout << "\n=== Resultado final ===\n";
-    print_result(ok, "GizmoController smoke test");
 
-    return ok ? 0 : 1;
+    if (!ok) {
+        std::cout
+            << "[FAIL] Um ou mais testes de primitivas falharam.\n";
+
+        return EXIT_FAILURE;
+    }
+
+    std::cout
+        << "[OK] Todos os testes de primitivas passaram.\n";
+
+    return EXIT_SUCCESS;
 }

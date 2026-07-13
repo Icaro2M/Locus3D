@@ -42,7 +42,10 @@ target_sources(locus3d_graphics PRIVATE
     "scene/RenderTransform.cpp"
     "viewport/Viewport.cpp"
     "window/Window.cpp"
-)
+ "primitives/PrimitiveVertex.h"
+ "primitives/PrimitiveMesh.h"
+ "primitives/PrimitiveBuilder.h"
+ "primitives/PrimitiveBuilder.cpp")
 
 target_include_directories(locus3d_graphics PUBLIC
     ${LOCUS3D_SOURCE_DIR}
