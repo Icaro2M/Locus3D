@@ -97,41 +97,37 @@ namespace locus::graphics
         return shader_ != nullptr && shader_->is_valid();
     }
 
-    void PickingRenderer::render_object(const RenderObject& object) const
-    {
-        if (!object.is_drawable())
-        {
+    void PickingRenderer::render_object(
+        const RenderObject& object
+    ) const {
+        if (!object.is_drawable()) {
             return;
         }
 
-        if (!object.visibility.selectable)
-        {
+        if (!object.visibility.selectable) {
             return;
         }
 
-        if (object.id == 0)
-        {
+        if (!object.pickingId.is_valid()) {
             return;
         }
 
-        const PickingId pickingId = PickingId::from_u32(
-            static_cast<u32>(object.id & 0x00FFFFFFu)
-        );
+        const ColorRGBA pickingColor =
+            encode_picking_id(object.pickingId);
 
-        if (!pickingId.is_valid())
-        {
-            return;
-        }
+        const glm::mat4 model =
+            object.transform.matrix();
 
-        const ColorRGBA pickingColor = encode_picking_id(pickingId);
+        const glm::mat4 mvp =
+            projectionMatrix_ * viewMatrix_ * model;
 
-        const glm::mat4 model = object.transform.matrix();
-        const glm::mat4 mvp = projectionMatrix_ * viewMatrix_ * model;
-
-        // The picking shader writes a flat color instead of visual material shading.
         shader_->bind();
 
-        shader_->set_mat4("u_MVP", &mvp[0][0]);
+        shader_->set_mat4(
+            "u_MVP",
+            &mvp[0][0]
+        );
+
         shader_->set_vec4(
             "u_PickingColor",
             pickingColor.r,

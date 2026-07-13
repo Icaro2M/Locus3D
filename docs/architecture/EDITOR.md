@@ -268,8 +268,8 @@ source\editor
 |       EditorSync.cpp
 |       RenderSceneSync.h
 |       RenderSceneSync.cpp
-|       PickingSync.h [!]
-|       PickingSync.cpp [!]
+|       PickingSync.h
+|       PickingSync.cpp
 |       ManufacturingSync.h [!]
 |       ManufacturingSync.cpp [!]
 |
@@ -305,8 +305,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `render/PreviewRenderAdapter.cpp`
 - [!] `render/PickingRenderAdapter.h`
 - [!] `render/PickingRenderAdapter.cpp`
-- [!] `sync/PickingSync.h`
-- [!] `sync/PickingSync.cpp`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
 - [!] `io/IDocumentSerializer.h`

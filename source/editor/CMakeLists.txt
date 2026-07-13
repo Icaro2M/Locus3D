@@ -161,7 +161,9 @@ target_sources(locus3d_editor
          "gizmo/GizmoController.h"
          "gizmo/GizmoController.cpp"
          "render/OverlayRenderAdapter.h"
-         "render/OverlayRenderAdapter.cpp")
+         "render/OverlayRenderAdapter.cpp"
+         "sync/PickingSync.h"
+         "sync/PickingSync.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

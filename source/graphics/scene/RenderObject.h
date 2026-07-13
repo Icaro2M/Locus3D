@@ -8,6 +8,7 @@
 #include "graphics/appearance/VisualMaterialInstance.h"
 #include "graphics/gpu/Shader.h"
 #include "graphics/mesh/GpuMesh.h"
+#include "graphics/picking/PickingId.h"
 #include "graphics/scene/RenderLayer.h"
 #include "graphics/scene/RenderTransform.h"
 #include "graphics/scene/RenderVisibility.h"
@@ -15,13 +16,12 @@
 #include <cstdint>
 #include <string>
 
-namespace locus::graphics
-{
+namespace locus::graphics {
+
     /**
      * @brief Lightweight scene entry consumed by the renderer.
      */
-    struct RenderObject
-    {
+    struct RenderObject {
         /**
          * @brief Stable object identifier used by editor and scene systems.
          */
@@ -31,6 +31,14 @@ namespace locus::graphics
          * @brief Unique object identifier.
          */
         Id id = 0;
+
+        /**
+         * @brief Compact identifier encoded by the picking renderer.
+         *
+         * An invalid ID means that this object does not participate in the
+         * picking pass, even when its visibility flags allow selection.
+         */
+        PickingId pickingId{};
 
         /**
          * @brief Human-readable object name for tooling and diagnostics.
@@ -110,4 +118,5 @@ namespace locus::graphics
          */
         [[nodiscard]] bool uses_vertex_color() const;
     };
-}
+
+} // namespace locus::graphics

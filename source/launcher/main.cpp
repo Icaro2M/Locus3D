@@ -3,41 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/render/OverlayRenderAdapter.h"
-#include "editor/scene/MeshNode.h"
-#include "editor/selection/MeshSelection.h"
-#include "kernel/geometry/topology/TopologyTraversal.h"
+#include "editor/scene/EditorScene.h"
+#include "editor/sync/PickingSync.h"
 
-#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <vector>
-
-#include <glm/vec3.hpp>
 
 namespace {
 
-    using locus::editor::MeshNode;
-    using locus::editor::MeshSelection;
-    using locus::editor::OverlayGeometry;
-    using locus::editor::OverlayPrimitiveGroup;
-    using locus::editor::OverlayPrimitiveRole;
-    using locus::editor::OverlayRenderAdapter;
-    using locus::editor::OverlayRenderOptions;
-    using locus::editor::OverlayRenderResult;
+    using locus::editor::EditorScene;
+    using locus::editor::PickingSync;
+    using locus::editor::PickingSyncResult;
     using locus::editor::SceneNodeId;
 
-    using locus::graphics::ColorRGBA;
-    using locus::graphics::PrimitiveTopology;
-
-    using locus::kernel::geometry::EdgeHandle;
-    using locus::kernel::geometry::FaceHandle;
-    using locus::kernel::geometry::LEM;
-    using locus::kernel::geometry::TopologyTraversal;
-    using locus::kernel::geometry::VertexHandle;
-
-    constexpr float FloatTolerance = 0.0001f;
+    using locus::graphics::PickingId;
 
     bool expect(
         const bool condition,
@@ -52,807 +32,679 @@ namespace {
         return false;
     }
 
-    bool nearly_equal(
-        const float lhs,
-        const float rhs,
-        const float tolerance = FloatTolerance
-    ) {
-        return std::abs(lhs - rhs) <= tolerance;
-    }
-
-    bool color_equals(
-        const ColorRGBA& lhs,
-        const ColorRGBA& rhs,
-        const float tolerance = FloatTolerance
-    ) {
-        return nearly_equal(lhs.r, rhs.r, tolerance)
-            && nearly_equal(lhs.g, rhs.g, tolerance)
-            && nearly_equal(lhs.b, rhs.b, tolerance)
-            && nearly_equal(lhs.a, rhs.a, tolerance);
-    }
-
-    struct QuadFixture {
-        MeshNode node{
-            SceneNodeId{ 42 },
-            "Overlay Quad"
-        };
-
-        VertexHandle vertex0{};
-        VertexHandle vertex1{};
-        VertexHandle vertex2{};
-        VertexHandle vertex3{};
-
-        EdgeHandle edge01{};
-        EdgeHandle edge12{};
-        EdgeHandle edge23{};
-        EdgeHandle edge30{};
-
-        FaceHandle face{};
-
-        QuadFixture() {
-            LEM& mesh = node.mesh();
-
-            vertex0 = mesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.0f }
-            );
-
-            vertex1 = mesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.0f }
-            );
-
-            vertex2 = mesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f }
-            );
-
-            vertex3 = mesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 0.0f }
-            );
-
-            face = mesh.add_face({
-                vertex0,
-                vertex1,
-                vertex2,
-                vertex3
-                });
-
-            edge01 = mesh.find_edge(
-                vertex0,
-                vertex1
-            );
-
-            edge12 = mesh.find_edge(
-                vertex1,
-                vertex2
-            );
-
-            edge23 = mesh.find_edge(
-                vertex2,
-                vertex3
-            );
-
-            edge30 = mesh.find_edge(
-                vertex3,
-                vertex0
-            );
-        }
-
-        QuadFixture(const QuadFixture&) = delete;
-        QuadFixture& operator=(const QuadFixture&) = delete;
-    };
-
-
-    const OverlayPrimitiveGroup* find_group(
-        const OverlayGeometry& geometry,
-        const OverlayPrimitiveRole role
-    ) {
-        return geometry.find_group(role);
-    }
-
-    bool test_fixture_creation() {
-        std::cout << "\n=== Quad fixture ===\n";
+    bool test_empty_scene() {
+        std::cout << "\n=== Empty scene ===\n";
 
         bool ok = true;
 
-        QuadFixture fixture;
-        const LEM& mesh = fixture.node.mesh();
+        EditorScene scene;
+        PickingSync sync;
 
         ok &= expect(
-            fixture.node.id() == SceneNodeId{ 42 },
-            "MeshNode preserva SceneNodeId"
-        );
-
-        ok &= expect(
-            mesh.vertex_count() == 4,
-            "quad possui quatro vertices"
+            sync.empty(),
+            "PickingSync inicia vazio"
         );
 
         ok &= expect(
-            TopologyTraversal::vertices(mesh).size() == 4,
-            "quad possui quatro vertices ativos"
+            sync.size() == 0,
+            "PickingSync inicia com zero mapeamentos"
         );
 
         ok &= expect(
-            TopologyTraversal::edges(mesh).size() == 4,
-            "quad possui quatro arestas ativas"
+            sync.sync(scene),
+            "sync de cena vazia e concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        ok &= expect(
+            result.synchronized,
+            "resultado informa sincronizacao concluida"
         );
 
         ok &= expect(
-            TopologyTraversal::faces(mesh).size() == 1,
-            "quad possui uma face ativa"
+            result.sceneNodeCount == 0,
+            "cena vazia informa zero nodes"
         );
 
         ok &= expect(
-            mesh.is_valid(fixture.face),
-            "face do quad possui handle valido"
+            result.mappingCount == 0,
+            "cena vazia produz zero mapeamentos"
         );
 
         ok &= expect(
-            mesh.is_valid(fixture.edge01)
-            && mesh.is_valid(fixture.edge12)
-            && mesh.is_valid(fixture.edge23)
-            && mesh.is_valid(fixture.edge30),
-            "arestas do quad possuem handles validos"
-        );
-
-        return ok;
-    }
-
-    bool test_complete_overlay() {
-        std::cout << "\n=== Complete mesh overlay ===\n";
-
-        bool ok = true;
-
-        QuadFixture fixture;
-
-        MeshSelection selection;
-        selection.set_active_mesh(fixture.node.id());
-
-        selection.add_vertex(fixture.vertex0);
-        selection.add_edge(fixture.edge01);
-        selection.add_face(fixture.face);
-
-        selection.set_hovered_vertex(fixture.vertex1);
-        selection.set_hovered_edge(fixture.edge12);
-        selection.set_hovered_face(fixture.face);
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                {},
-                &result
-            );
-
-        ok &= expect(
-            geometry.nodeId == fixture.node.id(),
-            "overlay preserva node id"
+            result.createdMappingCount == 0,
+            "cena vazia nao cria mapeamentos"
         );
 
         ok &= expect(
-            geometry.has_geometry(),
-            "overlay completo possui geometria"
+            result.preservedMappingCount == 0,
+            "cena vazia nao preserva mapeamentos"
         );
 
         ok &= expect(
-            geometry.groups.size() == 7,
-            "overlay completo gera sete grupos semanticos"
+            result.removedMappingCount == 0,
+            "cena vazia nao remove mapeamentos"
         );
 
         ok &= expect(
-            result.groupCount == 7,
-            "resultado informa sete grupos"
-        );
-
-        ok &= expect(
-            result.visitedVertexCount == 4,
-            "resultado informa quatro vertices visitados"
-        );
-
-        ok &= expect(
-            result.visitedEdgeCount == 4,
-            "resultado informa quatro arestas visitadas"
-        );
-
-        ok &= expect(
-            result.visitedFaceCount == 1,
-            "resultado informa uma face visitada"
-        );
-
-        ok &= expect(
-            result.invalidHandleCount == 0,
-            "overlay valido nao encontra handles invalidos"
-        );
-
-        const OverlayPrimitiveGroup* wireframe =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::Wireframe
-            );
-
-        ok &= expect(
-            wireframe != nullptr,
-            "grupo de wireframe foi gerado"
-        );
-
-        if (wireframe) {
-            ok &= expect(
-                wireframe->mesh.topology
-                == PrimitiveTopology::Lines,
-                "wireframe usa topologia Lines"
-            );
-
-            ok &= expect(
-                wireframe->mesh.vertices.size() == 8,
-                "quatro arestas geram oito vertices de linha"
-            );
-
-            ok &= expect(
-                wireframe->mesh.is_valid(),
-                "mesh do wireframe e valida"
-            );
-        }
-
-        const OverlayPrimitiveGroup* selectedVertices =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedVertices
-            );
-
-        ok &= expect(
-            selectedVertices != nullptr,
-            "grupo de vertices selecionados foi gerado"
-        );
-
-        if (selectedVertices) {
-            ok &= expect(
-                selectedVertices->mesh.topology
-                == PrimitiveTopology::Points,
-                "vertices selecionados usam Points"
-            );
-
-            ok &= expect(
-                selectedVertices->mesh.vertices.size() == 1,
-                "um vertice selecionado gera um ponto"
-            );
-        }
-
-        const OverlayPrimitiveGroup* selectedEdges =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedEdges
-            );
-
-        ok &= expect(
-            selectedEdges != nullptr,
-            "grupo de arestas selecionadas foi gerado"
-        );
-
-        if (selectedEdges) {
-            ok &= expect(
-                selectedEdges->mesh.topology
-                == PrimitiveTopology::Lines,
-                "arestas selecionadas usam Lines"
-            );
-
-            ok &= expect(
-                selectedEdges->mesh.vertices.size() == 2,
-                "uma aresta selecionada gera dois vertices"
-            );
-        }
-
-        const OverlayPrimitiveGroup* selectedFaces =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedFaces
-            );
-
-        ok &= expect(
-            selectedFaces != nullptr,
-            "grupo de faces selecionadas foi gerado"
-        );
-
-        if (selectedFaces) {
-            ok &= expect(
-                selectedFaces->mesh.topology
-                == PrimitiveTopology::Triangles,
-                "faces selecionadas usam Triangles"
-            );
-
-            ok &= expect(
-                selectedFaces->mesh.vertices.size() == 6,
-                "face quad gera dois triangulos"
-            );
-
-            ok &= expect(
-                selectedFaces->mesh.is_valid(),
-                "mesh da face selecionada e valida"
-            );
-        }
-
-        const OverlayPrimitiveGroup* hoveredVertex =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::HoveredVertex
-            );
-
-        ok &= expect(
-            hoveredVertex != nullptr,
-            "grupo de vertice em hover foi gerado"
-        );
-
-        if (hoveredVertex) {
-            ok &= expect(
-                hoveredVertex->mesh.vertices.size() == 1,
-                "hover de vertice gera um ponto"
-            );
-        }
-
-        const OverlayPrimitiveGroup* hoveredEdge =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::HoveredEdge
-            );
-
-        ok &= expect(
-            hoveredEdge != nullptr,
-            "grupo de aresta em hover foi gerado"
-        );
-
-        if (hoveredEdge) {
-            ok &= expect(
-                hoveredEdge->mesh.vertices.size() == 2,
-                "hover de aresta gera dois vertices"
-            );
-        }
-
-        const OverlayPrimitiveGroup* hoveredFace =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::HoveredFace
-            );
-
-        ok &= expect(
-            hoveredFace != nullptr,
-            "grupo de face em hover foi gerado"
-        );
-
-        if (hoveredFace) {
-            ok &= expect(
-                hoveredFace->mesh.vertices.size() == 6,
-                "hover de face quad gera seis vertices"
-            );
-        }
-
-        ok &= expect(
-            result.pointVertexCount == 2,
-            "resultado conta dois vertices de pontos"
-        );
-
-        ok &= expect(
-            result.lineVertexCount == 12,
-            "resultado conta doze vertices de linhas"
-        );
-
-        ok &= expect(
-            result.triangleVertexCount == 12,
-            "resultado conta doze vertices de triangulos"
-        );
-
-        return ok;
-    }
-
-    bool test_selection_from_other_node() {
-        std::cout << "\n=== Selection from another node ===\n";
-
-        bool ok = true;
-
-        QuadFixture fixture;
-
-        MeshSelection selection;
-        selection.set_active_mesh(SceneNodeId{ 999 });
-
-        selection.add_vertex(fixture.vertex0);
-        selection.add_edge(fixture.edge01);
-        selection.add_face(fixture.face);
-
-        selection.set_hovered_vertex(fixture.vertex1);
-        selection.set_hovered_edge(fixture.edge12);
-        selection.set_hovered_face(fixture.face);
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                {},
-                &result
-            );
-
-        ok &= expect(
-            geometry.groups.size() == 1,
-            "selecao de outro node gera apenas wireframe"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::Wireframe
-            ) != nullptr,
-            "wireframe continua sendo gerado"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedVertices
-            ) == nullptr,
-            "vertices de outro node nao sao emitidos"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedEdges
-            ) == nullptr,
-            "arestas de outro node nao sao emitidas"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedFaces
-            ) == nullptr,
-            "faces de outro node nao sao emitidas"
-        );
-
-        ok &= expect(
-            result.groupCount == 1,
-            "resultado registra somente um grupo"
-        );
-
-        return ok;
-    }
-
-    bool test_overlay_options() {
-        std::cout << "\n=== Overlay options ===\n";
-
-        bool ok = true;
-
-        QuadFixture fixture;
-
-        MeshSelection selection;
-        selection.set_active_mesh(fixture.node.id());
-        selection.add_vertex(fixture.vertex0);
-        selection.add_edge(fixture.edge01);
-        selection.add_face(fixture.face);
-        selection.set_hovered_vertex(fixture.vertex1);
-        selection.set_hovered_edge(fixture.edge12);
-        selection.set_hovered_face(fixture.face);
-
-        OverlayRenderOptions options;
-        options.includeWireframe = false;
-        options.includeSelectedVertices = true;
-        options.includeSelectedEdges = false;
-        options.includeSelectedFaces = false;
-        options.includeHoveredVertex = false;
-        options.includeHoveredEdge = false;
-        options.includeHoveredFace = false;
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                options,
-                &result
-            );
-
-        ok &= expect(
-            geometry.groups.size() == 1,
-            "opcoes geram somente o grupo solicitado"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedVertices
-            ) != nullptr,
-            "grupo solicitado foi gerado"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::Wireframe
-            ) == nullptr,
-            "wireframe desabilitado nao foi gerado"
-        );
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedEdges
-            ) == nullptr,
-            "arestas selecionadas desabilitadas nao foram geradas"
-        );
-
-        ok &= expect(
-            result.pointVertexCount == 1,
-            "resultado conta apenas um ponto"
-        );
-
-        ok &= expect(
-            result.lineVertexCount == 0,
-            "resultado nao conta linhas"
-        );
-
-        ok &= expect(
-            result.triangleVertexCount == 0,
-            "resultado nao conta triangulos"
-        );
-
-        return ok;
-    }
-
-    bool test_overlay_colors() {
-        std::cout << "\n=== Overlay colors ===\n";
-
-        bool ok = true;
-
-        QuadFixture fixture;
-
-        MeshSelection selection;
-        selection.set_active_mesh(fixture.node.id());
-        selection.add_vertex(fixture.vertex0);
-
-        OverlayRenderOptions options;
-        options.includeWireframe = false;
-        options.includeSelectedVertices = true;
-        options.includeSelectedEdges = false;
-        options.includeSelectedFaces = false;
-        options.includeHoveredVertex = false;
-        options.includeHoveredEdge = false;
-        options.includeHoveredFace = false;
-
-        options.selectedVertexColor = ColorRGBA{
-            0.2f,
-            0.4f,
-            0.6f,
-            0.8f
-        };
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                options
-            );
-
-        const OverlayPrimitiveGroup* group =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedVertices
-            );
-
-        ok &= expect(
-            group != nullptr,
-            "grupo colorido foi gerado"
-        );
-
-        if (group && !group->mesh.vertices.empty()) {
-            ok &= expect(
-                color_equals(
-                    group->mesh.vertices[0].color,
-                    options.selectedVertexColor
-                ),
-                "cor configurada foi preservada"
-            );
-        }
-        else {
-            ok &= expect(
-                false,
-                "grupo colorido possui pelo menos um vertice"
-            );
-        }
-
-        return ok;
-    }
-
-    bool test_hidden_components() {
-        std::cout << "\n=== Hidden components ===\n";
-
-        bool ok = true;
-
-        QuadFixture fixture;
-
-        fixture.node.mesh().edge(fixture.edge01).hidden = true;
-
-        MeshSelection selection;
-        selection.set_active_mesh(fixture.node.id());
-        selection.add_edge(fixture.edge01);
-
-        OverlayRenderOptions options;
-        options.includeWireframe = true;
-        options.includeSelectedVertices = false;
-        options.includeSelectedEdges = true;
-        options.includeSelectedFaces = false;
-        options.includeHoveredVertex = false;
-        options.includeHoveredEdge = false;
-        options.includeHoveredFace = false;
-        options.skipHiddenComponents = true;
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                options,
-                &result
-            );
-
-        const OverlayPrimitiveGroup* wireframe =
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::Wireframe
-            );
-
-        ok &= expect(
-            wireframe != nullptr,
-            "wireframe restante foi gerado"
-        );
-
-        if (wireframe) {
-            ok &= expect(
-                wireframe->mesh.vertices.size() == 6,
-                "aresta oculta e removida do wireframe"
-            );
-        }
-
-        ok &= expect(
-            find_group(
-                geometry,
-                OverlayPrimitiveRole::SelectedEdges
-            ) == nullptr,
-            "aresta selecionada oculta nao gera grupo"
-        );
-
-        options.skipHiddenComponents = false;
-
-        const OverlayGeometry visibleHiddenGeometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                fixture.node,
-                selection,
-                options
-            );
-
-        const OverlayPrimitiveGroup* completeWireframe =
-            find_group(
-                visibleHiddenGeometry,
-                OverlayPrimitiveRole::Wireframe
-            );
-
-        const OverlayPrimitiveGroup* selectedEdge =
-            find_group(
-                visibleHiddenGeometry,
-                OverlayPrimitiveRole::SelectedEdges
-            );
-
-        ok &= expect(
-            completeWireframe != nullptr
-            && completeWireframe->mesh.vertices.size() == 8,
-            "skipHiddenComponents false restaura a aresta no wireframe"
-        );
-
-        ok &= expect(
-            selectedEdge != nullptr
-            && selectedEdge->mesh.vertices.size() == 2,
-            "skipHiddenComponents false restaura a aresta selecionada"
-        );
-
-        return ok;
-    }
-
-    bool test_empty_mesh() {
-        std::cout << "\n=== Empty mesh overlay ===\n";
-
-        bool ok = true;
-
-        MeshNode node{
-            SceneNodeId{ 100 },
-            "Empty Mesh"
-        };
-
-        MeshSelection selection;
-        selection.set_active_mesh(node.id());
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                node,
-                selection,
-                {},
-                &result
-            );
-
-        ok &= expect(
-            !geometry.has_geometry(),
-            "mesh vazia nao gera geometria"
-        );
-
-        ok &= expect(
-            geometry.groups.empty(),
-            "mesh vazia nao gera grupos"
-        );
-
-        ok &= expect(
-            result.groupCount == 0,
-            "resultado de mesh vazia informa zero grupos"
-        );
-
-        ok &= expect(
-            result.visitedVertexCount == 0
-            && result.visitedEdgeCount == 0
-            && result.visitedFaceCount == 0,
-            "mesh vazia nao possui componentes visitados"
-        );
-
-        return ok;
-    }
-
-    bool test_invalid_node_id() {
-        std::cout << "\n=== Invalid node id ===\n";
-
-        bool ok = true;
-
-        MeshNode node{
-            SceneNodeId{},
-            "Invalid Mesh"
-        };
-
-        LEM& mesh = node.mesh();
-
-        const VertexHandle vertex0 = mesh.add_vertex(
-            glm::vec3{ 0.0f, 0.0f, 0.0f }
-        );
-
-        const VertexHandle vertex1 = mesh.add_vertex(
-            glm::vec3{ 1.0f, 0.0f, 0.0f }
-        );
-
-        mesh.find_or_create_edge(vertex0, vertex1);
-
-        MeshSelection selection;
-
-        OverlayRenderResult result;
-
-        const OverlayGeometry geometry =
-            OverlayRenderAdapter::build_mesh_overlay(
-                node,
-                selection,
-                {},
-                &result
-            );
-
-        ok &= expect(
-            !geometry.has_geometry(),
-            "node com id invalido nao gera overlay"
-        );
-
-        ok &= expect(
-            result.groupCount == 0,
-            "node invalido informa zero grupos"
+            !result.exhausted,
+            "cena vazia nao esgota IDs"
         );
 
         ok &= expect(
             !result.message.empty(),
-            "node invalido produz diagnostico"
+            "sync de cena vazia produz diagnostico"
         );
+
+        return ok;
+    }
+
+    bool test_initial_mapping() {
+        std::cout << "\n=== Initial picking mappings ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId nodeA =
+            scene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            scene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            scene.create_empty("Node C");
+
+        ok &= expect(
+            nodeA.is_valid()
+            && nodeB.is_valid()
+            && nodeC.is_valid(),
+            "nodes foram criados com IDs validos"
+        );
+
+        PickingSync sync;
+
+        ok &= expect(
+            sync.sync(scene),
+            "primeiro sync foi concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        ok &= expect(
+            sync.size() == 3,
+            "primeiro sync cria tres mapeamentos"
+        );
+
+        ok &= expect(
+            result.sceneNodeCount == 3,
+            "resultado informa tres nodes"
+        );
+
+        ok &= expect(
+            result.createdMappingCount == 3,
+            "resultado informa tres mapeamentos criados"
+        );
+
+        ok &= expect(
+            result.preservedMappingCount == 0,
+            "primeiro sync nao preserva mapeamentos anteriores"
+        );
+
+        ok &= expect(
+            result.removedMappingCount == 0,
+            "primeiro sync nao remove mapeamentos"
+        );
+
+        ok &= expect(
+            result.mappingCount == 3,
+            "resultado informa tres mapeamentos ativos"
+        );
+
+        const PickingId pickingA =
+            sync.picking_id(nodeA);
+
+        const PickingId pickingB =
+            sync.picking_id(nodeB);
+
+        const PickingId pickingC =
+            sync.picking_id(nodeC);
+
+        ok &= expect(
+            pickingA.is_valid()
+            && pickingB.is_valid()
+            && pickingC.is_valid(),
+            "todos os nodes recebem PickingId valido"
+        );
+
+        ok &= expect(
+            pickingA != pickingB
+            && pickingA != pickingC
+            && pickingB != pickingC,
+            "cada node recebe PickingId unico"
+        );
+
+        ok &= expect(
+            sync.contains(nodeA)
+            && sync.contains(nodeB)
+            && sync.contains(nodeC),
+            "contains reconhece todos os SceneNodeId"
+        );
+
+        ok &= expect(
+            sync.contains(pickingA)
+            && sync.contains(pickingB)
+            && sync.contains(pickingC),
+            "contains reconhece todos os PickingId"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(pickingA) == nodeA,
+            "PickingId de A resolve para node A"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(pickingB) == nodeB,
+            "PickingId de B resolve para node B"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(pickingC) == nodeC,
+            "PickingId de C resolve para node C"
+        );
+
+        return ok;
+    }
+
+    bool test_mapping_preservation() {
+        std::cout << "\n=== Mapping preservation ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId nodeA =
+            scene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            scene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            scene.create_empty("Node C");
+
+        PickingSync sync;
+
+        sync.sync(scene);
+
+        const PickingId originalA =
+            sync.picking_id(nodeA);
+
+        const PickingId originalB =
+            sync.picking_id(nodeB);
+
+        const PickingId originalC =
+            sync.picking_id(nodeC);
+
+        ok &= expect(
+            sync.sync(scene),
+            "segundo sync sem alteracoes foi concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        ok &= expect(
+            result.createdMappingCount == 0,
+            "segundo sync nao cria novos mapeamentos"
+        );
+
+        ok &= expect(
+            result.preservedMappingCount == 3,
+            "segundo sync preserva tres mapeamentos"
+        );
+
+        ok &= expect(
+            result.removedMappingCount == 0,
+            "segundo sync nao remove mapeamentos"
+        );
+
+        ok &= expect(
+            sync.picking_id(nodeA) == originalA,
+            "node A preserva PickingId"
+        );
+
+        ok &= expect(
+            sync.picking_id(nodeB) == originalB,
+            "node B preserva PickingId"
+        );
+
+        ok &= expect(
+            sync.picking_id(nodeC) == originalC,
+            "node C preserva PickingId"
+        );
+
+        return ok;
+    }
+
+    bool test_node_removal() {
+        std::cout << "\n=== Node removal ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId nodeA =
+            scene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            scene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            scene.create_empty("Node C");
+
+        PickingSync sync;
+        sync.sync(scene);
+
+        const PickingId pickingA =
+            sync.picking_id(nodeA);
+
+        const PickingId removedPickingId =
+            sync.picking_id(nodeB);
+
+        const PickingId pickingC =
+            sync.picking_id(nodeC);
+
+        ok &= expect(
+            scene.remove_node(nodeB),
+            "node B foi removido da cena"
+        );
+
+        ok &= expect(
+            sync.sync(scene),
+            "sync depois da remocao foi concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        ok &= expect(
+            sync.size() == 2,
+            "remocao deixa dois mapeamentos ativos"
+        );
+
+        ok &= expect(
+            result.sceneNodeCount == 2,
+            "resultado informa dois nodes restantes"
+        );
+
+        ok &= expect(
+            result.preservedMappingCount == 2,
+            "mapeamentos de A e C foram preservados"
+        );
+
+        ok &= expect(
+            result.createdMappingCount == 0,
+            "remocao nao cria mapeamentos"
+        );
+
+        ok &= expect(
+            result.removedMappingCount == 1,
+            "resultado informa um mapeamento removido"
+        );
+
+        ok &= expect(
+            !sync.contains(nodeB),
+            "SceneNodeId removido nao permanece na tabela"
+        );
+
+        ok &= expect(
+            !sync.contains(removedPickingId),
+            "PickingId removido nao permanece na tabela reversa"
+        );
+
+        ok &= expect(
+            !sync.picking_id(nodeB).is_valid(),
+            "consulta do node removido retorna PickingId invalido"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(
+                removedPickingId
+            ).is_invalid(),
+            "consulta do PickingId removido retorna SceneNodeId invalido"
+        );
+
+        ok &= expect(
+            sync.picking_id(nodeA) == pickingA,
+            "node A preserva ID depois da remocao"
+        );
+
+        ok &= expect(
+            sync.picking_id(nodeC) == pickingC,
+            "node C preserva ID depois da remocao"
+        );
+
+        return ok;
+    }
+
+    bool test_released_id_reuse() {
+        std::cout << "\n=== Released ID reuse ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId nodeA =
+            scene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            scene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            scene.create_empty("Node C");
+
+        PickingSync sync;
+        sync.sync(scene);
+
+        const PickingId removedPickingId =
+            sync.picking_id(nodeB);
+
+        scene.remove_node(nodeB);
+        sync.sync(scene);
+
+        const SceneNodeId nodeD =
+            scene.create_empty("Node D");
+
+        ok &= expect(
+            nodeD.is_valid(),
+            "novo node D possui ID valido"
+        );
+
+        ok &= expect(
+            sync.sync(scene),
+            "sync depois de criar node D foi concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        const PickingId pickingD =
+            sync.picking_id(nodeD);
+
+        ok &= expect(
+            pickingD.is_valid(),
+            "node D recebe PickingId valido"
+        );
+
+        ok &= expect(
+            pickingD == removedPickingId,
+            "node D reutiliza PickingId liberado por B"
+        );
+
+        ok &= expect(
+            result.createdMappingCount == 1,
+            "sync cria somente o mapeamento de D"
+        );
+
+        ok &= expect(
+            result.preservedMappingCount == 2,
+            "sync preserva os mapeamentos de A e C"
+        );
+
+        ok &= expect(
+            result.removedMappingCount == 0,
+            "sync de D nao remove outro mapeamento"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(pickingD) == nodeD,
+            "ID reutilizado agora resolve para node D"
+        );
+
+        ok &= expect(
+            sync.contains(nodeA)
+            && sync.contains(nodeC)
+            && sync.contains(nodeD),
+            "tres nodes atuais estao mapeados"
+        );
+
+        return ok;
+    }
+
+    bool test_scene_clear_synchronization() {
+        std::cout << "\n=== Scene clear synchronization ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        scene.create_empty("Node A");
+        scene.create_empty("Node B");
+        scene.create_empty("Node C");
+
+        PickingSync sync;
+        sync.sync(scene);
+
+        ok &= expect(
+            sync.size() == 3,
+            "tres mapeamentos existem antes de scene.clear"
+        );
+
+        scene.clear();
+
+        ok &= expect(
+            scene.tree().empty(),
+            "EditorScene fica vazia depois de clear"
+        );
+
+        ok &= expect(
+            sync.sync(scene),
+            "sync com cena limpa foi concluido"
+        );
+
+        const PickingSyncResult& result = sync.last_result();
+
+        ok &= expect(
+            sync.empty(),
+            "sync remove todos os mapeamentos da cena limpa"
+        );
+
+        ok &= expect(
+            result.sceneNodeCount == 0,
+            "resultado informa zero nodes depois de clear"
+        );
+
+        ok &= expect(
+            result.removedMappingCount == 3,
+            "resultado informa tres mapeamentos removidos"
+        );
+
+        ok &= expect(
+            result.mappingCount == 0,
+            "resultado informa zero mapeamentos ativos"
+        );
+
+        return ok;
+    }
+
+    bool test_sync_clear() {
+        std::cout << "\n=== PickingSync clear ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId node =
+            scene.create_empty("Node");
+
+        PickingSync sync;
+        sync.sync(scene);
+
+        ok &= expect(
+            !sync.empty(),
+            "sync possui mapeamento antes de clear"
+        );
+
+        sync.clear();
+
+        ok &= expect(
+            sync.empty(),
+            "clear remove todos os mapeamentos"
+        );
+
+        ok &= expect(
+            sync.size() == 0,
+            "clear zera quantidade de mapeamentos"
+        );
+
+        ok &= expect(
+            !sync.contains(node),
+            "clear remove consulta por SceneNodeId"
+        );
+
+        ok &= expect(
+            sync.last_result().mappingCount == 0,
+            "clear reinicia o ultimo resultado"
+        );
+
+        ok &= expect(
+            sync.sync(scene),
+            "sync pode ser usado novamente depois de clear"
+        );
+
+        const PickingId pickingId =
+            sync.picking_id(node);
+
+        ok &= expect(
+            pickingId.is_valid(),
+            "node recebe novo PickingId depois de clear"
+        );
+
+        ok &= expect(
+            pickingId.value == 1,
+            "clear reinicia alocacao no PickingId 1"
+        );
+
+        return ok;
+    }
+
+    bool test_invalid_queries() {
+        std::cout << "\n=== Invalid queries ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+        PickingSync sync;
+
+        const SceneNodeId node =
+            scene.create_empty("Node");
+
+        sync.sync(scene);
+
+        const SceneNodeId invalidNode{};
+        const PickingId invalidPicking =
+            PickingId::invalid();
+
+        const SceneNodeId missingNode{
+            999999
+        };
+
+        const PickingId missingPicking =
+            PickingId::from_u32(999999);
+
+        ok &= expect(
+            !sync.contains(invalidNode),
+            "contains rejeita SceneNodeId invalido"
+        );
+
+        ok &= expect(
+            !sync.contains(invalidPicking),
+            "contains rejeita PickingId invalido"
+        );
+
+        ok &= expect(
+            !sync.picking_id(
+                invalidNode
+            ).is_valid(),
+            "SceneNodeId invalido resolve para PickingId invalido"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(
+                invalidPicking
+            ).is_invalid(),
+            "PickingId invalido resolve para SceneNodeId invalido"
+        );
+
+        ok &= expect(
+            !sync.contains(missingNode),
+            "SceneNodeId valido mas ausente nao e encontrado"
+        );
+
+        ok &= expect(
+            !sync.contains(missingPicking),
+            "PickingId valido mas ausente nao e encontrado"
+        );
+
+        ok &= expect(
+            !sync.picking_id(
+                missingNode
+            ).is_valid(),
+            "node ausente resolve para PickingId invalido"
+        );
+
+        ok &= expect(
+            sync.scene_node_id(
+                missingPicking
+            ).is_invalid(),
+            "PickingId ausente resolve para SceneNodeId invalido"
+        );
+
+        ok &= expect(
+            sync.contains(node),
+            "consultas invalidas nao afetam mapeamento existente"
+        );
+
+        return ok;
+    }
+
+    bool test_bidirectional_consistency() {
+        std::cout << "\n=== Bidirectional consistency ===\n";
+
+        bool ok = true;
+
+        EditorScene scene;
+
+        const SceneNodeId nodeA =
+            scene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            scene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            scene.create_empty("Node C");
+
+        PickingSync sync;
+        sync.sync(scene);
+
+        const SceneNodeId nodes[] = {
+            nodeA,
+            nodeB,
+            nodeC
+        };
+
+        for (const SceneNodeId nodeId : nodes) {
+            const PickingId pickingId =
+                sync.picking_id(nodeId);
+
+            ok &= expect(
+                pickingId.is_valid(),
+                "ida produz PickingId valido"
+            );
+
+            ok &= expect(
+                sync.scene_node_id(pickingId) == nodeId,
+                "ida e volta preservam SceneNodeId"
+            );
+        }
 
         return ok;
     }
@@ -861,33 +713,31 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor OverlayRenderAdapter "
-        "Smoke Test ===\n";
+        << "=== Locus3D Editor PickingSync Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_fixture_creation();
-    ok &= test_complete_overlay();
-    ok &= test_selection_from_other_node();
-    ok &= test_overlay_options();
-    ok &= test_overlay_colors();
-    ok &= test_hidden_components();
-    ok &= test_empty_mesh();
-    ok &= test_invalid_node_id();
+    ok &= test_empty_scene();
+    ok &= test_initial_mapping();
+    ok &= test_mapping_preservation();
+    ok &= test_node_removal();
+    ok &= test_released_id_reuse();
+    ok &= test_scene_clear_synchronization();
+    ok &= test_sync_clear();
+    ok &= test_invalid_queries();
+    ok &= test_bidirectional_consistency();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (!ok) {
         std::cout
-            << "[FAIL] Um ou mais testes do "
-            "OverlayRenderAdapter falharam.\n";
+            << "[FAIL] Um ou mais testes do PickingSync falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
-        << "[OK] Todos os testes do "
-        "OverlayRenderAdapter passaram.\n";
+        << "[OK] Todos os testes do PickingSync passaram.\n";
 
     return EXIT_SUCCESS;
 }
