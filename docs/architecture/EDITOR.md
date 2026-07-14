@@ -183,27 +183,27 @@ source\editor
 |       HistoryEntry.h
 |       HistoryConfig.h
 |
-+---tools [!]
++---tools
 |   |   Tools.h [!]
 |   |
-|   +---core [!]
-|   |       ToolId.h [!]
-|   |       ToolCategory.h [!]
-|   |       ToolState.h [!]
-|   |       ToolCapabilities.h [!]
-|   |       ToolDescriptor.h [!]
-|   |       ToolEvent.h [!]
+|   +---core
+|   |       ToolId.h
+|   |       ToolCategory.h
+|   |       ToolState.h
+|   |       ToolCapabilities.h
+|   |       ToolDescriptor.h
+|   |       ToolEvent.h
 |   |       ToolInputState.h [!]
-|   |       ToolResult.h [!]
-|   |       ToolContext.h [!]
-|   |       ITool.h [!]
+|   |       ToolResult.h
+|   |       ToolContext.h
+|   |       ITool.h
 |   |
-|   +---management [!]
-|   |       ActiveTool.h [!]
-|   |       ToolRegistry.h [!]
-|   |       ToolRegistry.cpp [!]
-|   |       ToolManager.h [!]
-|   |       ToolManager.cpp [!]
+|   +---management
+|   |       ActiveTool.h
+|   |       ToolRegistry.h
+|   |       ToolRegistry.cpp
+|   |       ToolManager.h
+|   |       ToolManager.cpp
 |   |
 |   +---interaction [!]
 |   |       ToolCancelReason.h [!]
@@ -397,21 +397,7 @@ source\editor
 Initial implementation should probably begin with a small, stable foundation:
 
 - [!] `tools/Tools.h`
-- [!] `tools/core/ToolId.h`
-- [!] `tools/core/ToolCategory.h`
-- [!] `tools/core/ToolState.h`
-- [!] `tools/core/ToolCapabilities.h`
-- [!] `tools/core/ToolDescriptor.h`
-- [!] `tools/core/ToolEvent.h`
 - [!] `tools/core/ToolInputState.h`
-- [!] `tools/core/ToolResult.h`
-- [!] `tools/core/ToolContext.h`
-- [!] `tools/core/ITool.h`
-- [!] `tools/management/ActiveTool.h`
-- [!] `tools/management/ToolRegistry.h`
-- [!] `tools/management/ToolRegistry.cpp`
-- [!] `tools/management/ToolManager.h`
-- [!] `tools/management/ToolManager.cpp`
 - [!] `tools/interaction/ToolCancelReason.h`
 - [!] `tools/interaction/ToolCapture.h`
 - [!] `tools/interaction/ModalTool.h`

@@ -3,685 +3,758 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/render/PickingRenderAdapter.h"
-#include "editor/scene/EditorScene.h"
-#include "editor/sync/PickingSync.h"
-#include "graphics/picking/PickingId.h"
-#include "graphics/scene/RenderObject.h"
-#include "graphics/scene/RenderScene.h"
+#include "editor/Editor.h"
+#include "editor/tools/core/ITool.h"
+#include "editor/tools/core/ToolContext.h"
+#include "editor/tools/core/ToolDescriptor.h"
+#include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/core/ToolResult.h"
+#include "editor/tools/core/ToolState.h"
+#include "editor/tools/management/ToolManager.h"
+#include "editor/tools/management/ToolRegistry.h"
 
-#include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
+#include <utility>
 
 namespace {
 
-    using locus::editor::EditorScene;
-    using locus::editor::PickingRenderAdapter;
-    using locus::editor::PickingRenderResult;
-    using locus::editor::PickingSync;
-    using locus::editor::SceneNodeId;
+    using namespace locus::editor;
 
-    using locus::graphics::PickingId;
-    using locus::graphics::RenderObject;
-    using locus::graphics::RenderScene;
+    void print_result(
+        bool condition,
+        const std::string& message) {
 
-    bool expect(
-        const bool condition,
-        const std::string& message
-    ) {
-        if (condition) {
-            std::cout << "[OK] " << message << '\n';
-            return true;
+        std::cout
+            << (condition ? "[OK] " : "[FAIL] ")
+            << message
+            << '\n';
+    }
+
+    const char* result_code_name(ToolResultCode code) {
+        switch (code) {
+        case ToolResultCode::Ignored:
+            return "Ignored";
+
+        case ToolResultCode::Consumed:
+            return "Consumed";
+
+        case ToolResultCode::Started:
+            return "Started";
+
+        case ToolResultCode::Updated:
+            return "Updated";
+
+        case ToolResultCode::Confirmed:
+            return "Confirmed";
+
+        case ToolResultCode::Cancelled:
+            return "Cancelled";
+
+        case ToolResultCode::Failed:
+            return "Failed";
         }
 
-        std::cout << "[FAIL] " << message << '\n';
-        return false;
+        return "Unknown";
     }
 
-    RenderObject make_render_object(
-        const SceneNodeId nodeId,
-        const std::string& name
-    ) {
-        RenderObject object{};
-        object.id = static_cast<RenderObject::Id>(nodeId.value);
-        object.name = name;
-        return object;
+    void print_tool_result(
+        const std::string& label,
+        const ToolResult& result) {
+
+        std::cout << label << '\n';
+        std::cout
+            << "  code: "
+            << result_code_name(result.code)
+            << '\n';
+
+        std::cout
+            << "  consumed: "
+            << (result.was_consumed() ? "true" : "false")
+            << '\n';
+
+        std::cout
+            << "  failed: "
+            << (result.failed() ? "true" : "false")
+            << '\n';
+
+        std::cout
+            << "  message: "
+            << result.message
+            << '\n';
     }
 
-    RenderObject* find_render_object(
-        RenderScene& scene,
-        const RenderObject::Id id
-    ) {
-        for (RenderObject& object : scene.objects()) {
-            if (object.id == id) {
-                return &object;
+    class DummyTool final : public ITool {
+    public:
+        explicit DummyTool(
+            ToolDescriptor descriptor,
+            bool activationAllowed = true,
+            bool activationFails = false)
+            : descriptor_(std::move(descriptor)),
+            activationAllowed_(activationAllowed),
+            activationFails_(activationFails) {
+        }
+
+        [[nodiscard]]
+        const ToolDescriptor& descriptor() const override {
+            return descriptor_;
+        }
+
+        [[nodiscard]]
+        ToolState state() const override {
+            return state_;
+        }
+
+        [[nodiscard]]
+        bool can_activate(
+            const ToolContext& context) const override {
+
+            (void)context;
+            return activationAllowed_;
+        }
+
+        ToolResult activate(
+            ToolContext& context) override {
+
+            (void)context;
+            ++activationCount_;
+
+            if (activationFails_) {
+                state_ = ToolState::Inactive;
+
+                return ToolResult::fail(
+                    "Dummy activation failure.");
             }
+
+            state_ = ToolState::Ready;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Dummy tool activated.");
         }
 
-        return nullptr;
-    }
+        ToolResult deactivate(
+            ToolContext& context) override {
 
-    const RenderObject* find_render_object(
-        const RenderScene& scene,
-        const RenderObject::Id id
-    ) {
-        for (const RenderObject& object : scene.objects()) {
-            if (object.id == id) {
-                return &object;
+            (void)context;
+            ++deactivationCount_;
+            state_ = ToolState::Inactive;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Dummy tool deactivated.");
+        }
+
+        ToolResult handle_event(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+            ++eventCount_;
+
+            if (event.type == ToolEventType::PointerPress &&
+                event.uses_primary_button()) {
+
+                state_ = ToolState::Interacting;
+
+                return ToolResult::started(
+                    EditorDirtyFlags::Selection,
+                    "Dummy interaction started.");
             }
+
+            if (event.type == ToolEventType::PointerMove &&
+                state_ == ToolState::Interacting) {
+
+                return ToolResult::updated(
+                    EditorDirtyFlags::Render,
+                    "Dummy interaction updated.");
+            }
+
+            return ToolResult::ignored();
         }
 
-        return nullptr;
-    }
+        ToolResult confirm(
+            ToolContext& context) override {
 
-    bool test_apply_to_object() {
-        std::cout << "\n=== Apply to one object ===\n";
+            (void)context;
+            ++confirmCount_;
 
-        bool ok = true;
+            if (state_ != ToolState::Interacting) {
+                return ToolResult::ignored();
+            }
 
-        EditorScene editorScene;
+            state_ = ToolState::Ready;
 
-        const SceneNodeId nodeId =
-            editorScene.create_empty("Mapped Node");
-
-        PickingSync sync;
-
-        ok &= expect(
-            sync.sync(editorScene),
-            "PickingSync foi sincronizado"
-        );
-
-        RenderObject object =
-            make_render_object(nodeId, "Mapped Object");
-
-        ok &= expect(
-            !object.pickingId.is_valid(),
-            "RenderObject inicia com PickingId invalido"
-        );
-
-        ok &= expect(
-            PickingRenderAdapter::apply_to_object(
-                object,
-                sync
-            ),
-            "adapter aplica mapeamento ao objeto"
-        );
-
-        const PickingId expectedPickingId =
-            sync.picking_id(nodeId);
-
-        ok &= expect(
-            object.pickingId.is_valid(),
-            "objeto recebe PickingId valido"
-        );
-
-        ok &= expect(
-            object.pickingId == expectedPickingId,
-            "objeto recebe o PickingId mantido pelo sync"
-        );
-
-        ok &= expect(
-            object.id
-            == static_cast<RenderObject::Id>(
-                nodeId.value
-                ),
-            "adapter preserva o ID estavel do RenderObject"
-        );
-
-        return ok;
-    }
-
-    bool test_invalid_object_id() {
-        std::cout << "\n=== Invalid render object ID ===\n";
-
-        bool ok = true;
-
-        EditorScene editorScene;
-        editorScene.create_empty("Node");
-
-        PickingSync sync;
-        sync.sync(editorScene);
-
-        RenderObject object{};
-        object.id = 0;
-        object.pickingId = PickingId::from_u32(77);
-
-        ok &= expect(
-            !PickingRenderAdapter::apply_to_object(
-                object,
-                sync
-            ),
-            "objeto com ID zero nao recebe mapeamento"
-        );
-
-        ok &= expect(
-            !object.pickingId.is_valid(),
-            "PickingId anterior e limpo para objeto invalido"
-        );
-
-        ok &= expect(
-            object.id == 0,
-            "ID zero do objeto permanece inalterado"
-        );
-
-        return ok;
-    }
-
-    bool test_unmapped_object() {
-        std::cout << "\n=== Unmapped render object ===\n";
-
-        bool ok = true;
-
-        EditorScene editorScene;
-        editorScene.create_empty("Mapped Node");
-
-        PickingSync sync;
-        sync.sync(editorScene);
-
-        const SceneNodeId missingNodeId{ 999999 };
-
-        RenderObject object =
-            make_render_object(
-                missingNodeId,
-                "Unmapped Object"
-            );
-
-        object.pickingId = PickingId::from_u32(88);
-
-        ok &= expect(
-            !PickingRenderAdapter::apply_to_object(
-                object,
-                sync
-            ),
-            "objeto sem entrada no sync nao recebe mapeamento"
-        );
-
-        ok &= expect(
-            !object.pickingId.is_valid(),
-            "PickingId obsoleto do objeto sem mapeamento e limpo"
-        );
-
-        return ok;
-    }
-
-    bool test_apply_to_scene() {
-        std::cout << "\n=== Apply to render scene ===\n";
-
-        bool ok = true;
-
-        EditorScene editorScene;
-
-        const SceneNodeId nodeA =
-            editorScene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            editorScene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            editorScene.create_empty("Node C");
-
-        PickingSync sync;
-
-        ok &= expect(
-            sync.sync(editorScene),
-            "sync cria os mapeamentos da cena"
-        );
-
-        RenderScene renderScene;
-
-        renderScene.add_object(
-            make_render_object(nodeA, "Object A")
-        );
-
-        renderScene.add_object(
-            make_render_object(nodeB, "Object B")
-        );
-
-        renderScene.add_object(
-            make_render_object(nodeC, "Object C")
-        );
-
-        RenderObject invalidObject{};
-        invalidObject.id = 0;
-        invalidObject.name = "Invalid Object";
-        invalidObject.pickingId =
-            PickingId::from_u32(100);
-
-        renderScene.add_object(
-            std::move(invalidObject)
-        );
-
-        RenderObject unmappedObject =
-            make_render_object(
-                SceneNodeId{ 999999 },
-                "Unmapped Object"
-            );
-
-        unmappedObject.pickingId =
-            PickingId::from_u32(101);
-
-        renderScene.add_object(
-            std::move(unmappedObject)
-        );
-
-        PickingRenderResult result;
-
-        PickingRenderAdapter::apply_to_scene(
-            renderScene,
-            sync,
-            &result
-        );
-
-        ok &= expect(
-            renderScene.object_count() == 5,
-            "RenderScene preserva os cinco objetos"
-        );
-
-        ok &= expect(
-            result.visitedObjectCount == 5,
-            "resultado informa cinco objetos visitados"
-        );
-
-        ok &= expect(
-            result.assignedObjectCount == 3,
-            "resultado informa tres objetos mapeados"
-        );
-
-        ok &= expect(
-            result.invalidObjectCount == 1,
-            "resultado informa um objeto com ID zero"
-        );
-
-        ok &= expect(
-            result.unmappedObjectCount == 1,
-            "resultado informa um objeto sem mapeamento"
-        );
-
-        ok &= expect(
-            result.has_assignments(),
-            "resultado informa que houve atribuicoes"
-        );
-
-        ok &= expect(
-            !result.message.empty(),
-            "resultado produz mensagem de diagnostico"
-        );
-
-        const RenderObject* objectA =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeA.value
-                    )
-            );
-
-        const RenderObject* objectB =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeB.value
-                    )
-            );
-
-        const RenderObject* objectC =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeC.value
-                    )
-            );
-
-        ok &= expect(
-            objectA != nullptr
-            && objectB != nullptr
-            && objectC != nullptr,
-            "objetos mapeados continuam na RenderScene"
-        );
-
-        if (objectA && objectB && objectC) {
-            ok &= expect(
-                objectA->pickingId
-                == sync.picking_id(nodeA),
-                "objeto A recebe PickingId correto"
-            );
-
-            ok &= expect(
-                objectB->pickingId
-                == sync.picking_id(nodeB),
-                "objeto B recebe PickingId correto"
-            );
-
-            ok &= expect(
-                objectC->pickingId
-                == sync.picking_id(nodeC),
-                "objeto C recebe PickingId correto"
-            );
-
-            ok &= expect(
-                objectA->pickingId
-                != objectB->pickingId
-                && objectA->pickingId
-                != objectC->pickingId
-                && objectB->pickingId
-                != objectC->pickingId,
-                "objetos recebem PickingId distintos"
-            );
+            return ToolResult::confirmed(
+                EditorDirtyFlags::Scene,
+                "Dummy interaction confirmed.");
         }
 
-        const RenderObject* invalid =
-            find_render_object(renderScene, 0);
+        ToolResult cancel(
+            ToolContext& context) override {
 
-        const RenderObject* unmapped =
-            find_render_object(renderScene, 999999);
+            (void)context;
+            ++cancelCount_;
 
-        ok &= expect(
-            invalid != nullptr
-            && !invalid->pickingId.is_valid(),
-            "objeto com ID zero termina sem PickingId"
-        );
+            if (state_ != ToolState::Interacting) {
+                return ToolResult::ignored();
+            }
 
-        ok &= expect(
-            unmapped != nullptr
-            && !unmapped->pickingId.is_valid(),
-            "objeto sem mapeamento termina sem PickingId"
-        );
+            state_ = ToolState::Ready;
+
+            return ToolResult::cancelled(
+                EditorDirtyFlags::Render,
+                "Dummy interaction cancelled.");
+        }
+
+        [[nodiscard]] int activation_count() const {
+            return activationCount_;
+        }
+
+        [[nodiscard]] int deactivation_count() const {
+            return deactivationCount_;
+        }
+
+        [[nodiscard]] int event_count() const {
+            return eventCount_;
+        }
+
+        [[nodiscard]] int confirm_count() const {
+            return confirmCount_;
+        }
+
+        [[nodiscard]] int cancel_count() const {
+            return cancelCount_;
+        }
+
+    private:
+        ToolDescriptor descriptor_{};
+        ToolState state_ = ToolState::Inactive;
+
+        bool activationAllowed_ = true;
+        bool activationFails_ = false;
+
+        int activationCount_ = 0;
+        int deactivationCount_ = 0;
+        int eventCount_ = 0;
+        int confirmCount_ = 0;
+        int cancelCount_ = 0;
+    };
+
+    ToolDescriptor make_select_descriptor() {
+        return ToolDescriptor{
+            ToolId{ "editor.select" },
+            "Select",
+            "Dummy selection tool.",
+            ToolCategory::Selection,
+            ToolCapabilities::ObjectMode |
+                ToolCapabilities::MeshMode |
+                ToolCapabilities::UsesPointer
+        };
+    }
+
+    ToolDescriptor make_transform_descriptor() {
+        return ToolDescriptor{
+            ToolId{ "editor.transform" },
+            "Transform",
+            "Dummy transform tool.",
+            ToolCategory::Transform,
+            ToolCapabilities::ObjectMode |
+                ToolCapabilities::UsesPointer |
+                ToolCapabilities::UsesGizmo |
+                ToolCapabilities::Modal
+        };
+    }
+
+    ToolDescriptor make_blocked_descriptor() {
+        return ToolDescriptor{
+            ToolId{ "editor.blocked" },
+            "Blocked",
+            "Dummy tool that cannot activate.",
+            ToolCategory::Utility,
+            ToolCapabilities::None
+        };
+    }
+
+    ToolDescriptor make_failing_descriptor() {
+        return ToolDescriptor{
+            ToolId{ "editor.failing" },
+            "Failing",
+            "Dummy tool whose activation fails.",
+            ToolCategory::Utility,
+            ToolCapabilities::None
+        };
+    }
+
+    bool test_registry() {
+        std::cout << "\n=== ToolRegistry ===\n";
+
+        ToolRegistry registry{};
+
+        const bool selectRegistered = registry.register_tool(
+            make_select_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
+
+        const bool duplicateRejected = !registry.register_tool(
+            make_select_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
+
+        const bool transformRegistered = registry.register_tool(
+            make_transform_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_transform_descriptor());
+            });
+
+        const bool invalidRejected = !registry.register_tool(
+            ToolDescriptor{},
+            [] {
+                return std::make_unique<DummyTool>(
+                    ToolDescriptor{});
+            });
+
+        const ToolDescriptor* selectDescriptor =
+            registry.descriptor(ToolId{ "editor.select" });
+
+        std::unique_ptr<ITool> select =
+            registry.create(ToolId{ "editor.select" });
+
+        const auto transformDescriptors =
+            registry.descriptors_by_category(
+                ToolCategory::Transform);
+
+        print_result(
+            selectRegistered,
+            "registro da SelectTool foi aceito");
+
+        print_result(
+            duplicateRejected,
+            "id duplicado foi rejeitado");
+
+        print_result(
+            transformRegistered,
+            "registro da TransformTool foi aceito");
+
+        print_result(
+            invalidRejected,
+            "descriptor invalido foi rejeitado");
+
+        print_result(
+            registry.size() == 2u,
+            "registry informa dois registros");
+
+        print_result(
+            registry.contains(ToolId{ "editor.select" }),
+            "registry encontra editor.select");
+
+        print_result(
+            !registry.contains(ToolId{ "editor.unknown" }),
+            "registry rejeita id desconhecido");
+
+        print_result(
+            selectDescriptor != nullptr &&
+            selectDescriptor->name == "Select",
+            "descriptor registrado pode ser consultado");
+
+        print_result(
+            select != nullptr &&
+            select->descriptor().id ==
+            ToolId{ "editor.select" },
+            "factory cria tool com id correto");
+
+        print_result(
+            transformDescriptors.size() == 1u &&
+            transformDescriptors.front()->id ==
+            ToolId{ "editor.transform" },
+            "consulta por categoria retorna TransformTool");
+
+        const bool mismatchRegistered = registry.register_tool(
+            ToolDescriptor{
+                ToolId{ "editor.mismatch" },
+                "Mismatch",
+                "Factory returns another identifier.",
+                ToolCategory::Utility,
+                ToolCapabilities::None
+            },
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
+
+        std::unique_ptr<ITool> mismatch =
+            registry.create(ToolId{ "editor.mismatch" });
+
+        print_result(
+            mismatchRegistered,
+            "registro com factory adiada foi aceito");
+
+        print_result(
+            mismatch == nullptr,
+            "factory com descriptor divergente foi rejeitada na criacao");
+
+        const bool removed =
+            registry.unregister_tool(
+                ToolId{ "editor.transform" });
+
+        print_result(
+            removed &&
+            !registry.contains(
+                ToolId{ "editor.transform" }),
+            "unregister remove registro existente");
+
+        return
+            selectRegistered &&
+            duplicateRejected &&
+            transformRegistered &&
+            invalidRejected &&
+            registry.size() == 2u &&
+            selectDescriptor != nullptr &&
+            select != nullptr &&
+            transformDescriptors.size() == 1u &&
+            mismatchRegistered &&
+            mismatch == nullptr &&
+            removed;
+    }
+
+    bool test_manager_activation_and_events() {
+        std::cout << "\n=== ToolManager: ativacao e eventos ===\n";
+
+        Editor editor{};
+        editor.clear_dirty();
+
+        ToolContext context{ editor };
+        ToolRegistry registry{};
+
+        registry.register_tool(
+            make_select_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
+
+        registry.register_tool(
+            make_transform_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_transform_descriptor());
+            });
+
+        ToolManager manager{ registry };
+
+        const ToolResult activated =
+            manager.activate_tool(
+                context,
+                ToolId{ "editor.select" });
+
+        print_tool_result("activate select", activated);
+
+        print_result(
+            !activated.failed() &&
+            manager.has_active_tool() &&
+            manager.is_active(
+                ToolId{ "editor.select" }),
+            "SelectTool ficou ativa");
+
+        DummyTool* active =
+            dynamic_cast<DummyTool*>(
+                manager.active_tool());
+
+        print_result(
+            active != nullptr &&
+            active->state() == ToolState::Ready &&
+            active->activation_count() == 1,
+            "instancia ativa recebeu activate");
+
+        ToolEvent press{};
+        press.type = ToolEventType::PointerPress;
+        press.button = ToolPointerButton::Primary;
+
+        const ToolResult started =
+            manager.handle_event(
+                context,
+                press);
+
+        print_tool_result("primary press", started);
+
+        print_result(
+            started.code == ToolResultCode::Started &&
+            active != nullptr &&
+            active->state() ==
+            ToolState::Interacting,
+            "pointer press iniciou interacao");
+
+        print_result(
+            has_flag(
+                editor.dirty_flags(),
+                EditorDirtyFlags::Selection),
+            "dirty flag de selecao foi aplicada pelo manager");
+
+        editor.clear_dirty();
+
+        ToolEvent move{};
+        move.type = ToolEventType::PointerMove;
+        move.pointer.viewportPosition =
+            glm::vec2{ 100.0f, 50.0f };
+
+        const ToolResult updated =
+            manager.handle_event(
+                context,
+                move);
+
+        print_tool_result("pointer move", updated);
+
+        print_result(
+            updated.code == ToolResultCode::Updated &&
+            has_flag(
+                editor.dirty_flags(),
+                EditorDirtyFlags::Render),
+            "pointer move atualizou interacao e marcou render");
+
+        editor.clear_dirty();
+
+        ToolEvent confirm{};
+        confirm.type = ToolEventType::Confirm;
+
+        const ToolResult confirmed =
+            manager.handle_event(
+                context,
+                confirm);
+
+        print_tool_result("confirm", confirmed);
+
+        print_result(
+            confirmed.code ==
+            ToolResultCode::Confirmed &&
+            active != nullptr &&
+            active->state() == ToolState::Ready &&
+            active->confirm_count() == 1,
+            "evento Confirm foi roteado para confirm");
+
+        print_result(
+            has_flag(
+                editor.dirty_flags(),
+                EditorDirtyFlags::Scene),
+            "confirmacao marcou scene dirty");
+
+        return
+            !activated.failed() &&
+            started.code == ToolResultCode::Started &&
+            updated.code == ToolResultCode::Updated &&
+            confirmed.code == ToolResultCode::Confirmed &&
+            manager.is_active(
+                ToolId{ "editor.select" });
+    }
+
+    bool test_manager_cancel_on_focus_loss() {
+        std::cout << "\n=== ToolManager: cancel em focus lost ===\n";
+
+        Editor editor{};
+        ToolContext context{ editor };
+        ToolRegistry registry{};
+
+        registry.register_tool(
+            make_select_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
+
+        ToolManager manager{ registry };
+
+        manager.activate_tool(
+            context,
+            ToolId{ "editor.select" });
+
+        ToolEvent press{};
+        press.type = ToolEventType::PointerPress;
+        press.button = ToolPointerButton::Primary;
+
+        manager.handle_event(context, press);
+
+        DummyTool* active =
+            dynamic_cast<DummyTool*>(
+                manager.active_tool());
+
+        ToolEvent focusLost{};
+        focusLost.type = ToolEventType::FocusLost;
+
+        const ToolResult cancelled =
+            manager.handle_event(
+                context,
+                focusLost);
+
+        print_tool_result("focus lost", cancelled);
+
+        const bool ok =
+            cancelled.code ==
+            ToolResultCode::Cancelled &&
+            active != nullptr &&
+            active->state() == ToolState::Ready &&
+            active->cancel_count() == 1;
+
+        print_result(
+            ok,
+            "focus lost cancelou interacao ativa");
 
         return ok;
     }
 
-    bool test_selectability_does_not_change_identity() {
-        std::cout << "\n=== Selectability and identity ===\n";
+    bool test_manager_switch_and_restore() {
+        std::cout << "\n=== ToolManager: troca e restauracao ===\n";
 
-        bool ok = true;
+        Editor editor{};
+        ToolContext context{ editor };
+        ToolRegistry registry{};
 
-        EditorScene editorScene;
+        registry.register_tool(
+            make_select_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_select_descriptor());
+            });
 
-        const SceneNodeId nodeId =
-            editorScene.create_empty("Node");
+        registry.register_tool(
+            make_transform_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_transform_descriptor());
+            });
 
-        PickingSync sync;
-        sync.sync(editorScene);
+        registry.register_tool(
+            make_blocked_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_blocked_descriptor(),
+                    false,
+                    false);
+            });
 
-        RenderObject object =
-            make_render_object(nodeId, "Object");
+        registry.register_tool(
+            make_failing_descriptor(),
+            [] {
+                return std::make_unique<DummyTool>(
+                    make_failing_descriptor(),
+                    true,
+                    true);
+            });
 
-        object.visibility.selectable = false;
+        ToolManager manager{ registry };
 
-        ok &= expect(
-            PickingRenderAdapter::apply_to_object(
-                object,
-                sync
-            ),
-            "objeto nao selecionavel ainda recebe identidade de picking"
-        );
+        manager.activate_tool(
+            context,
+            ToolId{ "editor.select" });
 
-        ok &= expect(
-            object.pickingId
-            == sync.picking_id(nodeId),
-            "selectable nao altera o mapeamento de identidade"
-        );
+        const ToolResult blocked =
+            manager.activate_tool(
+                context,
+                ToolId{ "editor.blocked" });
 
-        ok &= expect(
-            !object.visibility.selectable,
-            "adapter nao altera a flag selectable"
-        );
+        print_tool_result("activate blocked", blocked);
 
-        return ok;
-    }
+        print_result(
+            blocked.failed() &&
+            manager.is_active(
+                ToolId{ "editor.select" }),
+            "can_activate falso preservou tool anterior");
 
-    bool test_resynchronization_after_node_removal() {
-        std::cout << "\n=== Resynchronization after removal ===\n";
+        const ToolResult failing =
+            manager.activate_tool(
+                context,
+                ToolId{ "editor.failing" });
 
-        bool ok = true;
+        print_tool_result("activate failing", failing);
 
-        EditorScene editorScene;
+        print_result(
+            failing.failed() &&
+            manager.is_active(
+                ToolId{ "editor.select" }),
+            "falha de activate restaurou tool anterior");
 
-        const SceneNodeId nodeA =
-            editorScene.create_empty("Node A");
+        const ToolResult switched =
+            manager.activate_tool(
+                context,
+                ToolId{ "editor.transform" });
 
-        const SceneNodeId nodeB =
-            editorScene.create_empty("Node B");
+        print_tool_result("switch to transform", switched);
 
-        PickingSync sync;
-        sync.sync(editorScene);
+        print_result(
+            !switched.failed() &&
+            manager.is_active(
+                ToolId{ "editor.transform" }),
+            "troca valida ativou TransformTool");
 
-        RenderScene renderScene;
+        const ToolResult sameTool =
+            manager.activate_tool(
+                context,
+                ToolId{ "editor.transform" });
 
-        renderScene.add_object(
-            make_render_object(nodeA, "Object A")
-        );
+        print_tool_result(
+            "activate already active",
+            sameTool);
 
-        renderScene.add_object(
-            make_render_object(nodeB, "Object B")
-        );
+        print_result(
+            sameTool.code ==
+            ToolResultCode::Consumed &&
+            manager.is_active(
+                ToolId{ "editor.transform" }),
+            "reativar mesmo id nao recriou instancia");
 
-        PickingRenderAdapter::apply_to_scene(
-            renderScene,
-            sync
-        );
+        const ToolResult deactivated =
+            manager.deactivate_tool(context);
 
-        RenderObject* objectA =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeA.value
-                    )
-            );
+        print_tool_result("deactivate", deactivated);
 
-        RenderObject* objectB =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeB.value
-                    )
-            );
+        print_result(
+            !deactivated.failed() &&
+            !manager.has_active_tool(),
+            "deactivate removeu tool ativa");
 
-        const PickingId originalA =
-            objectA
-            ? objectA->pickingId
-            : PickingId::invalid();
+        const ToolResult noActive =
+            manager.handle_event(
+                context,
+                ToolEvent{});
 
-        const PickingId originalB =
-            objectB
-            ? objectB->pickingId
-            : PickingId::invalid();
+        print_result(
+            noActive.code ==
+            ToolResultCode::Ignored,
+            "evento sem tool ativa foi ignorado");
 
-        ok &= expect(
-            originalA.is_valid()
-            && originalB.is_valid(),
-            "ambos os objetos recebem IDs antes da remocao"
-        );
-
-        ok &= expect(
-            editorScene.remove_node(nodeB),
-            "node B e removido da EditorScene"
-        );
-
-        ok &= expect(
-            sync.sync(editorScene),
-            "PickingSync e atualizado depois da remocao"
-        );
-
-        PickingRenderResult result;
-
-        PickingRenderAdapter::apply_to_scene(
-            renderScene,
-            sync,
-            &result
-        );
-
-        objectA = find_render_object(
-            renderScene,
-            static_cast<RenderObject::Id>(
-                nodeA.value
-                )
-        );
-
-        objectB = find_render_object(
-            renderScene,
-            static_cast<RenderObject::Id>(
-                nodeB.value
-                )
-        );
-
-        ok &= expect(
-            objectA != nullptr
-            && objectA->pickingId == originalA,
-            "objeto A preserva seu PickingId"
-        );
-
-        ok &= expect(
-            objectB != nullptr
-            && !objectB->pickingId.is_valid(),
-            "objeto B perde PickingId apos sair da EditorScene"
-        );
-
-        ok &= expect(
-            result.assignedObjectCount == 1,
-            "somente objeto A permanece mapeado"
-        );
-
-        ok &= expect(
-            result.unmappedObjectCount == 1,
-            "objeto B e contabilizado como nao mapeado"
-        );
-
-        return ok;
-    }
-
-    bool test_empty_render_scene() {
-        std::cout << "\n=== Empty render scene ===\n";
-
-        bool ok = true;
-
-        EditorScene editorScene;
-        editorScene.create_empty("Node");
-
-        PickingSync sync;
-        sync.sync(editorScene);
-
-        RenderScene renderScene;
-        PickingRenderResult result;
-
-        PickingRenderAdapter::apply_to_scene(
-            renderScene,
-            sync,
-            &result
-        );
-
-        ok &= expect(
-            renderScene.empty(),
-            "RenderScene permanece vazia"
-        );
-
-        ok &= expect(
-            result.visitedObjectCount == 0,
-            "cena vazia visita zero objetos"
-        );
-
-        ok &= expect(
-            result.assignedObjectCount == 0,
-            "cena vazia atribui zero IDs"
-        );
-
-        ok &= expect(
-            result.invalidObjectCount == 0,
-            "cena vazia nao encontra objetos invalidos"
-        );
-
-        ok &= expect(
-            result.unmappedObjectCount == 0,
-            "cena vazia nao encontra objetos sem mapeamento"
-        );
-
-        ok &= expect(
-            !result.has_assignments(),
-            "cena vazia nao informa atribuicoes"
-        );
-
-        ok &= expect(
-            !result.message.empty(),
-            "cena vazia produz diagnostico"
-        );
-
-        return ok;
-    }
-
-    bool test_null_result() {
-        std::cout << "\n=== Null diagnostic result ===\n";
-
-        bool ok = true;
-
-        EditorScene editorScene;
-
-        const SceneNodeId nodeId =
-            editorScene.create_empty("Node");
-
-        PickingSync sync;
-        sync.sync(editorScene);
-
-        RenderScene renderScene;
-
-        renderScene.add_object(
-            make_render_object(nodeId, "Object")
-        );
-
-        PickingRenderAdapter::apply_to_scene(
-            renderScene,
-            sync,
-            nullptr
-        );
-
-        const RenderObject* object =
-            find_render_object(
-                renderScene,
-                static_cast<RenderObject::Id>(
-                    nodeId.value
-                    )
-            );
-
-        ok &= expect(
-            object != nullptr
-            && object->pickingId
-            == sync.picking_id(nodeId),
-            "adapter funciona sem resultado de diagnostico"
-        );
-
-        return ok;
+        return
+            blocked.failed() &&
+            failing.failed() &&
+            !switched.failed() &&
+            sameTool.code ==
+            ToolResultCode::Consumed &&
+            !manager.has_active_tool() &&
+            noActive.code ==
+            ToolResultCode::Ignored;
     }
 
 } // namespace
 
 int main() {
     std::cout
-        << "=== Locus3D Editor PickingRenderAdapter "
-        "Smoke Test ===\n";
+        << "=== Locus3D Editor Tool Management Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_apply_to_object();
-    ok &= test_invalid_object_id();
-    ok &= test_unmapped_object();
-    ok &= test_apply_to_scene();
-    ok &= test_selectability_does_not_change_identity();
-    ok &= test_resynchronization_after_node_removal();
-    ok &= test_empty_render_scene();
-    ok &= test_null_result();
+    ok = test_registry() && ok;
+    ok = test_manager_activation_and_events() && ok;
+    ok = test_manager_cancel_on_focus_loss() && ok;
+    ok = test_manager_switch_and_restore() && ok;
 
     std::cout << "\n=== Resultado final ===\n";
 
-    if (!ok) {
-        std::cout
-            << "[FAIL] Um ou mais testes do "
-            "PickingRenderAdapter falharam.\n";
+    print_result(
+        ok,
+        "ToolRegistry e ToolManager smoke test");
 
-        return EXIT_FAILURE;
-    }
-
-    std::cout
-        << "[OK] Todos os testes do "
-        "PickingRenderAdapter passaram.\n";
-
-    return EXIT_SUCCESS;
+    return ok ? 0 : 1;
 }

@@ -170,11 +170,17 @@ target_sources(locus3d_editor
          "tools/core/ToolCategory.h"
          "tools/core/ToolState.h"
          "tools/core/ToolCapabilities.h"
-         "tools/core/ToolDescriptor.h.h"
+         "tools/core/ToolDescriptor.h"
          "tools/core/ToolResult.h"
          "tools/core/ToolEvent.h"
          "tools/core/ToolContext.h"
-         "tools/core/ITool.h")
+         "tools/core/ITool.h"
+         "tools/management/ActiveTool.h"
+         "tools/management/ToolManager.h"
+         "tools/management/ToolManager.cpp"
+         "tools/management/ToolRegistry.h"
+         "tools/management/ToolRegistry.cpp"
+        )
 
 target_include_directories(locus3d_editor
     PUBLIC

@@ -199,7 +199,7 @@ namespace locus::editor {
          *
          * @return True when the request was handled.
          */
-        [[nodiscard]] bool consumed() const {
+        [[nodiscard]] bool was_consumed() const {
             return code != ToolResultCode::Ignored;
         }
 
