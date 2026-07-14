@@ -165,7 +165,16 @@ target_sources(locus3d_editor
          "sync/PickingSync.h"
          "sync/PickingSync.cpp"
          "render/PickingRenderAdapter.h"
-         "render/PickingRenderAdapter.cpp" "tools/core/ToolId.h" "tools/core/ToolCategory.h" "tools/core/ToolState.h" "tools/core/ToolCapabilities.h")
+         "render/PickingRenderAdapter.cpp"
+         "tools/core/ToolId.h"
+         "tools/core/ToolCategory.h"
+         "tools/core/ToolState.h"
+         "tools/core/ToolCapabilities.h"
+         "tools/core/ToolDescriptor.h.h"
+         "tools/core/ToolResult.h"
+         "tools/core/ToolEvent.h"
+         "tools/core/ToolContext.h"
+         "tools/core/ITool.h")
 
 target_include_directories(locus3d_editor
     PUBLIC
