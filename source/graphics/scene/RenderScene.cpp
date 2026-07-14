@@ -35,6 +35,10 @@ namespace locus::graphics
         return objects_.size();
     }
 
+    RenderScene::ObjectList& RenderScene::objects() {
+        return objects_;
+    }
+
     const RenderScene::ObjectList& RenderScene::objects() const
     {
         return objects_;

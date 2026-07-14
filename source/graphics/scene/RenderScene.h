@@ -75,6 +75,13 @@ namespace locus::graphics
         [[nodiscard]] std::size_t object_count() const;
 
         /**
+         * @brief Returns all render objects for mutation.
+         *
+         * @return Mutable object list.
+         */
+        [[nodiscard]] ObjectList& objects();
+
+        /**
          * @brief Returns all render objects.
          *
          * @return Read-only object list.
@@ -88,6 +95,8 @@ namespace locus::graphics
          * @return Object list containing only matching objects.
          */
         [[nodiscard]] ObjectList objects_in_layer(RenderLayer layer) const;
+
+
 
     private:
         ObjectList objects_;

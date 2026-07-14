@@ -163,7 +163,9 @@ target_sources(locus3d_editor
          "render/OverlayRenderAdapter.h"
          "render/OverlayRenderAdapter.cpp"
          "sync/PickingSync.h"
-         "sync/PickingSync.cpp")
+         "sync/PickingSync.cpp"
+         "render/PickingRenderAdapter.h"
+         "render/PickingRenderAdapter.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

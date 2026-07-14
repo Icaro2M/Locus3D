@@ -260,8 +260,8 @@ source\editor
 |       OverlayRenderAdapter.cpp
 |       PreviewRenderAdapter.h [!]
 |       PreviewRenderAdapter.cpp [!]
-|       PickingRenderAdapter.h [!]
-|       PickingRenderAdapter.cpp [!]
+|       PickingRenderAdapter.h
+|       PickingRenderAdapter.cpp
 |
 +---sync
 |       EditorSync.h
@@ -303,8 +303,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/impl/MeasureTool.cpp`
 - [!] `render/PreviewRenderAdapter.h`
 - [!] `render/PreviewRenderAdapter.cpp`
-- [!] `render/PickingRenderAdapter.h`
-- [!] `render/PickingRenderAdapter.cpp`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
 - [!] `io/IDocumentSerializer.h`

@@ -3,8 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "editor/render/PickingRenderAdapter.h"
 #include "editor/scene/EditorScene.h"
 #include "editor/sync/PickingSync.h"
+#include "graphics/picking/PickingId.h"
+#include "graphics/scene/RenderObject.h"
+#include "graphics/scene/RenderScene.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -13,11 +17,14 @@
 namespace {
 
     using locus::editor::EditorScene;
+    using locus::editor::PickingRenderAdapter;
+    using locus::editor::PickingRenderResult;
     using locus::editor::PickingSync;
-    using locus::editor::PickingSyncResult;
     using locus::editor::SceneNodeId;
 
     using locus::graphics::PickingId;
+    using locus::graphics::RenderObject;
+    using locus::graphics::RenderScene;
 
     bool expect(
         const bool condition,
@@ -32,679 +39,614 @@ namespace {
         return false;
     }
 
-    bool test_empty_scene() {
-        std::cout << "\n=== Empty scene ===\n";
+    RenderObject make_render_object(
+        const SceneNodeId nodeId,
+        const std::string& name
+    ) {
+        RenderObject object{};
+        object.id = static_cast<RenderObject::Id>(nodeId.value);
+        object.name = name;
+        return object;
+    }
+
+    RenderObject* find_render_object(
+        RenderScene& scene,
+        const RenderObject::Id id
+    ) {
+        for (RenderObject& object : scene.objects()) {
+            if (object.id == id) {
+                return &object;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const RenderObject* find_render_object(
+        const RenderScene& scene,
+        const RenderObject::Id id
+    ) {
+        for (const RenderObject& object : scene.objects()) {
+            if (object.id == id) {
+                return &object;
+            }
+        }
+
+        return nullptr;
+    }
+
+    bool test_apply_to_object() {
+        std::cout << "\n=== Apply to one object ===\n";
 
         bool ok = true;
 
-        EditorScene scene;
+        EditorScene editorScene;
+
+        const SceneNodeId nodeId =
+            editorScene.create_empty("Mapped Node");
+
         PickingSync sync;
 
         ok &= expect(
-            sync.empty(),
-            "PickingSync inicia vazio"
+            sync.sync(editorScene),
+            "PickingSync foi sincronizado"
+        );
+
+        RenderObject object =
+            make_render_object(nodeId, "Mapped Object");
+
+        ok &= expect(
+            !object.pickingId.is_valid(),
+            "RenderObject inicia com PickingId invalido"
         );
 
         ok &= expect(
-            sync.size() == 0,
-            "PickingSync inicia com zero mapeamentos"
+            PickingRenderAdapter::apply_to_object(
+                object,
+                sync
+            ),
+            "adapter aplica mapeamento ao objeto"
+        );
+
+        const PickingId expectedPickingId =
+            sync.picking_id(nodeId);
+
+        ok &= expect(
+            object.pickingId.is_valid(),
+            "objeto recebe PickingId valido"
         );
 
         ok &= expect(
-            sync.sync(scene),
-            "sync de cena vazia e concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        ok &= expect(
-            result.synchronized,
-            "resultado informa sincronizacao concluida"
+            object.pickingId == expectedPickingId,
+            "objeto recebe o PickingId mantido pelo sync"
         );
 
         ok &= expect(
-            result.sceneNodeCount == 0,
-            "cena vazia informa zero nodes"
+            object.id
+            == static_cast<RenderObject::Id>(
+                nodeId.value
+                ),
+            "adapter preserva o ID estavel do RenderObject"
+        );
+
+        return ok;
+    }
+
+    bool test_invalid_object_id() {
+        std::cout << "\n=== Invalid render object ID ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+        editorScene.create_empty("Node");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        RenderObject object{};
+        object.id = 0;
+        object.pickingId = PickingId::from_u32(77);
+
+        ok &= expect(
+            !PickingRenderAdapter::apply_to_object(
+                object,
+                sync
+            ),
+            "objeto com ID zero nao recebe mapeamento"
         );
 
         ok &= expect(
-            result.mappingCount == 0,
-            "cena vazia produz zero mapeamentos"
+            !object.pickingId.is_valid(),
+            "PickingId anterior e limpo para objeto invalido"
         );
 
         ok &= expect(
-            result.createdMappingCount == 0,
-            "cena vazia nao cria mapeamentos"
+            object.id == 0,
+            "ID zero do objeto permanece inalterado"
+        );
+
+        return ok;
+    }
+
+    bool test_unmapped_object() {
+        std::cout << "\n=== Unmapped render object ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+        editorScene.create_empty("Mapped Node");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        const SceneNodeId missingNodeId{ 999999 };
+
+        RenderObject object =
+            make_render_object(
+                missingNodeId,
+                "Unmapped Object"
+            );
+
+        object.pickingId = PickingId::from_u32(88);
+
+        ok &= expect(
+            !PickingRenderAdapter::apply_to_object(
+                object,
+                sync
+            ),
+            "objeto sem entrada no sync nao recebe mapeamento"
         );
 
         ok &= expect(
-            result.preservedMappingCount == 0,
-            "cena vazia nao preserva mapeamentos"
+            !object.pickingId.is_valid(),
+            "PickingId obsoleto do objeto sem mapeamento e limpo"
+        );
+
+        return ok;
+    }
+
+    bool test_apply_to_scene() {
+        std::cout << "\n=== Apply to render scene ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+
+        const SceneNodeId nodeA =
+            editorScene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            editorScene.create_empty("Node B");
+
+        const SceneNodeId nodeC =
+            editorScene.create_empty("Node C");
+
+        PickingSync sync;
+
+        ok &= expect(
+            sync.sync(editorScene),
+            "sync cria os mapeamentos da cena"
+        );
+
+        RenderScene renderScene;
+
+        renderScene.add_object(
+            make_render_object(nodeA, "Object A")
+        );
+
+        renderScene.add_object(
+            make_render_object(nodeB, "Object B")
+        );
+
+        renderScene.add_object(
+            make_render_object(nodeC, "Object C")
+        );
+
+        RenderObject invalidObject{};
+        invalidObject.id = 0;
+        invalidObject.name = "Invalid Object";
+        invalidObject.pickingId =
+            PickingId::from_u32(100);
+
+        renderScene.add_object(
+            std::move(invalidObject)
+        );
+
+        RenderObject unmappedObject =
+            make_render_object(
+                SceneNodeId{ 999999 },
+                "Unmapped Object"
+            );
+
+        unmappedObject.pickingId =
+            PickingId::from_u32(101);
+
+        renderScene.add_object(
+            std::move(unmappedObject)
+        );
+
+        PickingRenderResult result;
+
+        PickingRenderAdapter::apply_to_scene(
+            renderScene,
+            sync,
+            &result
         );
 
         ok &= expect(
-            result.removedMappingCount == 0,
-            "cena vazia nao remove mapeamentos"
+            renderScene.object_count() == 5,
+            "RenderScene preserva os cinco objetos"
         );
 
         ok &= expect(
-            !result.exhausted,
-            "cena vazia nao esgota IDs"
+            result.visitedObjectCount == 5,
+            "resultado informa cinco objetos visitados"
+        );
+
+        ok &= expect(
+            result.assignedObjectCount == 3,
+            "resultado informa tres objetos mapeados"
+        );
+
+        ok &= expect(
+            result.invalidObjectCount == 1,
+            "resultado informa um objeto com ID zero"
+        );
+
+        ok &= expect(
+            result.unmappedObjectCount == 1,
+            "resultado informa um objeto sem mapeamento"
+        );
+
+        ok &= expect(
+            result.has_assignments(),
+            "resultado informa que houve atribuicoes"
         );
 
         ok &= expect(
             !result.message.empty(),
-            "sync de cena vazia produz diagnostico"
-        );
-
-        return ok;
-    }
-
-    bool test_initial_mapping() {
-        std::cout << "\n=== Initial picking mappings ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId nodeA =
-            scene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            scene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            scene.create_empty("Node C");
-
-        ok &= expect(
-            nodeA.is_valid()
-            && nodeB.is_valid()
-            && nodeC.is_valid(),
-            "nodes foram criados com IDs validos"
-        );
-
-        PickingSync sync;
-
-        ok &= expect(
-            sync.sync(scene),
-            "primeiro sync foi concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        ok &= expect(
-            sync.size() == 3,
-            "primeiro sync cria tres mapeamentos"
-        );
-
-        ok &= expect(
-            result.sceneNodeCount == 3,
-            "resultado informa tres nodes"
-        );
-
-        ok &= expect(
-            result.createdMappingCount == 3,
-            "resultado informa tres mapeamentos criados"
-        );
-
-        ok &= expect(
-            result.preservedMappingCount == 0,
-            "primeiro sync nao preserva mapeamentos anteriores"
-        );
-
-        ok &= expect(
-            result.removedMappingCount == 0,
-            "primeiro sync nao remove mapeamentos"
-        );
-
-        ok &= expect(
-            result.mappingCount == 3,
-            "resultado informa tres mapeamentos ativos"
-        );
-
-        const PickingId pickingA =
-            sync.picking_id(nodeA);
-
-        const PickingId pickingB =
-            sync.picking_id(nodeB);
-
-        const PickingId pickingC =
-            sync.picking_id(nodeC);
-
-        ok &= expect(
-            pickingA.is_valid()
-            && pickingB.is_valid()
-            && pickingC.is_valid(),
-            "todos os nodes recebem PickingId valido"
-        );
-
-        ok &= expect(
-            pickingA != pickingB
-            && pickingA != pickingC
-            && pickingB != pickingC,
-            "cada node recebe PickingId unico"
-        );
-
-        ok &= expect(
-            sync.contains(nodeA)
-            && sync.contains(nodeB)
-            && sync.contains(nodeC),
-            "contains reconhece todos os SceneNodeId"
-        );
-
-        ok &= expect(
-            sync.contains(pickingA)
-            && sync.contains(pickingB)
-            && sync.contains(pickingC),
-            "contains reconhece todos os PickingId"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(pickingA) == nodeA,
-            "PickingId de A resolve para node A"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(pickingB) == nodeB,
-            "PickingId de B resolve para node B"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(pickingC) == nodeC,
-            "PickingId de C resolve para node C"
-        );
-
-        return ok;
-    }
-
-    bool test_mapping_preservation() {
-        std::cout << "\n=== Mapping preservation ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId nodeA =
-            scene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            scene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            scene.create_empty("Node C");
-
-        PickingSync sync;
-
-        sync.sync(scene);
-
-        const PickingId originalA =
-            sync.picking_id(nodeA);
-
-        const PickingId originalB =
-            sync.picking_id(nodeB);
-
-        const PickingId originalC =
-            sync.picking_id(nodeC);
-
-        ok &= expect(
-            sync.sync(scene),
-            "segundo sync sem alteracoes foi concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        ok &= expect(
-            result.createdMappingCount == 0,
-            "segundo sync nao cria novos mapeamentos"
-        );
-
-        ok &= expect(
-            result.preservedMappingCount == 3,
-            "segundo sync preserva tres mapeamentos"
-        );
-
-        ok &= expect(
-            result.removedMappingCount == 0,
-            "segundo sync nao remove mapeamentos"
-        );
-
-        ok &= expect(
-            sync.picking_id(nodeA) == originalA,
-            "node A preserva PickingId"
-        );
-
-        ok &= expect(
-            sync.picking_id(nodeB) == originalB,
-            "node B preserva PickingId"
-        );
-
-        ok &= expect(
-            sync.picking_id(nodeC) == originalC,
-            "node C preserva PickingId"
-        );
-
-        return ok;
-    }
-
-    bool test_node_removal() {
-        std::cout << "\n=== Node removal ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId nodeA =
-            scene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            scene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            scene.create_empty("Node C");
-
-        PickingSync sync;
-        sync.sync(scene);
-
-        const PickingId pickingA =
-            sync.picking_id(nodeA);
-
-        const PickingId removedPickingId =
-            sync.picking_id(nodeB);
-
-        const PickingId pickingC =
-            sync.picking_id(nodeC);
-
-        ok &= expect(
-            scene.remove_node(nodeB),
-            "node B foi removido da cena"
-        );
-
-        ok &= expect(
-            sync.sync(scene),
-            "sync depois da remocao foi concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        ok &= expect(
-            sync.size() == 2,
-            "remocao deixa dois mapeamentos ativos"
-        );
-
-        ok &= expect(
-            result.sceneNodeCount == 2,
-            "resultado informa dois nodes restantes"
-        );
-
-        ok &= expect(
-            result.preservedMappingCount == 2,
-            "mapeamentos de A e C foram preservados"
-        );
-
-        ok &= expect(
-            result.createdMappingCount == 0,
-            "remocao nao cria mapeamentos"
-        );
-
-        ok &= expect(
-            result.removedMappingCount == 1,
-            "resultado informa um mapeamento removido"
-        );
-
-        ok &= expect(
-            !sync.contains(nodeB),
-            "SceneNodeId removido nao permanece na tabela"
-        );
-
-        ok &= expect(
-            !sync.contains(removedPickingId),
-            "PickingId removido nao permanece na tabela reversa"
-        );
-
-        ok &= expect(
-            !sync.picking_id(nodeB).is_valid(),
-            "consulta do node removido retorna PickingId invalido"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(
-                removedPickingId
-            ).is_invalid(),
-            "consulta do PickingId removido retorna SceneNodeId invalido"
-        );
-
-        ok &= expect(
-            sync.picking_id(nodeA) == pickingA,
-            "node A preserva ID depois da remocao"
-        );
-
-        ok &= expect(
-            sync.picking_id(nodeC) == pickingC,
-            "node C preserva ID depois da remocao"
-        );
-
-        return ok;
-    }
-
-    bool test_released_id_reuse() {
-        std::cout << "\n=== Released ID reuse ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId nodeA =
-            scene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            scene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            scene.create_empty("Node C");
-
-        PickingSync sync;
-        sync.sync(scene);
-
-        const PickingId removedPickingId =
-            sync.picking_id(nodeB);
-
-        scene.remove_node(nodeB);
-        sync.sync(scene);
-
-        const SceneNodeId nodeD =
-            scene.create_empty("Node D");
-
-        ok &= expect(
-            nodeD.is_valid(),
-            "novo node D possui ID valido"
-        );
-
-        ok &= expect(
-            sync.sync(scene),
-            "sync depois de criar node D foi concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        const PickingId pickingD =
-            sync.picking_id(nodeD);
-
-        ok &= expect(
-            pickingD.is_valid(),
-            "node D recebe PickingId valido"
-        );
-
-        ok &= expect(
-            pickingD == removedPickingId,
-            "node D reutiliza PickingId liberado por B"
-        );
-
-        ok &= expect(
-            result.createdMappingCount == 1,
-            "sync cria somente o mapeamento de D"
-        );
-
-        ok &= expect(
-            result.preservedMappingCount == 2,
-            "sync preserva os mapeamentos de A e C"
-        );
-
-        ok &= expect(
-            result.removedMappingCount == 0,
-            "sync de D nao remove outro mapeamento"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(pickingD) == nodeD,
-            "ID reutilizado agora resolve para node D"
-        );
-
-        ok &= expect(
-            sync.contains(nodeA)
-            && sync.contains(nodeC)
-            && sync.contains(nodeD),
-            "tres nodes atuais estao mapeados"
-        );
-
-        return ok;
-    }
-
-    bool test_scene_clear_synchronization() {
-        std::cout << "\n=== Scene clear synchronization ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        scene.create_empty("Node A");
-        scene.create_empty("Node B");
-        scene.create_empty("Node C");
-
-        PickingSync sync;
-        sync.sync(scene);
-
-        ok &= expect(
-            sync.size() == 3,
-            "tres mapeamentos existem antes de scene.clear"
-        );
-
-        scene.clear();
-
-        ok &= expect(
-            scene.tree().empty(),
-            "EditorScene fica vazia depois de clear"
-        );
-
-        ok &= expect(
-            sync.sync(scene),
-            "sync com cena limpa foi concluido"
-        );
-
-        const PickingSyncResult& result = sync.last_result();
-
-        ok &= expect(
-            sync.empty(),
-            "sync remove todos os mapeamentos da cena limpa"
-        );
-
-        ok &= expect(
-            result.sceneNodeCount == 0,
-            "resultado informa zero nodes depois de clear"
-        );
-
-        ok &= expect(
-            result.removedMappingCount == 3,
-            "resultado informa tres mapeamentos removidos"
-        );
-
-        ok &= expect(
-            result.mappingCount == 0,
-            "resultado informa zero mapeamentos ativos"
-        );
-
-        return ok;
-    }
-
-    bool test_sync_clear() {
-        std::cout << "\n=== PickingSync clear ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId node =
-            scene.create_empty("Node");
-
-        PickingSync sync;
-        sync.sync(scene);
-
-        ok &= expect(
-            !sync.empty(),
-            "sync possui mapeamento antes de clear"
-        );
-
-        sync.clear();
-
-        ok &= expect(
-            sync.empty(),
-            "clear remove todos os mapeamentos"
-        );
-
-        ok &= expect(
-            sync.size() == 0,
-            "clear zera quantidade de mapeamentos"
-        );
-
-        ok &= expect(
-            !sync.contains(node),
-            "clear remove consulta por SceneNodeId"
-        );
-
-        ok &= expect(
-            sync.last_result().mappingCount == 0,
-            "clear reinicia o ultimo resultado"
-        );
-
-        ok &= expect(
-            sync.sync(scene),
-            "sync pode ser usado novamente depois de clear"
-        );
-
-        const PickingId pickingId =
-            sync.picking_id(node);
-
-        ok &= expect(
-            pickingId.is_valid(),
-            "node recebe novo PickingId depois de clear"
-        );
-
-        ok &= expect(
-            pickingId.value == 1,
-            "clear reinicia alocacao no PickingId 1"
-        );
-
-        return ok;
-    }
-
-    bool test_invalid_queries() {
-        std::cout << "\n=== Invalid queries ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-        PickingSync sync;
-
-        const SceneNodeId node =
-            scene.create_empty("Node");
-
-        sync.sync(scene);
-
-        const SceneNodeId invalidNode{};
-        const PickingId invalidPicking =
-            PickingId::invalid();
-
-        const SceneNodeId missingNode{
-            999999
-        };
-
-        const PickingId missingPicking =
-            PickingId::from_u32(999999);
-
-        ok &= expect(
-            !sync.contains(invalidNode),
-            "contains rejeita SceneNodeId invalido"
-        );
-
-        ok &= expect(
-            !sync.contains(invalidPicking),
-            "contains rejeita PickingId invalido"
-        );
-
-        ok &= expect(
-            !sync.picking_id(
-                invalidNode
-            ).is_valid(),
-            "SceneNodeId invalido resolve para PickingId invalido"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(
-                invalidPicking
-            ).is_invalid(),
-            "PickingId invalido resolve para SceneNodeId invalido"
-        );
-
-        ok &= expect(
-            !sync.contains(missingNode),
-            "SceneNodeId valido mas ausente nao e encontrado"
-        );
-
-        ok &= expect(
-            !sync.contains(missingPicking),
-            "PickingId valido mas ausente nao e encontrado"
-        );
-
-        ok &= expect(
-            !sync.picking_id(
-                missingNode
-            ).is_valid(),
-            "node ausente resolve para PickingId invalido"
-        );
-
-        ok &= expect(
-            sync.scene_node_id(
-                missingPicking
-            ).is_invalid(),
-            "PickingId ausente resolve para SceneNodeId invalido"
-        );
-
-        ok &= expect(
-            sync.contains(node),
-            "consultas invalidas nao afetam mapeamento existente"
-        );
-
-        return ok;
-    }
-
-    bool test_bidirectional_consistency() {
-        std::cout << "\n=== Bidirectional consistency ===\n";
-
-        bool ok = true;
-
-        EditorScene scene;
-
-        const SceneNodeId nodeA =
-            scene.create_empty("Node A");
-
-        const SceneNodeId nodeB =
-            scene.create_empty("Node B");
-
-        const SceneNodeId nodeC =
-            scene.create_empty("Node C");
-
-        PickingSync sync;
-        sync.sync(scene);
-
-        const SceneNodeId nodes[] = {
-            nodeA,
-            nodeB,
-            nodeC
-        };
-
-        for (const SceneNodeId nodeId : nodes) {
-            const PickingId pickingId =
-                sync.picking_id(nodeId);
-
+            "resultado produz mensagem de diagnostico"
+        );
+
+        const RenderObject* objectA =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeA.value
+                    )
+            );
+
+        const RenderObject* objectB =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeB.value
+                    )
+            );
+
+        const RenderObject* objectC =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeC.value
+                    )
+            );
+
+        ok &= expect(
+            objectA != nullptr
+            && objectB != nullptr
+            && objectC != nullptr,
+            "objetos mapeados continuam na RenderScene"
+        );
+
+        if (objectA && objectB && objectC) {
             ok &= expect(
-                pickingId.is_valid(),
-                "ida produz PickingId valido"
+                objectA->pickingId
+                == sync.picking_id(nodeA),
+                "objeto A recebe PickingId correto"
             );
 
             ok &= expect(
-                sync.scene_node_id(pickingId) == nodeId,
-                "ida e volta preservam SceneNodeId"
+                objectB->pickingId
+                == sync.picking_id(nodeB),
+                "objeto B recebe PickingId correto"
+            );
+
+            ok &= expect(
+                objectC->pickingId
+                == sync.picking_id(nodeC),
+                "objeto C recebe PickingId correto"
+            );
+
+            ok &= expect(
+                objectA->pickingId
+                != objectB->pickingId
+                && objectA->pickingId
+                != objectC->pickingId
+                && objectB->pickingId
+                != objectC->pickingId,
+                "objetos recebem PickingId distintos"
             );
         }
+
+        const RenderObject* invalid =
+            find_render_object(renderScene, 0);
+
+        const RenderObject* unmapped =
+            find_render_object(renderScene, 999999);
+
+        ok &= expect(
+            invalid != nullptr
+            && !invalid->pickingId.is_valid(),
+            "objeto com ID zero termina sem PickingId"
+        );
+
+        ok &= expect(
+            unmapped != nullptr
+            && !unmapped->pickingId.is_valid(),
+            "objeto sem mapeamento termina sem PickingId"
+        );
+
+        return ok;
+    }
+
+    bool test_selectability_does_not_change_identity() {
+        std::cout << "\n=== Selectability and identity ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+
+        const SceneNodeId nodeId =
+            editorScene.create_empty("Node");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        RenderObject object =
+            make_render_object(nodeId, "Object");
+
+        object.visibility.selectable = false;
+
+        ok &= expect(
+            PickingRenderAdapter::apply_to_object(
+                object,
+                sync
+            ),
+            "objeto nao selecionavel ainda recebe identidade de picking"
+        );
+
+        ok &= expect(
+            object.pickingId
+            == sync.picking_id(nodeId),
+            "selectable nao altera o mapeamento de identidade"
+        );
+
+        ok &= expect(
+            !object.visibility.selectable,
+            "adapter nao altera a flag selectable"
+        );
+
+        return ok;
+    }
+
+    bool test_resynchronization_after_node_removal() {
+        std::cout << "\n=== Resynchronization after removal ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+
+        const SceneNodeId nodeA =
+            editorScene.create_empty("Node A");
+
+        const SceneNodeId nodeB =
+            editorScene.create_empty("Node B");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        RenderScene renderScene;
+
+        renderScene.add_object(
+            make_render_object(nodeA, "Object A")
+        );
+
+        renderScene.add_object(
+            make_render_object(nodeB, "Object B")
+        );
+
+        PickingRenderAdapter::apply_to_scene(
+            renderScene,
+            sync
+        );
+
+        RenderObject* objectA =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeA.value
+                    )
+            );
+
+        RenderObject* objectB =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeB.value
+                    )
+            );
+
+        const PickingId originalA =
+            objectA
+            ? objectA->pickingId
+            : PickingId::invalid();
+
+        const PickingId originalB =
+            objectB
+            ? objectB->pickingId
+            : PickingId::invalid();
+
+        ok &= expect(
+            originalA.is_valid()
+            && originalB.is_valid(),
+            "ambos os objetos recebem IDs antes da remocao"
+        );
+
+        ok &= expect(
+            editorScene.remove_node(nodeB),
+            "node B e removido da EditorScene"
+        );
+
+        ok &= expect(
+            sync.sync(editorScene),
+            "PickingSync e atualizado depois da remocao"
+        );
+
+        PickingRenderResult result;
+
+        PickingRenderAdapter::apply_to_scene(
+            renderScene,
+            sync,
+            &result
+        );
+
+        objectA = find_render_object(
+            renderScene,
+            static_cast<RenderObject::Id>(
+                nodeA.value
+                )
+        );
+
+        objectB = find_render_object(
+            renderScene,
+            static_cast<RenderObject::Id>(
+                nodeB.value
+                )
+        );
+
+        ok &= expect(
+            objectA != nullptr
+            && objectA->pickingId == originalA,
+            "objeto A preserva seu PickingId"
+        );
+
+        ok &= expect(
+            objectB != nullptr
+            && !objectB->pickingId.is_valid(),
+            "objeto B perde PickingId apos sair da EditorScene"
+        );
+
+        ok &= expect(
+            result.assignedObjectCount == 1,
+            "somente objeto A permanece mapeado"
+        );
+
+        ok &= expect(
+            result.unmappedObjectCount == 1,
+            "objeto B e contabilizado como nao mapeado"
+        );
+
+        return ok;
+    }
+
+    bool test_empty_render_scene() {
+        std::cout << "\n=== Empty render scene ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+        editorScene.create_empty("Node");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        RenderScene renderScene;
+        PickingRenderResult result;
+
+        PickingRenderAdapter::apply_to_scene(
+            renderScene,
+            sync,
+            &result
+        );
+
+        ok &= expect(
+            renderScene.empty(),
+            "RenderScene permanece vazia"
+        );
+
+        ok &= expect(
+            result.visitedObjectCount == 0,
+            "cena vazia visita zero objetos"
+        );
+
+        ok &= expect(
+            result.assignedObjectCount == 0,
+            "cena vazia atribui zero IDs"
+        );
+
+        ok &= expect(
+            result.invalidObjectCount == 0,
+            "cena vazia nao encontra objetos invalidos"
+        );
+
+        ok &= expect(
+            result.unmappedObjectCount == 0,
+            "cena vazia nao encontra objetos sem mapeamento"
+        );
+
+        ok &= expect(
+            !result.has_assignments(),
+            "cena vazia nao informa atribuicoes"
+        );
+
+        ok &= expect(
+            !result.message.empty(),
+            "cena vazia produz diagnostico"
+        );
+
+        return ok;
+    }
+
+    bool test_null_result() {
+        std::cout << "\n=== Null diagnostic result ===\n";
+
+        bool ok = true;
+
+        EditorScene editorScene;
+
+        const SceneNodeId nodeId =
+            editorScene.create_empty("Node");
+
+        PickingSync sync;
+        sync.sync(editorScene);
+
+        RenderScene renderScene;
+
+        renderScene.add_object(
+            make_render_object(nodeId, "Object")
+        );
+
+        PickingRenderAdapter::apply_to_scene(
+            renderScene,
+            sync,
+            nullptr
+        );
+
+        const RenderObject* object =
+            find_render_object(
+                renderScene,
+                static_cast<RenderObject::Id>(
+                    nodeId.value
+                    )
+            );
+
+        ok &= expect(
+            object != nullptr
+            && object->pickingId
+            == sync.picking_id(nodeId),
+            "adapter funciona sem resultado de diagnostico"
+        );
 
         return ok;
     }
@@ -713,31 +655,33 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor PickingSync Smoke Test ===\n";
+        << "=== Locus3D Editor PickingRenderAdapter "
+        "Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_empty_scene();
-    ok &= test_initial_mapping();
-    ok &= test_mapping_preservation();
-    ok &= test_node_removal();
-    ok &= test_released_id_reuse();
-    ok &= test_scene_clear_synchronization();
-    ok &= test_sync_clear();
-    ok &= test_invalid_queries();
-    ok &= test_bidirectional_consistency();
+    ok &= test_apply_to_object();
+    ok &= test_invalid_object_id();
+    ok &= test_unmapped_object();
+    ok &= test_apply_to_scene();
+    ok &= test_selectability_does_not_change_identity();
+    ok &= test_resynchronization_after_node_removal();
+    ok &= test_empty_render_scene();
+    ok &= test_null_result();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (!ok) {
         std::cout
-            << "[FAIL] Um ou mais testes do PickingSync falharam.\n";
+            << "[FAIL] Um ou mais testes do "
+            "PickingRenderAdapter falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
-        << "[OK] Todos os testes do PickingSync passaram.\n";
+        << "[OK] Todos os testes do "
+        "PickingRenderAdapter passaram.\n";
 
     return EXIT_SUCCESS;
 }
