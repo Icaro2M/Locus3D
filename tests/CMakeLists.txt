@@ -107,6 +107,30 @@ set_tests_properties(kernel.unit.geometry.topology PROPERTIES
     LABELS "unit;kernel;geometry;topology"
 )
 
+add_executable(Locus3DGraphicsPrimitivesTests
+    unit/graphics/primitives/PrimitiveBuilderTests.cpp
+    unit/graphics/primitives/PrimitiveMeshConverterTests.cpp
+    unit/graphics/primitives/PrimitiveMeshTests.cpp
+    unit/graphics/primitives/PrimitivesTestMain.cpp
+)
+
+target_include_directories(Locus3DGraphicsPrimitivesTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DGraphicsPrimitivesTests
+    PRIVATE
+        Locus3D::Graphics
+)
+
+add_test(NAME graphics.unit.primitives COMMAND Locus3DGraphicsPrimitivesTests)
+set_tests_properties(graphics.unit.primitives PROPERTIES
+    LABELS "unit;graphics;primitives"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp

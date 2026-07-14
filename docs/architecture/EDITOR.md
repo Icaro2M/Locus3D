@@ -37,7 +37,8 @@ source/graphics render scene, overlays, picking, viewport presentation
 - `selection/`: object and mesh selection state, selection sets, selection granularity/scope, controller behavior, and serialization boundary.
 - `command/`: command interface, command context, command dispatch, command registration, and concrete editor commands.
 - `history/`: undo/redo stacks, history entries, and configuration for command retention/merging.
-- `tools/`: active tool abstraction, tool registry/manager, tool context, and concrete selection/transform/pivot/measurement tools.
+- `tools/`: active tool abstraction, tool registry/manager, tool context, interaction helpers, and concrete selection, transform, mesh, creation, and utility tools.
+- `actions/`: command-like editor actions for non-modal operations, action registration, execution, and mesh operation action groups.
 - `gizmo/`: transform gizmo state, axes, hit testing, snapping constraints, and manipulation controller.
 - `transform/`: transform sessions, transform targets, coordinate spaces, and pivot resolution.
 - `snapping/`: snap settings, snap contexts/results, snap solver, and snap providers for grids, mesh elements, increments, and angles.
@@ -183,22 +184,130 @@ source\editor
 |       HistoryConfig.h
 |
 +---tools [!]
-|   |   ITool.h [!]
-|   |   ToolRegistry.h [!]
-|   |   ToolManager.h [!]
-|   |   ToolManager.cpp [!]
-|   |   ActiveTool.h [!]
-|   |   ToolContext.h [!]
+|   |   Tools.h [!]
 |   |
-|   \---impl [!]
-|           SelectTool.h [!]
-|           SelectTool.cpp [!]
-|           TransformTool.h [!]
-|           TransformTool.cpp [!]
-|           PivotTool.h [!]
-|           PivotTool.cpp [!]
+|   +---core [!]
+|   |       ToolId.h [!]
+|   |       ToolCategory.h [!]
+|   |       ToolState.h [!]
+|   |       ToolCapabilities.h [!]
+|   |       ToolDescriptor.h [!]
+|   |       ToolEvent.h [!]
+|   |       ToolInputState.h [!]
+|   |       ToolResult.h [!]
+|   |       ToolContext.h [!]
+|   |       ITool.h [!]
+|   |
+|   +---management [!]
+|   |       ActiveTool.h [!]
+|   |       ToolRegistry.h [!]
+|   |       ToolRegistry.cpp [!]
+|   |       ToolManager.h [!]
+|   |       ToolManager.cpp [!]
+|   |
+|   +---interaction [!]
+|   |       ToolCancelReason.h [!]
+|   |       ToolCapture.h [!]
+|   |       ModalTool.h [!]
+|   |       DragTool.h [!]
+|   |       DragTool.cpp [!]
+|   |
+|   +---selection [!]
+|   |   |   SelectTool.h [!]
+|   |   |   SelectTool.cpp [!]
+|   |   |
+|   |   \---shapes [!]
+|   |           ISelectionShape.h [!]
+|   |           PointSelectionShape.h [!]
+|   |           PointSelectionShape.cpp [!]
+|   |           BoxSelectionShape.h [!]
+|   |           BoxSelectionShape.cpp [!]
+|   |           CircleSelectionShape.h [!]
+|   |           CircleSelectionShape.cpp [!]
+|   |           LassoSelectionShape.h [!]
+|   |           LassoSelectionShape.cpp [!]
+|   |
+|   +---transform [!]
+|   |       TransformTool.h [!]
+|   |       TransformTool.cpp [!]
+|   |       ITransformToolSession.h [!]
+|   |       ObjectTransformToolSession.h [!]
+|   |       ObjectTransformToolSession.cpp [!]
+|   |       MeshTransformToolSession.h [!]
+|   |       MeshTransformToolSession.cpp [!]
+|   |       PivotTool.h [!]
+|   |       PivotTool.cpp [!]
+|   |
+|   +---mesh [!]
+|   |   +---core [!]
+|   |   |       MeshToolTarget.h [!]
+|   |   |       MeshOperationSession.h [!]
+|   |   |       MeshOperationSession.cpp [!]
+|   |   |       MeshDragOperationTool.h [!]
+|   |   |       MeshDragOperationTool.cpp [!]
+|   |   |
+|   |   +---face [!]
+|   |   |       ExtrudeFaceTool.h [!]
+|   |   |       ExtrudeFaceTool.cpp [!]
+|   |   |       InsetFaceTool.h [!]
+|   |   |       InsetFaceTool.cpp [!]
+|   |   |
+|   |   +---edge [!]
+|   |   |       EdgeSlideTool.h [!]
+|   |   |       EdgeSlideTool.cpp [!]
+|   |   |       BevelTool.h [!]
+|   |   |       BevelTool.cpp [!]
+|   |   |
+|   |   \---topology [!]
+|   |           LoopCutTool.h [!]
+|   |           LoopCutTool.cpp [!]
+|   |
+|   +---creation [!]
+|   |       PrimitiveCreateTool.h [!]
+|   |       PrimitiveCreateTool.cpp [!]
+|   |
+|   \---utility [!]
 |           MeasureTool.h [!]
 |           MeasureTool.cpp [!]
+|           InspectTool.h [!]
+|           InspectTool.cpp [!]
+|           SetOriginTool.h [!]
+|           SetOriginTool.cpp [!]
+|
++---actions [!]
+|   |   ActionRegistry.h [!]
+|   |   ActionRegistry.cpp [!]
+|   |   ActionExecutor.h [!]
+|   |   ActionExecutor.cpp [!]
+|   |   Actions.h [!]
+|   |
+|   +---core [!]
+|   |       ActionId.h [!]
+|   |       ActionCategory.h [!]
+|   |       ActionDescriptor.h [!]
+|   |       ActionContext.h [!]
+|   |       ActionResult.h [!]
+|   |       IEditorAction.h [!]
+|   |
+|   \---mesh [!]
+|       |   MeshOperationAction.h [!]
+|       |   MeshOperationAction.cpp [!]
+|       |
+|       +---vertex [!]
+|       |       register_vertex_actions.h [!]
+|       |       register_vertex_actions.cpp [!]
+|       |
+|       +---edge [!]
+|       |       register_edge_actions.h [!]
+|       |       register_edge_actions.cpp [!]
+|       |
+|       +---face [!]
+|       |       register_face_actions.h [!]
+|       |       register_face_actions.cpp [!]
+|       |
+|       \---topology [!]
+|               register_topology_actions.h [!]
+|               register_topology_actions.cpp [!]
 |
 +---gizmo
 |       GizmoMode.h
@@ -287,20 +396,91 @@ source\editor
 
 Initial implementation should probably begin with a small, stable foundation:
 
-- [!] `tools/ITool.h`
-- [!] `tools/ToolRegistry.h`
-- [!] `tools/ToolManager.h`
-- [!] `tools/ToolManager.cpp`
-- [!] `tools/ActiveTool.h`
-- [!] `tools/ToolContext.h`
-- [!] `tools/impl/SelectTool.h`
-- [!] `tools/impl/SelectTool.cpp`
-- [!] `tools/impl/TransformTool.h`
-- [!] `tools/impl/TransformTool.cpp`
-- [!] `tools/impl/PivotTool.h`
-- [!] `tools/impl/PivotTool.cpp`
-- [!] `tools/impl/MeasureTool.h`
-- [!] `tools/impl/MeasureTool.cpp`
+- [!] `tools/Tools.h`
+- [!] `tools/core/ToolId.h`
+- [!] `tools/core/ToolCategory.h`
+- [!] `tools/core/ToolState.h`
+- [!] `tools/core/ToolCapabilities.h`
+- [!] `tools/core/ToolDescriptor.h`
+- [!] `tools/core/ToolEvent.h`
+- [!] `tools/core/ToolInputState.h`
+- [!] `tools/core/ToolResult.h`
+- [!] `tools/core/ToolContext.h`
+- [!] `tools/core/ITool.h`
+- [!] `tools/management/ActiveTool.h`
+- [!] `tools/management/ToolRegistry.h`
+- [!] `tools/management/ToolRegistry.cpp`
+- [!] `tools/management/ToolManager.h`
+- [!] `tools/management/ToolManager.cpp`
+- [!] `tools/interaction/ToolCancelReason.h`
+- [!] `tools/interaction/ToolCapture.h`
+- [!] `tools/interaction/ModalTool.h`
+- [!] `tools/interaction/DragTool.h`
+- [!] `tools/interaction/DragTool.cpp`
+- [!] `tools/selection/SelectTool.h`
+- [!] `tools/selection/SelectTool.cpp`
+- [!] `tools/selection/shapes/ISelectionShape.h`
+- [!] `tools/selection/shapes/PointSelectionShape.h`
+- [!] `tools/selection/shapes/PointSelectionShape.cpp`
+- [!] `tools/selection/shapes/BoxSelectionShape.h`
+- [!] `tools/selection/shapes/BoxSelectionShape.cpp`
+- [!] `tools/selection/shapes/CircleSelectionShape.h`
+- [!] `tools/selection/shapes/CircleSelectionShape.cpp`
+- [!] `tools/selection/shapes/LassoSelectionShape.h`
+- [!] `tools/selection/shapes/LassoSelectionShape.cpp`
+- [!] `tools/transform/TransformTool.h`
+- [!] `tools/transform/TransformTool.cpp`
+- [!] `tools/transform/ITransformToolSession.h`
+- [!] `tools/transform/ObjectTransformToolSession.h`
+- [!] `tools/transform/ObjectTransformToolSession.cpp`
+- [!] `tools/transform/MeshTransformToolSession.h`
+- [!] `tools/transform/MeshTransformToolSession.cpp`
+- [!] `tools/transform/PivotTool.h`
+- [!] `tools/transform/PivotTool.cpp`
+- [!] `tools/mesh/core/MeshToolTarget.h`
+- [!] `tools/mesh/core/MeshOperationSession.h`
+- [!] `tools/mesh/core/MeshOperationSession.cpp`
+- [!] `tools/mesh/core/MeshDragOperationTool.h`
+- [!] `tools/mesh/core/MeshDragOperationTool.cpp`
+- [!] `tools/mesh/face/ExtrudeFaceTool.h`
+- [!] `tools/mesh/face/ExtrudeFaceTool.cpp`
+- [!] `tools/mesh/face/InsetFaceTool.h`
+- [!] `tools/mesh/face/InsetFaceTool.cpp`
+- [!] `tools/mesh/edge/EdgeSlideTool.h`
+- [!] `tools/mesh/edge/EdgeSlideTool.cpp`
+- [!] `tools/mesh/edge/BevelTool.h`
+- [!] `tools/mesh/edge/BevelTool.cpp`
+- [!] `tools/mesh/topology/LoopCutTool.h`
+- [!] `tools/mesh/topology/LoopCutTool.cpp`
+- [!] `tools/creation/PrimitiveCreateTool.h`
+- [!] `tools/creation/PrimitiveCreateTool.cpp`
+- [!] `tools/utility/MeasureTool.h`
+- [!] `tools/utility/MeasureTool.cpp`
+- [!] `tools/utility/InspectTool.h`
+- [!] `tools/utility/InspectTool.cpp`
+- [!] `tools/utility/SetOriginTool.h`
+- [!] `tools/utility/SetOriginTool.cpp`
+- [!] `actions/core/ActionId.h`
+- [!] `actions/core/ActionCategory.h`
+- [!] `actions/core/ActionDescriptor.h`
+- [!] `actions/core/ActionContext.h`
+- [!] `actions/core/ActionResult.h`
+- [!] `actions/core/IEditorAction.h`
+- [!] `actions/ActionRegistry.h`
+- [!] `actions/ActionRegistry.cpp`
+- [!] `actions/ActionExecutor.h`
+- [!] `actions/ActionExecutor.cpp`
+- [!] `actions/mesh/MeshOperationAction.h`
+- [!] `actions/mesh/MeshOperationAction.cpp`
+- [!] `actions/mesh/vertex/register_vertex_actions.h`
+- [!] `actions/mesh/vertex/register_vertex_actions.cpp`
+- [!] `actions/mesh/edge/register_edge_actions.h`
+- [!] `actions/mesh/edge/register_edge_actions.cpp`
+- [!] `actions/mesh/face/register_face_actions.h`
+- [!] `actions/mesh/face/register_face_actions.cpp`
+- [!] `actions/mesh/topology/register_topology_actions.h`
+- [!] `actions/mesh/topology/register_topology_actions.cpp`
+- [!] `actions/Actions.h`
 - [!] `render/PreviewRenderAdapter.h`
 - [!] `render/PreviewRenderAdapter.cpp`
 - [!] `sync/ManufacturingSync.h`
