@@ -191,7 +191,10 @@ target_sources(locus3d_editor
          "tools/selection/shapes/PointSelectionShape.h"
          "tools/selection/shapes/PointSelectionShape.cpp"
          "tools/selection/SelectTool.h"
-         "tools/selection/SelectTool.cpp")
+         "tools/selection/SelectTool.cpp"
+         "command/transform/NodeTransformChange.h"
+         "command/transform/SetNodeTransformsCommand.h"
+         "command/transform/SetNodeTransformsCommand.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

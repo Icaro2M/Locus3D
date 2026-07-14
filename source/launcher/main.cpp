@@ -6,25 +6,23 @@
 #include "editor/Editor.h"
 
 #include "editor/command/CommandDispatcher.h"
+#include "editor/command/transform/NodeTransformChange.h"
+#include "editor/command/transform/NodeTransformSnapshot.h"
+#include "editor/command/transform/SetNodeTransformsCommand.h"
 #include "editor/history/HistoryStack.h"
-#include "editor/sync/PickingSync.h"
+#include "editor/scene/SceneNode.h"
 
-#include "editor/tools/core/ToolContext.h"
-#include "editor/tools/core/ToolEvent.h"
-#include "editor/tools/management/ToolManager.h"
-#include "editor/tools/management/ToolRegistry.h"
-#include "editor/tools/selection/SelectTool.h"
+#include <glm/vec3.hpp>
 
-#include "graphics/picking/PickingId.h"
-
+#include <cmath>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
     using namespace locus::editor;
-    namespace graphics = locus::graphics;
 
     void print_result(
         bool condition,
@@ -36,60 +34,15 @@ namespace {
             << '\n';
     }
 
-    const char* result_code_name(
-        ToolResultCode code) {
-
-        switch (code) {
-        case ToolResultCode::Ignored:
-            return "Ignored";
-
-        case ToolResultCode::Consumed:
-            return "Consumed";
-
-        case ToolResultCode::Started:
-            return "Started";
-
-        case ToolResultCode::Updated:
-            return "Updated";
-
-        case ToolResultCode::Confirmed:
-            return "Confirmed";
-
-        case ToolResultCode::Cancelled:
-            return "Cancelled";
-
-        case ToolResultCode::Failed:
-            return "Failed";
-        }
-
-        return "Unknown";
-    }
-
-    void print_tool_result(
+    void print_command_result(
         const std::string& label,
-        const ToolResult& result) {
+        const CommandResult& result) {
 
         std::cout << label << '\n';
 
         std::cout
-            << "  code: "
-            << result_code_name(result.code)
-            << '\n';
-
-        std::cout
-            << "  consumed: "
-            << (
-                result.was_consumed()
-                ? "true"
-                : "false")
-            << '\n';
-
-        std::cout
-            << "  failed: "
-            << (
-                result.failed()
-                ? "true"
-                : "false")
+            << "  success: "
+            << (result.success ? "true" : "false")
             << '\n';
 
         std::cout
@@ -98,491 +51,354 @@ namespace {
             << '\n';
     }
 
-    void print_selection(
-        const Editor& editor,
-        const std::string& label) {
+    bool almost_equal(
+        float lhs,
+        float rhs,
+        float epsilon = 0.0001f) {
 
-        const ObjectSelection& objects =
-            editor.selection().objects();
-
-        std::cout << label << '\n';
-
-        std::cout
-            << "  selected: "
-            << objects.size()
-            << '\n';
-
-        std::cout
-            << "  active valid: "
-            << (
-                objects.active().is_valid()
-                ? "true"
-                : "false")
-            << '\n';
-
-        std::cout
-            << "  hovered valid: "
-            << (
-                objects.hovered().is_valid()
-                ? "true"
-                : "false")
-            << '\n';
+        return std::abs(lhs - rhs) <= epsilon;
     }
 
-    ToolEvent make_pointer_event(
-        ToolEventType type,
-        graphics::PickingId pickingId,
-        ToolModifiers modifiers =
-        ToolModifiers::None) {
+    bool almost_equal(
+        const glm::vec3& lhs,
+        const glm::vec3& rhs,
+        float epsilon = 0.0001f) {
 
-        ToolEvent event{};
-        event.type = type;
-        event.button =
-            type == ToolEventType::PointerPress
-            ? ToolPointerButton::Primary
-            : ToolPointerButton::None;
-
-        event.modifiers = modifiers;
-        event.pointer.pickingId = pickingId;
-
-        return event;
+        return
+            almost_equal(lhs.x, rhs.x, epsilon) &&
+            almost_equal(lhs.y, rhs.y, epsilon) &&
+            almost_equal(lhs.z, rhs.z, epsilon);
     }
 
-    bool run_select_tool_test() {
+    NodeTransform make_transform(
+        const glm::vec3& position,
+        const glm::vec3& scale =
+        glm::vec3{ 1.0f, 1.0f, 1.0f }) {
+
+        NodeTransform transform{};
+        transform.set_position(position);
+        transform.set_scale(scale);
+        return transform;
+    }
+
+    NodeTransformChange make_change(
+        SceneNodeId node,
+        const NodeTransform& previous,
+        const NodeTransform& next) {
+
+        NodeTransformChange change{};
+        change.node = node;
+
+        change.previous =
+            NodeTransformSnapshot::capture(previous);
+
+        change.next =
+            NodeTransformSnapshot::capture(next);
+
+        return change;
+    }
+
+    bool test_batch_execute_undo_redo() {
         std::cout
-            << "=== Locus3D Editor SelectTool Smoke Test ===\n";
+            << "\n=== SetNodeTransformsCommand: execute/undo/redo ===\n";
 
         Editor editor{};
 
         const SceneNodeId nodeA =
-            editor.scene().create_empty("Object A");
+            editor.scene().create_empty("Node A");
 
         const SceneNodeId nodeB =
-            editor.scene().create_empty("Object B");
+            editor.scene().create_empty("Node B");
 
-        const SceneNodeId nodeC =
-            editor.scene().create_empty("Object C");
+        SceneNode* sceneNodeA =
+            editor.scene().find_node(nodeA);
 
-        print_result(
-            nodeA.is_valid() &&
-            nodeB.is_valid() &&
-            nodeC.is_valid(),
-            "tres scene nodes foram criados");
-
-        PickingSync pickingSync{};
-
-        const bool pickingSynchronized =
-            pickingSync.sync(editor.scene());
+        SceneNode* sceneNodeB =
+            editor.scene().find_node(nodeB);
 
         print_result(
-            pickingSynchronized,
-            "PickingSync sincronizou a cena");
+            sceneNodeA != nullptr &&
+            sceneNodeB != nullptr,
+            "dois nodes foram criados");
 
-        print_result(
-            pickingSync.size() == 3u,
-            "PickingSync criou tres mappings");
+        if (!sceneNodeA || !sceneNodeB) {
+            return false;
+        }
 
-        const graphics::PickingId pickingA =
-            pickingSync.picking_id(nodeA);
+        const NodeTransform initialA =
+            make_transform(
+                glm::vec3{ 1.0f, 2.0f, 3.0f });
 
-        const graphics::PickingId pickingB =
-            pickingSync.picking_id(nodeB);
+        const NodeTransform initialB =
+            make_transform(
+                glm::vec3{ -2.0f, 0.0f, 4.0f });
 
-        const graphics::PickingId pickingC =
-            pickingSync.picking_id(nodeC);
+        const NodeTransform finalA =
+            make_transform(
+                glm::vec3{ 10.0f, 20.0f, 30.0f },
+                glm::vec3{ 2.0f, 2.0f, 2.0f });
 
-        print_result(
-            pickingA.is_valid() &&
-            pickingB.is_valid() &&
-            pickingC.is_valid(),
-            "todos os nodes receberam PickingId");
+        const NodeTransform finalB =
+            make_transform(
+                glm::vec3{ -5.0f, 8.0f, 9.0f },
+                glm::vec3{ 0.5f, 1.5f, 2.0f });
+
+        sceneNodeA->transform() = initialA;
+        sceneNodeB->transform() = initialB;
+
+        std::vector<NodeTransformChange> changes{};
+        changes.push_back(
+            make_change(
+                nodeA,
+                initialA,
+                finalA));
+
+        changes.push_back(
+            make_change(
+                nodeB,
+                initialB,
+                finalB));
 
         CommandDispatcher dispatcher{ editor };
         HistoryStack history{};
 
-        ToolContext context{
-            editor,
-            dispatcher,
-            history,
-            pickingSync
-        };
+        const CommandResult executed =
+            history.execute(
+                dispatcher,
+                std::make_unique<
+                SetNodeTransformsCommand>(
+                    changes));
 
-        ToolRegistry registry{};
+        print_command_result(
+            "execute batch",
+            executed);
 
-        const bool registered =
-            registry.register_tool(
-                SelectTool::make_descriptor(),
-                [] {
-                    return std::make_unique<SelectTool>();
-                });
+        sceneNodeA =
+            editor.scene().find_node(nodeA);
 
-        print_result(
-            registered,
-            "SelectTool foi registrada");
+        sceneNodeB =
+            editor.scene().find_node(nodeB);
 
-        ToolManager manager{ registry };
-
-        const ToolResult activation =
-            manager.activate_tool(
-                context,
-                ToolId{ SelectTool::Id });
-
-        print_tool_result(
-            "activate SelectTool",
-            activation);
-
-        print_result(
-            !activation.failed() &&
-            manager.is_active(
-                ToolId{ SelectTool::Id }),
-            "SelectTool ficou ativa");
-
-        /*
-         * Hover A.
-         */
-        editor.clear_dirty();
-
-        const ToolResult hoverA =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerMove,
-                    pickingA));
-
-        print_tool_result(
-            "hover Object A",
-            hoverA);
+        const bool executeCorrect =
+            executed.success &&
+            sceneNodeA != nullptr &&
+            sceneNodeB != nullptr &&
+            almost_equal(
+                sceneNodeA->transform().position(),
+                finalA.position()) &&
+            almost_equal(
+                sceneNodeA->transform().scale(),
+                finalA.scale()) &&
+            almost_equal(
+                sceneNodeB->transform().position(),
+                finalB.position()) &&
+            almost_equal(
+                sceneNodeB->transform().scale(),
+                finalB.scale());
 
         print_result(
-            editor.selection()
-            .objects()
-            .hovered() == nodeA,
-            "hover apontou para Object A");
-
-        print_result(
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Selection) &&
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Render),
-            "hover marcou Selection e Render dirty");
-
-        /*
-         * Moving over the same object should not produce another state change.
-         */
-        const ToolResult repeatedHover =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerMove,
-                    pickingA));
-
-        print_result(
-            repeatedHover.code ==
-            ToolResultCode::Ignored,
-            "hover repetido foi ignorado");
-
-        /*
-         * Select A.
-         */
-        editor.clear_dirty();
-
-        const ToolResult selectA =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingA));
-
-        print_tool_result(
-            "select Object A",
-            selectA);
-
-        print_selection(
-            editor,
-            "selection after Object A");
-
-        print_result(
-            selectA.was_consumed() &&
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeA) &&
-            editor.selection()
-            .objects()
-            .active() == nodeA,
-            "click selecionou apenas Object A");
+            executeCorrect,
+            "execute aplicou os transforms finais");
 
         print_result(
             history.undo_size() == 1u &&
             history.redo_size() == 0u,
-            "selecao entrou no historico");
+            "dois nodes geraram uma unica entrada de historico");
 
-        /*
-         * Repeated exclusive click is intentionally ignored.
-         */
-        const ToolResult repeatedSelect =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingA));
-
-        print_result(
-            repeatedSelect.code ==
-            ToolResultCode::Ignored &&
-            history.undo_size() == 1u,
-            "selecionar novamente o mesmo objeto nao criou history entry");
-
-        /*
-         * Select B exclusively.
-         */
-        const ToolResult selectB =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingB));
-
-        print_tool_result(
-            "select Object B",
-            selectB);
-
-        print_result(
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeB) &&
-            editor.selection()
-            .objects()
-            .active() == nodeB,
-            "click em B substituiu selecao anterior");
-
-        print_result(
-            history.undo_size() == 2u,
-            "segunda selecao entrou no historico");
-
-        /*
-         * Undo returns to A.
-         */
-        const CommandResult undoSelectB =
+        const CommandResult undone =
             history.undo(dispatcher);
 
-        print_result(
-            undoSelectB.success &&
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeA),
-            "undo restaurou selecao de Object A");
+        print_command_result(
+            "undo batch",
+            undone);
+
+        sceneNodeA =
+            editor.scene().find_node(nodeA);
+
+        sceneNodeB =
+            editor.scene().find_node(nodeB);
+
+        const bool undoCorrect =
+            undone.success &&
+            sceneNodeA != nullptr &&
+            sceneNodeB != nullptr &&
+            almost_equal(
+                sceneNodeA->transform().position(),
+                initialA.position()) &&
+            almost_equal(
+                sceneNodeA->transform().scale(),
+                initialA.scale()) &&
+            almost_equal(
+                sceneNodeB->transform().position(),
+                initialB.position()) &&
+            almost_equal(
+                sceneNodeB->transform().scale(),
+                initialB.scale());
 
         print_result(
-            history.undo_size() == 1u &&
+            undoCorrect,
+            "undo restaurou os transforms iniciais");
+
+        print_result(
+            history.undo_size() == 0u &&
             history.redo_size() == 1u,
-            "undo moveu entrada para redo");
+            "undo moveu o batch para redo");
 
-        /*
-         * Redo returns to B.
-         */
-        const CommandResult redoSelectB =
+        const CommandResult redone =
             history.redo(dispatcher);
 
+        print_command_result(
+            "redo batch",
+            redone);
+
+        sceneNodeA =
+            editor.scene().find_node(nodeA);
+
+        sceneNodeB =
+            editor.scene().find_node(nodeB);
+
+        const bool redoCorrect =
+            redone.success &&
+            sceneNodeA != nullptr &&
+            sceneNodeB != nullptr &&
+            almost_equal(
+                sceneNodeA->transform().position(),
+                finalA.position()) &&
+            almost_equal(
+                sceneNodeB->transform().position(),
+                finalB.position());
+
         print_result(
-            redoSelectB.success &&
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeB),
-            "redo restaurou selecao de Object B");
+            redoCorrect,
+            "redo reaplicou os transforms finais");
+
+        return
+            executeCorrect &&
+            undoCorrect &&
+            redoCorrect &&
+            history.undo_size() == 1u &&
+            history.redo_size() == 0u;
+    }
+
+    bool test_atomic_validation() {
+        std::cout
+            << "\n=== SetNodeTransformsCommand: validacao atomica ===\n";
+
+        Editor editor{};
+
+        const SceneNodeId validNode =
+            editor.scene().create_empty("Valid Node");
+
+        SceneNode* node =
+            editor.scene().find_node(validNode);
+
+        if (!node) {
+            print_result(
+                false,
+                "node valido foi criado");
+
+            return false;
+        }
+
+        const NodeTransform initial =
+            make_transform(
+                glm::vec3{ 2.0f, 3.0f, 4.0f });
+
+        const NodeTransform final =
+            make_transform(
+                glm::vec3{ 20.0f, 30.0f, 40.0f });
+
+        node->transform() = initial;
+
+        SceneNodeId missingNode{};
 
         /*
-         * Toggle A into the current selection.
+         * Produce an identifier that is valid but does not belong to the scene.
+         * Adjust this construction only if SceneNodeId uses a named factory in
+         * your local version.
          */
-        const ToolResult toggleAOn =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingA,
-                    ToolModifiers::Toggle));
+        missingNode = SceneNodeId{
+            validNode.value + 1000u
+        };
 
-        print_tool_result(
-            "toggle Object A on",
-            toggleAOn);
+        std::vector<NodeTransformChange> changes{};
 
-        print_result(
-            editor.selection()
-            .objects()
-            .size() == 2u &&
-            editor.selection()
-            .objects()
-            .contains(nodeA) &&
-            editor.selection()
-            .objects()
-            .contains(nodeB),
-            "toggle adicionou Object A");
+        changes.push_back(
+            make_change(
+                validNode,
+                initial,
+                final));
 
-        /*
-         * Toggle A out again.
-         */
-        const ToolResult toggleAOff =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingA,
-                    ToolModifiers::Toggle));
+        changes.push_back(
+            make_change(
+                missingNode,
+                initial,
+                final));
 
-        print_tool_result(
-            "toggle Object A off",
-            toggleAOff);
+        CommandDispatcher dispatcher{ editor };
+        HistoryStack history{};
 
-        print_result(
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            !editor.selection()
-            .objects()
-            .contains(nodeA) &&
-            editor.selection()
-            .objects()
-            .contains(nodeB),
-            "segundo toggle removeu Object A");
+        const CommandResult result =
+            history.execute(
+                dispatcher,
+                std::make_unique<
+                SetNodeTransformsCommand>(
+                    std::move(changes)));
 
-        /*
-         * Modified empty click preserves selection.
-         */
-        const std::size_t historyBeforeEmptyToggle =
-            history.undo_size();
+        print_command_result(
+            "execute with missing target",
+            result);
 
-        const ToolResult emptyToggle =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    graphics::PickingId::invalid(),
-                    ToolModifiers::Toggle));
+        node =
+            editor.scene().find_node(validNode);
+
+        const bool preserved =
+            !result.success &&
+            node != nullptr &&
+            almost_equal(
+                node->transform().position(),
+                initial.position());
 
         print_result(
-            emptyToggle.code ==
-            ToolResultCode::Ignored &&
-            editor.selection()
-            .objects()
-            .contains(nodeB) &&
-            history.undo_size() ==
-            historyBeforeEmptyToggle,
-            "toggle vazio preservou selecao e historico");
-
-        /*
-         * Empty hover clears ephemeral hover.
-         */
-        const ToolResult clearHover =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerMove,
-                    graphics::PickingId::invalid()));
-
-        print_tool_result(
-            "clear hover",
-            clearHover);
+            preserved,
+            "falha nao modificou parcialmente o node valido");
 
         print_result(
-            !editor.selection()
-            .objects()
-            .hovered()
-            .is_valid(),
-            "pointer sem hit limpou hovered");
+            history.undo_size() == 0u,
+            "command com falha nao entrou no historico");
 
-        /*
-         * Empty unmodified click clears persistent selection.
-         */
-        const std::size_t historyBeforeClear =
-            history.undo_size();
+        return
+            preserved &&
+            history.undo_size() == 0u;
+    }
 
-        const ToolResult clearSelection =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    graphics::PickingId::invalid()));
+    bool test_empty_batch() {
+        std::cout
+            << "\n=== SetNodeTransformsCommand: lote vazio ===\n";
 
-        print_tool_result(
-            "clear selection",
-            clearSelection);
+        Editor editor{};
+        CommandDispatcher dispatcher{ editor };
+        HistoryStack history{};
 
-        print_result(
-            clearSelection.was_consumed() &&
-            editor.selection()
-            .objects()
-            .empty(),
-            "click vazio limpou selecao");
+        const CommandResult result =
+            history.execute(
+                dispatcher,
+                std::make_unique<
+                SetNodeTransformsCommand>(
+                    std::vector<
+                    NodeTransformChange>{}));
 
-        print_result(
-            history.undo_size() ==
-            historyBeforeClear + 1u,
-            "limpeza entrou no historico");
-
-        /*
-         * Undo restores B.
-         */
-        const CommandResult undoClear =
-            history.undo(dispatcher);
-
-        print_result(
-            undoClear.success &&
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeB),
-            "undo da limpeza restaurou Object B");
-
-        /*
-         * Node C confirms a third mapping is usable.
-         */
-        const ToolResult selectC =
-            manager.handle_event(
-                context,
-                make_pointer_event(
-                    ToolEventType::PointerPress,
-                    pickingC));
-
-        print_result(
-            selectC.was_consumed() &&
-            editor.selection()
-            .objects()
-            .size() == 1u &&
-            editor.selection()
-            .objects()
-            .contains(nodeC),
-            "PickingId de Object C resolveu corretamente");
+        print_command_result(
+            "execute empty batch",
+            result);
 
         const bool ok =
-            pickingSynchronized &&
-            registered &&
-            !activation.failed() &&
-            editor.selection()
-            .objects()
-            .contains(nodeC) &&
-            history.can_undo();
-
-        std::cout
-            << "\n=== Resultado final ===\n";
+            !result.success &&
+            history.undo_size() == 0u;
 
         print_result(
             ok,
-            "SelectTool point selection smoke test");
+            "lote vazio foi rejeitado sem history entry");
 
         return ok;
     }
@@ -590,7 +406,21 @@ namespace {
 } // namespace
 
 int main() {
-    return run_select_tool_test()
-        ? 0
-        : 1;
+    std::cout
+        << "=== Locus3D Editor Batch Transform Command Smoke Test ===\n";
+
+    bool ok = true;
+
+    ok = test_batch_execute_undo_redo() && ok;
+    ok = test_atomic_validation() && ok;
+    ok = test_empty_batch() && ok;
+
+    std::cout
+        << "\n=== Resultado final ===\n";
+
+    print_result(
+        ok,
+        "SetNodeTransformsCommand smoke test");
+
+    return ok ? 0 : 1;
 }

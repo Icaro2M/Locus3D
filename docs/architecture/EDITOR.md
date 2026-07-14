@@ -161,6 +161,9 @@ source\editor
 |   |       ScaleNodeCommand.cpp
 |   |       SetNodePivotCommand.h
 |   |       SetNodePivotCommand.cpp
+|   |       NodeTransformChange.h
+|   |       SetNodeTransformsCommand.h
+|   |       SetNodeTransformsCommand.cpp
 |   |
 |   +---mesh
 |   |       MeshSnapshot.h
