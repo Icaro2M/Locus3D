@@ -180,7 +180,12 @@ target_sources(locus3d_editor
          "tools/management/ToolManager.cpp"
          "tools/management/ToolRegistry.h"
          "tools/management/ToolRegistry.cpp"
-        )
+         "tools/interaction/ToolCancelReason.h"
+         "tools/interaction/ToolCapture.h"
+         "tools/interaction/ModalTool.h"
+         "tools/interaction/ModalTool.cpp"
+         "tools/interaction/DragTool.h"
+         "tools/interaction/DragTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

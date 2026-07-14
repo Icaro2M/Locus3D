@@ -206,11 +206,11 @@ source\editor
 |   |       ToolManager.cpp
 |   |
 |   +---interaction [!]
-|   |       ToolCancelReason.h [!]
-|   |       ToolCapture.h [!]
-|   |       ModalTool.h [!]
-|   |       DragTool.h [!]
-|   |       DragTool.cpp [!]
+|   |       ToolCancelReason.h
+|   |       ToolCapture.h
+|   |       ModalTool.h
+|   |       DragTool.h
+|   |       DragTool.cpp
 |   |
 |   +---selection [!]
 |   |   |   SelectTool.h [!]
@@ -398,11 +398,6 @@ Initial implementation should probably begin with a small, stable foundation:
 
 - [!] `tools/Tools.h`
 - [!] `tools/core/ToolInputState.h`
-- [!] `tools/interaction/ToolCancelReason.h`
-- [!] `tools/interaction/ToolCapture.h`
-- [!] `tools/interaction/ModalTool.h`
-- [!] `tools/interaction/DragTool.h`
-- [!] `tools/interaction/DragTool.cpp`
 - [!] `tools/selection/SelectTool.h`
 - [!] `tools/selection/SelectTool.cpp`
 - [!] `tools/selection/shapes/ISelectionShape.h`

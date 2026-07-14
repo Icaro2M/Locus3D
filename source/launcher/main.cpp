@@ -4,14 +4,18 @@
  */
 
 #include "editor/Editor.h"
-#include "editor/tools/core/ITool.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolDescriptor.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
+#include "editor/tools/interaction/DragTool.h"
+#include "editor/tools/interaction/ModalTool.h"
+#include "editor/tools/interaction/ToolCancelReason.h"
 #include "editor/tools/management/ToolManager.h"
 #include "editor/tools/management/ToolRegistry.h"
+
+#include <glm/vec2.hpp>
 
 #include <iostream>
 #include <memory>
@@ -30,6 +34,24 @@ namespace {
             << (condition ? "[OK] " : "[FAIL] ")
             << message
             << '\n';
+    }
+
+    const char* tool_state_name(ToolState state) {
+        switch (state) {
+        case ToolState::Inactive:
+            return "Inactive";
+
+        case ToolState::Ready:
+            return "Ready";
+
+        case ToolState::Interacting:
+            return "Interacting";
+
+        case ToolState::Suspended:
+            return "Suspended";
+        }
+
+        return "Unknown";
     }
 
     const char* result_code_name(ToolResultCode code) {
@@ -59,11 +81,35 @@ namespace {
         return "Unknown";
     }
 
+    const char* cancel_reason_name(
+        ToolCancelReason reason) {
+
+        switch (reason) {
+        case ToolCancelReason::UserRequest:
+            return "UserRequest";
+
+        case ToolCancelReason::FocusLost:
+            return "FocusLost";
+
+        case ToolCancelReason::ToolSwitch:
+            return "ToolSwitch";
+
+        case ToolCancelReason::ToolDeactivated:
+            return "ToolDeactivated";
+
+        case ToolCancelReason::InvalidState:
+            return "InvalidState";
+        }
+
+        return "Unknown";
+    }
+
     void print_tool_result(
         const std::string& label,
         const ToolResult& result) {
 
         std::cout << label << '\n';
+
         std::cout
             << "  code: "
             << result_code_name(result.code)
@@ -80,144 +126,62 @@ namespace {
             << '\n';
 
         std::cout
+            << "  terminal: "
+            << (result.is_terminal() ? "true" : "false")
+            << '\n';
+
+        std::cout
             << "  message: "
             << result.message
             << '\n';
     }
 
-    class DummyTool final : public ITool {
+    ToolDescriptor make_drag_descriptor(
+        const std::string& id,
+        const std::string& name) {
+
+        return ToolDescriptor{
+            ToolId{ id },
+            name,
+            "Dummy drag tool used by the interaction smoke test.",
+            ToolCategory::Transform,
+            ToolCapabilities::ObjectMode |
+                ToolCapabilities::UsesPointer |
+                ToolCapabilities::Modal
+        };
+    }
+
+    /**
+     * @brief Drag tool used to exercise the generic interaction infrastructure.
+     */
+    class DummyDragTool final : public DragTool {
     public:
-        explicit DummyTool(
+        DummyDragTool(
             ToolDescriptor descriptor,
-            bool activationAllowed = true,
-            bool activationFails = false)
-            : descriptor_(std::move(descriptor)),
-            activationAllowed_(activationAllowed),
-            activationFails_(activationFails) {
+            DragCompletionPolicy completionPolicy)
+            : DragTool(
+                std::move(descriptor),
+                completionPolicy) {
         }
 
-        [[nodiscard]]
-        const ToolDescriptor& descriptor() const override {
-            return descriptor_;
-        }
-
-        [[nodiscard]]
-        ToolState state() const override {
-            return state_;
-        }
-
-        [[nodiscard]]
-        bool can_activate(
-            const ToolContext& context) const override {
-
-            (void)context;
-            return activationAllowed_;
-        }
-
-        ToolResult activate(
-            ToolContext& context) override {
-
-            (void)context;
-            ++activationCount_;
-
-            if (activationFails_) {
-                state_ = ToolState::Inactive;
-
-                return ToolResult::fail(
-                    "Dummy activation failure.");
-            }
-
-            state_ = ToolState::Ready;
-
-            return ToolResult::consumed(
-                EditorDirtyFlags::None,
-                "Dummy tool activated.");
-        }
-
-        ToolResult deactivate(
-            ToolContext& context) override {
-
-            (void)context;
-            ++deactivationCount_;
-            state_ = ToolState::Inactive;
-
-            return ToolResult::consumed(
-                EditorDirtyFlags::None,
-                "Dummy tool deactivated.");
-        }
-
-        ToolResult handle_event(
-            ToolContext& context,
-            const ToolEvent& event) override {
-
-            (void)context;
-            ++eventCount_;
-
-            if (event.type == ToolEventType::PointerPress &&
-                event.uses_primary_button()) {
-
-                state_ = ToolState::Interacting;
-
-                return ToolResult::started(
-                    EditorDirtyFlags::Selection,
-                    "Dummy interaction started.");
-            }
-
-            if (event.type == ToolEventType::PointerMove &&
-                state_ == ToolState::Interacting) {
-
-                return ToolResult::updated(
-                    EditorDirtyFlags::Render,
-                    "Dummy interaction updated.");
-            }
-
-            return ToolResult::ignored();
-        }
-
-        ToolResult confirm(
-            ToolContext& context) override {
-
-            (void)context;
-            ++confirmCount_;
-
-            if (state_ != ToolState::Interacting) {
-                return ToolResult::ignored();
-            }
-
-            state_ = ToolState::Ready;
-
-            return ToolResult::confirmed(
-                EditorDirtyFlags::Scene,
-                "Dummy interaction confirmed.");
-        }
-
-        ToolResult cancel(
-            ToolContext& context) override {
-
-            (void)context;
-            ++cancelCount_;
-
-            if (state_ != ToolState::Interacting) {
-                return ToolResult::ignored();
-            }
-
-            state_ = ToolState::Ready;
-
-            return ToolResult::cancelled(
-                EditorDirtyFlags::Render,
-                "Dummy interaction cancelled.");
-        }
-
-        [[nodiscard]] int activation_count() const {
+        [[nodiscard]] int activate_count() const {
             return activationCount_;
         }
 
-        [[nodiscard]] int deactivation_count() const {
+        [[nodiscard]] int deactivate_count() const {
             return deactivationCount_;
         }
 
-        [[nodiscard]] int event_count() const {
-            return eventCount_;
+        [[nodiscard]] int begin_count() const {
+            return beginCount_;
+        }
+
+        [[nodiscard]] int update_count() const {
+            return updateCount_;
+        }
+
+        [[nodiscard]] int release_count() const {
+            return releaseCount_;
         }
 
         [[nodiscard]] int confirm_count() const {
@@ -228,203 +192,156 @@ namespace {
             return cancelCount_;
         }
 
+        [[nodiscard]] ToolCancelReason last_cancel_reason() const {
+            return lastCancelReason_;
+        }
+
+        [[nodiscard]] const glm::vec2& last_total_delta() const {
+            return lastTotalDelta_;
+        }
+
+    protected:
+        ToolResult on_activate(
+            ToolContext& context) override {
+
+            (void)context;
+
+            ++activationCount_;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Dummy drag tool activated.");
+        }
+
+        ToolResult on_deactivate(
+            ToolContext& context) override {
+
+            (void)context;
+
+            ++deactivationCount_;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Dummy drag tool deactivated.");
+        }
+
+        ToolResult on_begin_drag(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+
+            ++beginCount_;
+            beginPosition_ =
+                event.pointer.viewportPosition;
+
+            return ToolResult::started(
+                EditorDirtyFlags::Selection,
+                "Dummy drag started.");
+        }
+
+        ToolResult on_update_drag(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+            (void)event;
+
+            ++updateCount_;
+            lastTotalDelta_ = capture().total_delta();
+
+            return ToolResult::updated(
+                EditorDirtyFlags::Render,
+                "Dummy drag updated.");
+        }
+
+        ToolResult on_release_drag(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+
+            ++releaseCount_;
+            releasePosition_ =
+                event.pointer.viewportPosition;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::Render,
+                "Dummy pointer released.");
+        }
+
+        ToolResult on_confirm_drag(
+            ToolContext& context) override {
+
+            (void)context;
+
+            ++confirmCount_;
+
+            return ToolResult::confirmed(
+                EditorDirtyFlags::Scene,
+                "Dummy drag confirmed.");
+        }
+
+        ToolResult on_cancel_drag(
+            ToolContext& context,
+            ToolCancelReason reason) override {
+
+            (void)context;
+
+            ++cancelCount_;
+            lastCancelReason_ = reason;
+
+            return ToolResult::cancelled(
+                EditorDirtyFlags::Render,
+                "Dummy drag cancelled.");
+        }
+
     private:
-        ToolDescriptor descriptor_{};
-        ToolState state_ = ToolState::Inactive;
-
-        bool activationAllowed_ = true;
-        bool activationFails_ = false;
-
         int activationCount_ = 0;
         int deactivationCount_ = 0;
-        int eventCount_ = 0;
+        int beginCount_ = 0;
+        int updateCount_ = 0;
+        int releaseCount_ = 0;
         int confirmCount_ = 0;
         int cancelCount_ = 0;
+
+        ToolCancelReason lastCancelReason_ =
+            ToolCancelReason::InvalidState;
+
+        glm::vec2 beginPosition_{ 0.0f, 0.0f };
+        glm::vec2 releasePosition_{ 0.0f, 0.0f };
+        glm::vec2 lastTotalDelta_{ 0.0f, 0.0f };
     };
 
-    ToolDescriptor make_select_descriptor() {
-        return ToolDescriptor{
-            ToolId{ "editor.select" },
-            "Select",
-            "Dummy selection tool.",
-            ToolCategory::Selection,
-            ToolCapabilities::ObjectMode |
-                ToolCapabilities::MeshMode |
-                ToolCapabilities::UsesPointer
-        };
+    ToolEvent make_pointer_event(
+        ToolEventType type,
+        ToolPointerButton button,
+        float x,
+        float y) {
+
+        ToolEvent event{};
+        event.type = type;
+        event.button = button;
+        event.pointer.viewportPosition =
+            glm::vec2{ x, y };
+
+        return event;
     }
 
-    ToolDescriptor make_transform_descriptor() {
-        return ToolDescriptor{
-            ToolId{ "editor.transform" },
-            "Transform",
-            "Dummy transform tool.",
-            ToolCategory::Transform,
-            ToolCapabilities::ObjectMode |
-                ToolCapabilities::UsesPointer |
-                ToolCapabilities::UsesGizmo |
-                ToolCapabilities::Modal
-        };
+    bool almost_equal(float lhs, float rhs) {
+        constexpr float epsilon = 0.0001f;
+
+        const float difference =
+            lhs >= rhs
+            ? lhs - rhs
+            : rhs - lhs;
+
+        return difference <= epsilon;
     }
 
-    ToolDescriptor make_blocked_descriptor() {
-        return ToolDescriptor{
-            ToolId{ "editor.blocked" },
-            "Blocked",
-            "Dummy tool that cannot activate.",
-            ToolCategory::Utility,
-            ToolCapabilities::None
-        };
-    }
-
-    ToolDescriptor make_failing_descriptor() {
-        return ToolDescriptor{
-            ToolId{ "editor.failing" },
-            "Failing",
-            "Dummy tool whose activation fails.",
-            ToolCategory::Utility,
-            ToolCapabilities::None
-        };
-    }
-
-    bool test_registry() {
-        std::cout << "\n=== ToolRegistry ===\n";
-
-        ToolRegistry registry{};
-
-        const bool selectRegistered = registry.register_tool(
-            make_select_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
-            });
-
-        const bool duplicateRejected = !registry.register_tool(
-            make_select_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
-            });
-
-        const bool transformRegistered = registry.register_tool(
-            make_transform_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_transform_descriptor());
-            });
-
-        const bool invalidRejected = !registry.register_tool(
-            ToolDescriptor{},
-            [] {
-                return std::make_unique<DummyTool>(
-                    ToolDescriptor{});
-            });
-
-        const ToolDescriptor* selectDescriptor =
-            registry.descriptor(ToolId{ "editor.select" });
-
-        std::unique_ptr<ITool> select =
-            registry.create(ToolId{ "editor.select" });
-
-        const auto transformDescriptors =
-            registry.descriptors_by_category(
-                ToolCategory::Transform);
-
-        print_result(
-            selectRegistered,
-            "registro da SelectTool foi aceito");
-
-        print_result(
-            duplicateRejected,
-            "id duplicado foi rejeitado");
-
-        print_result(
-            transformRegistered,
-            "registro da TransformTool foi aceito");
-
-        print_result(
-            invalidRejected,
-            "descriptor invalido foi rejeitado");
-
-        print_result(
-            registry.size() == 2u,
-            "registry informa dois registros");
-
-        print_result(
-            registry.contains(ToolId{ "editor.select" }),
-            "registry encontra editor.select");
-
-        print_result(
-            !registry.contains(ToolId{ "editor.unknown" }),
-            "registry rejeita id desconhecido");
-
-        print_result(
-            selectDescriptor != nullptr &&
-            selectDescriptor->name == "Select",
-            "descriptor registrado pode ser consultado");
-
-        print_result(
-            select != nullptr &&
-            select->descriptor().id ==
-            ToolId{ "editor.select" },
-            "factory cria tool com id correto");
-
-        print_result(
-            transformDescriptors.size() == 1u &&
-            transformDescriptors.front()->id ==
-            ToolId{ "editor.transform" },
-            "consulta por categoria retorna TransformTool");
-
-        const bool mismatchRegistered = registry.register_tool(
-            ToolDescriptor{
-                ToolId{ "editor.mismatch" },
-                "Mismatch",
-                "Factory returns another identifier.",
-                ToolCategory::Utility,
-                ToolCapabilities::None
-            },
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
-            });
-
-        std::unique_ptr<ITool> mismatch =
-            registry.create(ToolId{ "editor.mismatch" });
-
-        print_result(
-            mismatchRegistered,
-            "registro com factory adiada foi aceito");
-
-        print_result(
-            mismatch == nullptr,
-            "factory com descriptor divergente foi rejeitada na criacao");
-
-        const bool removed =
-            registry.unregister_tool(
-                ToolId{ "editor.transform" });
-
-        print_result(
-            removed &&
-            !registry.contains(
-                ToolId{ "editor.transform" }),
-            "unregister remove registro existente");
-
-        return
-            selectRegistered &&
-            duplicateRejected &&
-            transformRegistered &&
-            invalidRejected &&
-            registry.size() == 2u &&
-            selectDescriptor != nullptr &&
-            select != nullptr &&
-            transformDescriptors.size() == 1u &&
-            mismatchRegistered &&
-            mismatch == nullptr &&
-            removed;
-    }
-
-    bool test_manager_activation_and_events() {
-        std::cout << "\n=== ToolManager: ativacao e eventos ===\n";
+    bool test_automatic_confirmation() {
+        std::cout
+            << "\n=== DragTool: confirmacao automatica ===\n";
 
         Editor editor{};
         editor.clear_dirty();
@@ -432,308 +349,758 @@ namespace {
         ToolContext context{ editor };
         ToolRegistry registry{};
 
-        registry.register_tool(
-            make_select_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
-            });
+        const ToolId toolId{
+            "editor.test.auto-drag"
+        };
 
         registry.register_tool(
-            make_transform_descriptor(),
+            make_drag_descriptor(
+                toolId.value,
+                "Automatic Drag"),
             [] {
-                return std::make_unique<DummyTool>(
-                    make_transform_descriptor());
+                return std::make_unique<DummyDragTool>(
+                    make_drag_descriptor(
+                        "editor.test.auto-drag",
+                        "Automatic Drag"),
+                    DragCompletionPolicy::ConfirmOnRelease);
             });
 
         ToolManager manager{ registry };
 
-        const ToolResult activated =
+        const ToolResult activation =
             manager.activate_tool(
                 context,
-                ToolId{ "editor.select" });
+                toolId);
 
-        print_tool_result("activate select", activated);
+        print_tool_result(
+            "activate automatic drag",
+            activation);
 
-        print_result(
-            !activated.failed() &&
-            manager.has_active_tool() &&
-            manager.is_active(
-                ToolId{ "editor.select" }),
-            "SelectTool ficou ativa");
-
-        DummyTool* active =
-            dynamic_cast<DummyTool*>(
+        DummyDragTool* tool =
+            dynamic_cast<DummyDragTool*>(
                 manager.active_tool());
 
         print_result(
-            active != nullptr &&
-            active->state() == ToolState::Ready &&
-            active->activation_count() == 1,
-            "instancia ativa recebeu activate");
+            tool != nullptr,
+            "manager possui DummyDragTool ativa");
 
-        ToolEvent press{};
-        press.type = ToolEventType::PointerPress;
-        press.button = ToolPointerButton::Primary;
+        print_result(
+            tool != nullptr &&
+            tool->state() == ToolState::Ready &&
+            tool->activate_count() == 1,
+            "activate colocou tool em Ready");
+
+        const ToolEvent secondaryPress =
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Secondary,
+                5.0f,
+                10.0f);
+
+        const ToolResult secondaryResult =
+            manager.handle_event(
+                context,
+                secondaryPress);
+
+        print_tool_result(
+            "secondary press",
+            secondaryResult);
+
+        print_result(
+            secondaryResult.code ==
+            ToolResultCode::Ignored &&
+            tool != nullptr &&
+            tool->state() == ToolState::Ready,
+            "botao secundario nao iniciou drag");
+
+        const ToolEvent primaryPress =
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Primary,
+                10.0f,
+                20.0f);
 
         const ToolResult started =
             manager.handle_event(
                 context,
-                press);
+                primaryPress);
 
-        print_tool_result("primary press", started);
+        print_tool_result(
+            "primary press",
+            started);
 
         print_result(
             started.code == ToolResultCode::Started &&
-            active != nullptr &&
-            active->state() ==
-            ToolState::Interacting,
-            "pointer press iniciou interacao");
+            tool != nullptr &&
+            tool->state() == ToolState::Interacting &&
+            tool->begin_count() == 1,
+            "botao primario iniciou drag");
+
+        print_result(
+            tool != nullptr &&
+            tool->capture().has_pointer() &&
+            tool->capture().matches_button(
+                ToolPointerButton::Primary),
+            "drag capturou o ponteiro primario");
 
         print_result(
             has_flag(
                 editor.dirty_flags(),
                 EditorDirtyFlags::Selection),
-            "dirty flag de selecao foi aplicada pelo manager");
+            "inicio do drag marcou Selection dirty");
 
         editor.clear_dirty();
 
-        ToolEvent move{};
-        move.type = ToolEventType::PointerMove;
-        move.pointer.viewportPosition =
-            glm::vec2{ 100.0f, 50.0f };
+        const ToolEvent move =
+            make_pointer_event(
+                ToolEventType::PointerMove,
+                ToolPointerButton::None,
+                35.0f,
+                60.0f);
 
         const ToolResult updated =
             manager.handle_event(
                 context,
                 move);
 
-        print_tool_result("pointer move", updated);
+        print_tool_result(
+            "pointer move",
+            updated);
+
+        const glm::vec2 expectedDelta{
+            25.0f,
+            40.0f
+        };
 
         print_result(
             updated.code == ToolResultCode::Updated &&
+            tool != nullptr &&
+            tool->update_count() == 1,
+            "movimento atualizou drag ativo");
+
+        print_result(
+            tool != nullptr &&
+            almost_equal(
+                tool->last_total_delta().x,
+                expectedDelta.x) &&
+            almost_equal(
+                tool->last_total_delta().y,
+                expectedDelta.y),
+            "capture calculou delta total esperado");
+
+        print_result(
             has_flag(
                 editor.dirty_flags(),
                 EditorDirtyFlags::Render),
-            "pointer move atualizou interacao e marcou render");
+            "update marcou Render dirty");
 
         editor.clear_dirty();
 
-        ToolEvent confirm{};
-        confirm.type = ToolEventType::Confirm;
+        const ToolEvent wrongRelease =
+            make_pointer_event(
+                ToolEventType::PointerRelease,
+                ToolPointerButton::Secondary,
+                35.0f,
+                60.0f);
+
+        const ToolResult wrongReleaseResult =
+            manager.handle_event(
+                context,
+                wrongRelease);
+
+        print_result(
+            wrongReleaseResult.code ==
+            ToolResultCode::Ignored &&
+            tool != nullptr &&
+            tool->state() == ToolState::Interacting &&
+            tool->capture().has_pointer(),
+            "release de outro botao nao encerrou captura");
+
+        const ToolEvent primaryRelease =
+            make_pointer_event(
+                ToolEventType::PointerRelease,
+                ToolPointerButton::Primary,
+                40.0f,
+                70.0f);
 
         const ToolResult confirmed =
             manager.handle_event(
                 context,
-                confirm);
+                primaryRelease);
 
-        print_tool_result("confirm", confirmed);
+        print_tool_result(
+            "primary release",
+            confirmed);
 
         print_result(
             confirmed.code ==
             ToolResultCode::Confirmed &&
-            active != nullptr &&
-            active->state() == ToolState::Ready &&
-            active->confirm_count() == 1,
-            "evento Confirm foi roteado para confirm");
+            tool != nullptr &&
+            tool->state() == ToolState::Ready,
+            "release primario confirmou drag automaticamente");
+
+        print_result(
+            tool != nullptr &&
+            tool->release_count() == 1 &&
+            tool->confirm_count() == 1,
+            "release e confirm foram executados uma vez");
+
+        print_result(
+            tool != nullptr &&
+            !tool->capture().is_active(),
+            "captura foi limpa apos confirmacao");
 
         print_result(
             has_flag(
                 editor.dirty_flags(),
+                EditorDirtyFlags::Render) &&
+            has_flag(
+                editor.dirty_flags(),
                 EditorDirtyFlags::Scene),
-            "confirmacao marcou scene dirty");
+            "release combinou dirty flags de Render e Scene");
 
         return
-            !activated.failed() &&
+            !activation.failed() &&
+            tool != nullptr &&
             started.code == ToolResultCode::Started &&
             updated.code == ToolResultCode::Updated &&
             confirmed.code == ToolResultCode::Confirmed &&
-            manager.is_active(
-                ToolId{ "editor.select" });
+            tool->state() == ToolState::Ready &&
+            tool->confirm_count() == 1 &&
+            !tool->capture().is_active();
     }
 
-    bool test_manager_cancel_on_focus_loss() {
-        std::cout << "\n=== ToolManager: cancel em focus lost ===\n";
+    bool test_explicit_confirmation() {
+        std::cout
+            << "\n=== DragTool: confirmacao explicita ===\n";
 
         Editor editor{};
+        editor.clear_dirty();
+
         ToolContext context{ editor };
         ToolRegistry registry{};
 
+        const ToolId toolId{
+            "editor.test.explicit-drag"
+        };
+
         registry.register_tool(
-            make_select_descriptor(),
+            make_drag_descriptor(
+                toolId.value,
+                "Explicit Drag"),
             [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
+                return std::make_unique<DummyDragTool>(
+                    make_drag_descriptor(
+                        "editor.test.explicit-drag",
+                        "Explicit Drag"),
+                    DragCompletionPolicy::
+                    WaitForExplicitConfirmation);
             });
 
         ToolManager manager{ registry };
 
         manager.activate_tool(
             context,
-            ToolId{ "editor.select" });
+            toolId);
 
-        ToolEvent press{};
-        press.type = ToolEventType::PointerPress;
-        press.button = ToolPointerButton::Primary;
-
-        manager.handle_event(context, press);
-
-        DummyTool* active =
-            dynamic_cast<DummyTool*>(
+        DummyDragTool* tool =
+            dynamic_cast<DummyDragTool*>(
                 manager.active_tool());
 
-        ToolEvent focusLost{};
-        focusLost.type = ToolEventType::FocusLost;
+        const ToolEvent press =
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Primary,
+                100.0f,
+                80.0f);
+
+        manager.handle_event(
+            context,
+            press);
+
+        const ToolEvent release =
+            make_pointer_event(
+                ToolEventType::PointerRelease,
+                ToolPointerButton::Primary,
+                120.0f,
+                90.0f);
+
+        const ToolResult released =
+            manager.handle_event(
+                context,
+                release);
+
+        print_tool_result(
+            "release awaiting confirmation",
+            released);
+
+        print_result(
+            released.was_consumed() &&
+            tool != nullptr &&
+            tool->state() == ToolState::Interacting,
+            "release manteve sessao interativa ativa");
+
+        print_result(
+            tool != nullptr &&
+            !tool->capture().is_active(),
+            "release encerrou apenas a captura do ponteiro");
+
+        print_result(
+            tool != nullptr &&
+            tool->release_count() == 1 &&
+            tool->confirm_count() == 0,
+            "release nao confirmou a operacao");
+
+        ToolEvent confirmEvent{};
+        confirmEvent.type = ToolEventType::Confirm;
+
+        const ToolResult confirmed =
+            manager.handle_event(
+                context,
+                confirmEvent);
+
+        print_tool_result(
+            "explicit confirm",
+            confirmed);
+
+        print_result(
+            confirmed.code ==
+            ToolResultCode::Confirmed &&
+            tool != nullptr &&
+            tool->state() == ToolState::Ready,
+            "evento Confirm finalizou sessao");
+
+        print_result(
+            tool != nullptr &&
+            tool->confirm_count() == 1,
+            "confirmacao explicita foi executada uma vez");
+
+        return
+            tool != nullptr &&
+            released.was_consumed() &&
+            confirmed.code == ToolResultCode::Confirmed &&
+            tool->state() == ToolState::Ready &&
+            tool->confirm_count() == 1;
+    }
+
+    bool test_user_cancellation() {
+        std::cout
+            << "\n=== DragTool: cancelamento do usuario ===\n";
+
+        Editor editor{};
+        editor.clear_dirty();
+
+        ToolContext context{ editor };
+        ToolRegistry registry{};
+
+        const ToolId toolId{
+            "editor.test.cancel-drag"
+        };
+
+        registry.register_tool(
+            make_drag_descriptor(
+                toolId.value,
+                "Cancelable Drag"),
+            [] {
+                return std::make_unique<DummyDragTool>(
+                    make_drag_descriptor(
+                        "editor.test.cancel-drag",
+                        "Cancelable Drag"),
+                    DragCompletionPolicy::
+                    WaitForExplicitConfirmation);
+            });
+
+        ToolManager manager{ registry };
+
+        manager.activate_tool(
+            context,
+            toolId);
+
+        DummyDragTool* tool =
+            dynamic_cast<DummyDragTool*>(
+                manager.active_tool());
+
+        manager.handle_event(
+            context,
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Primary,
+                0.0f,
+                0.0f));
+
+        manager.handle_event(
+            context,
+            make_pointer_event(
+                ToolEventType::PointerMove,
+                ToolPointerButton::None,
+                10.0f,
+                15.0f));
+
+        ToolEvent cancelEvent{};
+        cancelEvent.type = ToolEventType::Cancel;
 
         const ToolResult cancelled =
             manager.handle_event(
                 context,
-                focusLost);
+                cancelEvent);
 
-        print_tool_result("focus lost", cancelled);
-
-        const bool ok =
-            cancelled.code ==
-            ToolResultCode::Cancelled &&
-            active != nullptr &&
-            active->state() == ToolState::Ready &&
-            active->cancel_count() == 1;
+        print_tool_result(
+            "user cancel",
+            cancelled);
 
         print_result(
-            ok,
-            "focus lost cancelou interacao ativa");
+            cancelled.code ==
+            ToolResultCode::Cancelled &&
+            tool != nullptr &&
+            tool->state() == ToolState::Ready,
+            "Cancel encerrou sessao e retornou a Ready");
 
-        return ok;
+        print_result(
+            tool != nullptr &&
+            tool->cancel_count() == 1 &&
+            tool->last_cancel_reason() ==
+            ToolCancelReason::UserRequest,
+            "cancelamento recebeu motivo UserRequest");
+
+        print_result(
+            tool != nullptr &&
+            !tool->capture().is_active(),
+            "cancelamento limpou captura");
+
+        print_result(
+            has_flag(
+                editor.dirty_flags(),
+                EditorDirtyFlags::Render),
+            "cancelamento marcou Render dirty");
+
+        std::cout
+            << "  cancel reason: "
+            << (
+                tool != nullptr
+                ? cancel_reason_name(
+                    tool->last_cancel_reason())
+                : "Unavailable")
+            << '\n';
+
+        return
+            tool != nullptr &&
+            cancelled.code ==
+            ToolResultCode::Cancelled &&
+            tool->state() == ToolState::Ready &&
+            tool->cancel_count() == 1 &&
+            tool->last_cancel_reason() ==
+            ToolCancelReason::UserRequest &&
+            !tool->capture().is_active();
     }
 
-    bool test_manager_switch_and_restore() {
-        std::cout << "\n=== ToolManager: troca e restauracao ===\n";
+    bool test_deactivation_cancels_drag() {
+        std::cout
+            << "\n=== ModalTool: deactivate durante drag ===\n";
 
         Editor editor{};
+        editor.clear_dirty();
+
         ToolContext context{ editor };
         ToolRegistry registry{};
 
-        registry.register_tool(
-            make_select_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_select_descriptor());
-            });
+        const ToolId toolId{
+            "editor.test.deactivate-drag"
+        };
 
         registry.register_tool(
-            make_transform_descriptor(),
+            make_drag_descriptor(
+                toolId.value,
+                "Deactivate Drag"),
             [] {
-                return std::make_unique<DummyTool>(
-                    make_transform_descriptor());
-            });
-
-        registry.register_tool(
-            make_blocked_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_blocked_descriptor(),
-                    false,
-                    false);
-            });
-
-        registry.register_tool(
-            make_failing_descriptor(),
-            [] {
-                return std::make_unique<DummyTool>(
-                    make_failing_descriptor(),
-                    true,
-                    true);
+                return std::make_unique<DummyDragTool>(
+                    make_drag_descriptor(
+                        "editor.test.deactivate-drag",
+                        "Deactivate Drag"),
+                    DragCompletionPolicy::
+                    WaitForExplicitConfirmation);
             });
 
         ToolManager manager{ registry };
 
         manager.activate_tool(
             context,
-            ToolId{ "editor.select" });
+            toolId);
 
-        const ToolResult blocked =
-            manager.activate_tool(
-                context,
-                ToolId{ "editor.blocked" });
+        DummyDragTool* tool =
+            dynamic_cast<DummyDragTool*>(
+                manager.active_tool());
 
-        print_tool_result("activate blocked", blocked);
-
-        print_result(
-            blocked.failed() &&
-            manager.is_active(
-                ToolId{ "editor.select" }),
-            "can_activate falso preservou tool anterior");
-
-        const ToolResult failing =
-            manager.activate_tool(
-                context,
-                ToolId{ "editor.failing" });
-
-        print_tool_result("activate failing", failing);
+        manager.handle_event(
+            context,
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Primary,
+                15.0f,
+                25.0f));
 
         print_result(
-            failing.failed() &&
-            manager.is_active(
-                ToolId{ "editor.select" }),
-            "falha de activate restaurou tool anterior");
+            tool != nullptr &&
+            tool->state() == ToolState::Interacting,
+            "drag estava ativo antes de deactivate");
 
-        const ToolResult switched =
-            manager.activate_tool(
-                context,
-                ToolId{ "editor.transform" });
-
-        print_tool_result("switch to transform", switched);
-
-        print_result(
-            !switched.failed() &&
-            manager.is_active(
-                ToolId{ "editor.transform" }),
-            "troca valida ativou TransformTool");
-
-        const ToolResult sameTool =
-            manager.activate_tool(
-                context,
-                ToolId{ "editor.transform" });
-
-        print_tool_result(
-            "activate already active",
-            sameTool);
-
-        print_result(
-            sameTool.code ==
-            ToolResultCode::Consumed &&
-            manager.is_active(
-                ToolId{ "editor.transform" }),
-            "reativar mesmo id nao recriou instancia");
+        /*
+         * Preserve test observations before the manager destroys the active tool
+         * instance after successful deactivation.
+         */
+        int cancelCountBefore = 0;
+        int deactivateCountBefore = 0;
+        ToolCancelReason cancelReasonBefore =
+            ToolCancelReason::InvalidState;
 
         const ToolResult deactivated =
             manager.deactivate_tool(context);
 
-        print_tool_result("deactivate", deactivated);
+        print_tool_result(
+            "deactivate active drag",
+            deactivated);
+
+        /*
+         * The owned tool no longer exists after deactivate_tool(), so values that
+         * belong to its callbacks are observed through a separate fixture below.
+         */
+        (void)cancelCountBefore;
+        (void)deactivateCountBefore;
+        (void)cancelReasonBefore;
 
         print_result(
             !deactivated.failed() &&
             !manager.has_active_tool(),
             "deactivate removeu tool ativa");
 
-        const ToolResult noActive =
-            manager.handle_event(
-                context,
-                ToolEvent{});
+        return
+            !deactivated.failed() &&
+            !manager.has_active_tool();
+    }
+
+    struct SharedDragObservation {
+        int cancelCount = 0;
+        int deactivateCount = 0;
+
+        ToolCancelReason lastCancelReason =
+            ToolCancelReason::InvalidState;
+    };
+
+    /**
+     * @brief Drag fixture that writes lifecycle observations outside its lifetime.
+     */
+    class ObservedDragTool final : public DragTool {
+    public:
+        explicit ObservedDragTool(
+            SharedDragObservation& observation)
+            : DragTool(
+                make_drag_descriptor(
+                    "editor.test.observed-drag",
+                    "Observed Drag"),
+                DragCompletionPolicy::
+                WaitForExplicitConfirmation),
+            observation_(&observation) {
+        }
+
+    protected:
+        ToolResult on_deactivate(
+            ToolContext& context) override {
+
+            (void)context;
+
+            ++observation_->deactivateCount;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Observed tool deactivated.");
+        }
+
+        ToolResult on_begin_drag(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+            (void)event;
+
+            return ToolResult::started(
+                EditorDirtyFlags::None,
+                "Observed drag started.");
+        }
+
+        ToolResult on_update_drag(
+            ToolContext& context,
+            const ToolEvent& event) override {
+
+            (void)context;
+            (void)event;
+
+            return ToolResult::updated(
+                EditorDirtyFlags::None,
+                "Observed drag updated.");
+        }
+
+        ToolResult on_confirm_drag(
+            ToolContext& context) override {
+
+            (void)context;
+
+            return ToolResult::confirmed(
+                EditorDirtyFlags::None,
+                "Observed drag confirmed.");
+        }
+
+        ToolResult on_cancel_drag(
+            ToolContext& context,
+            ToolCancelReason reason) override {
+
+            (void)context;
+
+            ++observation_->cancelCount;
+            observation_->lastCancelReason = reason;
+
+            return ToolResult::cancelled(
+                EditorDirtyFlags::Render,
+                "Observed drag cancelled.");
+        }
+
+    private:
+        SharedDragObservation* observation_ = nullptr;
+    };
+
+    bool test_deactivation_cancel_reason() {
+        std::cout
+            << "\n=== ModalTool: motivo ao desativar ===\n";
+
+        Editor editor{};
+        editor.clear_dirty();
+
+        ToolContext context{ editor };
+        ToolRegistry registry{};
+
+        SharedDragObservation observation{};
+
+        registry.register_tool(
+            make_drag_descriptor(
+                "editor.test.observed-drag",
+                "Observed Drag"),
+            [&observation] {
+                return std::make_unique<ObservedDragTool>(
+                    observation);
+            });
+
+        ToolManager manager{ registry };
+
+        manager.activate_tool(
+            context,
+            ToolId{ "editor.test.observed-drag" });
+
+        manager.handle_event(
+            context,
+            make_pointer_event(
+                ToolEventType::PointerPress,
+                ToolPointerButton::Primary,
+                5.0f,
+                5.0f));
+
+        const ToolResult deactivated =
+            manager.deactivate_tool(context);
+
+        print_tool_result(
+            "deactivate observed drag",
+            deactivated);
+
+        std::cout
+            << "  cancel reason: "
+            << cancel_reason_name(
+                observation.lastCancelReason)
+            << '\n';
 
         print_result(
-            noActive.code ==
-            ToolResultCode::Ignored,
-            "evento sem tool ativa foi ignorado");
+            observation.cancelCount == 1,
+            "deactivate cancelou drag uma vez");
+
+        print_result(
+            observation.lastCancelReason ==
+            ToolCancelReason::ToolDeactivated,
+            "deactivate informou ToolDeactivated");
+
+        print_result(
+            observation.deactivateCount == 1,
+            "hook on_deactivate foi chamado uma vez");
+
+        print_result(
+            has_flag(
+                editor.dirty_flags(),
+                EditorDirtyFlags::Render),
+            "dirty flags do cancel foram preservadas");
+
+        print_result(
+            !manager.has_active_tool(),
+            "manager ficou sem tool ativa");
 
         return
-            blocked.failed() &&
-            failing.failed() &&
-            !switched.failed() &&
-            sameTool.code ==
-            ToolResultCode::Consumed &&
-            !manager.has_active_tool() &&
-            noActive.code ==
+            !deactivated.failed() &&
+            observation.cancelCount == 1 &&
+            observation.lastCancelReason ==
+            ToolCancelReason::ToolDeactivated &&
+            observation.deactivateCount == 1 &&
+            !manager.has_active_tool();
+    }
+
+    bool test_events_while_inactive() {
+        std::cout
+            << "\n=== ModalTool: eventos sem ativacao ===\n";
+
+        Editor editor{};
+        ToolContext context{ editor };
+
+        DummyDragTool tool{
+            make_drag_descriptor(
+                "editor.test.inactive-drag",
+                "Inactive Drag"),
+            DragCompletionPolicy::ConfirmOnRelease
+        };
+
+        const ToolResult eventResult =
+            tool.handle_event(
+                context,
+                make_pointer_event(
+                    ToolEventType::PointerPress,
+                    ToolPointerButton::Primary,
+                    0.0f,
+                    0.0f));
+
+        const ToolResult confirmResult =
+            tool.confirm(context);
+
+        const ToolResult cancelResult =
+            tool.cancel(context);
+
+        print_result(
+            tool.state() == ToolState::Inactive,
+            "tool comeca Inactive");
+
+        print_result(
+            eventResult.code ==
+            ToolResultCode::Ignored,
+            "evento em tool inativa foi ignorado");
+
+        print_result(
+            confirmResult.code ==
+            ToolResultCode::Ignored,
+            "confirm em tool inativa foi ignorado");
+
+        print_result(
+            cancelResult.code ==
+            ToolResultCode::Ignored,
+            "cancel em tool inativa foi ignorado");
+
+        return
+            tool.state() == ToolState::Inactive &&
+            eventResult.code ==
+            ToolResultCode::Ignored &&
+            confirmResult.code ==
+            ToolResultCode::Ignored &&
+            cancelResult.code ==
             ToolResultCode::Ignored;
     }
 
@@ -741,20 +1108,23 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Tool Management Smoke Test ===\n";
+        << "=== Locus3D Editor Tool Interaction Smoke Test ===\n";
 
     bool ok = true;
 
-    ok = test_registry() && ok;
-    ok = test_manager_activation_and_events() && ok;
-    ok = test_manager_cancel_on_focus_loss() && ok;
-    ok = test_manager_switch_and_restore() && ok;
+    ok = test_automatic_confirmation() && ok;
+    ok = test_explicit_confirmation() && ok;
+    ok = test_user_cancellation() && ok;
+    ok = test_deactivation_cancels_drag() && ok;
+    ok = test_deactivation_cancel_reason() && ok;
+    ok = test_events_while_inactive() && ok;
 
-    std::cout << "\n=== Resultado final ===\n";
+    std::cout
+        << "\n=== Resultado final ===\n";
 
     print_result(
         ok,
-        "ToolRegistry e ToolManager smoke test");
+        "ModalTool e DragTool smoke test");
 
     return ok ? 0 : 1;
 }

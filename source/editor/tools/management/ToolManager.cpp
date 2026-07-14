@@ -4,6 +4,7 @@
  */
 
 #include "editor/tools/management/ToolManager.h"
+#include "editor/tools/interaction/ModalTool.h"
 
 #include <utility>
 
@@ -120,6 +121,17 @@ namespace locus::editor {
         case ToolEventType::FocusLost:
             if (active_.instance->state() ==
                 ToolState::Interacting) {
+
+                if (auto* modal =
+                    dynamic_cast<ModalTool*>(
+                        active_.instance.get())) {
+
+                    return apply_result(
+                        context,
+                        modal->cancel(
+                            context,
+                            ToolCancelReason::FocusLost));
+                }
 
                 return cancel_active(context);
             }
