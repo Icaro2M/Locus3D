@@ -209,18 +209,18 @@ source\editor
 |   |       ToolManager.h
 |   |       ToolManager.cpp
 |   |
-|   +---interaction [!]
+|   +---interaction
 |   |       ToolCancelReason.h
 |   |       ToolCapture.h
 |   |       ModalTool.h
 |   |       DragTool.h
 |   |       DragTool.cpp
 |   |
-|   +---selection [!]
+|   +---selection
 |   |   |   SelectTool.h
 |   |   |   SelectTool.cpp
 |   |   |
-|   |   \---shapes [!]
+|   |   \---shapes
 |   |           ISelectionShape.h
 |   |           PointSelectionShape.h
 |   |           PointSelectionShape.cpp
@@ -231,12 +231,12 @@ source\editor
 |   |           LassoSelectionShape.h [!]
 |   |           LassoSelectionShape.cpp [!]
 |   |
-|   +---transform [!]
-|   |       TransformTool.h [!]
-|   |       TransformTool.cpp [!]
-|   |       ITransformToolSession.h [!]
-|   |       ObjectTransformToolSession.h [!]
-|   |       ObjectTransformToolSession.cpp [!]
+|   +---transform
+|   |       TransformTool.h
+|   |       TransformTool.cpp
+|   |       ITransformToolSession.h
+|   |       ObjectTransformToolSession.h
+|   |       ObjectTransformToolSession.cpp
 |   |       MeshTransformToolSession.h [!]
 |   |       MeshTransformToolSession.cpp [!]
 |   |       PivotTool.h [!]

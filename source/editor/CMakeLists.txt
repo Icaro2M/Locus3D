@@ -194,7 +194,12 @@ target_sources(locus3d_editor
          "tools/selection/SelectTool.cpp"
          "command/transform/NodeTransformChange.h"
          "command/transform/SetNodeTransformsCommand.h"
-         "command/transform/SetNodeTransformsCommand.cpp")
+         "command/transform/SetNodeTransformsCommand.cpp"
+         "tools/transform/ITransformToolSession.h"
+         "tools/transform/ObjectTransformToolSession.h"
+         "tools/transform/ObjectTransformToolSession.cpp"
+         "tools/transform/TransformTool.h"
+         "tools/transform/TransformTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

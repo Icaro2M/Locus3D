@@ -69,6 +69,20 @@ namespace locus::editor {
 
     protected:
         /**
+         * @brief Handles pointer movement while no drag interaction is active.
+         *
+         * Derived tools may use this hook to update hover, cursors, guides, or
+         * other ephemeral state before pointer capture begins.
+         *
+         * @param context Tool context.
+         * @param event Pointer movement event.
+         * @return Event handling result.
+         */
+        virtual ToolResult on_pointer_hover(
+            ToolContext& context,
+            const ToolEvent& event);
+
+        /**
          * @brief Checks whether an event may begin a drag.
          *
          * The default accepts a primary pointer press while the tool is Ready.

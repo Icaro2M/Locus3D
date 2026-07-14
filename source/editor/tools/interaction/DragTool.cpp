@@ -26,6 +26,16 @@ namespace locus::editor {
         return completionPolicy_;
     }
 
+    ToolResult DragTool::on_pointer_hover(
+        ToolContext& context,
+        const ToolEvent& event) {
+
+        (void)context;
+        (void)event;
+
+        return ToolResult::ignored();
+    }
+
     bool DragTool::can_begin_drag(
         const ToolContext& context,
         const ToolEvent& event) const {
@@ -145,6 +155,14 @@ namespace locus::editor {
     ToolResult DragTool::handle_pointer_move(
         ToolContext& context,
         const ToolEvent& event) {
+
+        if (state() == ToolState::Ready &&
+            !capture_.is_active()) {
+
+            return on_pointer_hover(
+                context,
+                event);
+        }
 
         if (state() != ToolState::Interacting ||
             !capture_.has_pointer()) {
