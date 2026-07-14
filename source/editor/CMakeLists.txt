@@ -185,7 +185,13 @@ target_sources(locus3d_editor
          "tools/interaction/ModalTool.h"
          "tools/interaction/ModalTool.cpp"
          "tools/interaction/DragTool.h"
-         "tools/interaction/DragTool.cpp")
+         "tools/interaction/DragTool.cpp"
+         "tools/core/ToolContext.cpp"
+         "tools/selection/shapes/ISelectionShape.h"
+         "tools/selection/shapes/PointSelectionShape.h"
+         "tools/selection/shapes/PointSelectionShape.cpp"
+         "tools/selection/SelectTool.h"
+         "tools/selection/SelectTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

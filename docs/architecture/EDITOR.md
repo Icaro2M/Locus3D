@@ -196,6 +196,7 @@ source\editor
 |   |       ToolInputState.h [!]
 |   |       ToolResult.h
 |   |       ToolContext.h
+|   |       ToolContext.cpp
 |   |       ITool.h
 |   |
 |   +---management
@@ -213,13 +214,13 @@ source\editor
 |   |       DragTool.cpp
 |   |
 |   +---selection [!]
-|   |   |   SelectTool.h [!]
-|   |   |   SelectTool.cpp [!]
+|   |   |   SelectTool.h
+|   |   |   SelectTool.cpp
 |   |   |
 |   |   \---shapes [!]
-|   |           ISelectionShape.h [!]
-|   |           PointSelectionShape.h [!]
-|   |           PointSelectionShape.cpp [!]
+|   |           ISelectionShape.h
+|   |           PointSelectionShape.h
+|   |           PointSelectionShape.cpp
 |   |           BoxSelectionShape.h [!]
 |   |           BoxSelectionShape.cpp [!]
 |   |           CircleSelectionShape.h [!]
@@ -398,11 +399,6 @@ Initial implementation should probably begin with a small, stable foundation:
 
 - [!] `tools/Tools.h`
 - [!] `tools/core/ToolInputState.h`
-- [!] `tools/selection/SelectTool.h`
-- [!] `tools/selection/SelectTool.cpp`
-- [!] `tools/selection/shapes/ISelectionShape.h`
-- [!] `tools/selection/shapes/PointSelectionShape.h`
-- [!] `tools/selection/shapes/PointSelectionShape.cpp`
 - [!] `tools/selection/shapes/BoxSelectionShape.h`
 - [!] `tools/selection/shapes/BoxSelectionShape.cpp`
 - [!] `tools/selection/shapes/CircleSelectionShape.h`

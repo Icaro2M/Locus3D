@@ -6,26 +6,61 @@
 #pragma once
 
 #include "editor/Editor.h"
+#include "editor/command/CommandResult.h"
+#include "editor/scene/SceneNodeId.h"
+
+#include "graphics/picking/PickingId.h"
+
+#include <memory>
 
 namespace locus::editor {
 
+    class CommandDispatcher;
+    class HistoryStack;
+    class ICommand;
+    class PickingSync;
+
     /**
-     * @brief Editor access boundary provided to active tools.
+     * @brief Runtime services and editor access provided to active tools.
      *
-     * Tools should use this context instead of storing permanent references to
-     * editor subsystems. External rendering, picking, platform input, and other
-     * application services remain outside this initial context until concrete
-     * integration requirements are introduced.
+     * ToolContext does not own any referenced service. The application or editor
+     * runtime that creates this context must keep the supplied services alive for
+     * the entire period in which the context is used.
+     *
+     * Platform input, GLFW state, GPU picking buffers, and viewport ownership
+     * remain outside this class.
      */
     class ToolContext {
     public:
         /**
-         * @brief Creates a tool context.
+         * @brief Creates a tool context with editor access only.
+         *
+         * This constructor remains useful for tools and tests that do not execute
+         * commands or resolve graphics picking identifiers.
          *
          * @param editor Editor facade used by tools.
          */
         explicit ToolContext(Editor& editor)
             : editor_(&editor) {
+        }
+
+        /**
+         * @brief Creates a complete tool runtime context.
+         *
+         * @param editor Editor facade used by tools.
+         * @param dispatcher Dispatcher used for command execution.
+         * @param history Undo and redo history used for persistent commands.
+         * @param pickingSync Mapping between graphics picking IDs and scene nodes.
+         */
+        ToolContext(
+            Editor& editor,
+            CommandDispatcher& dispatcher,
+            HistoryStack& history,
+            PickingSync& pickingSync)
+            : editor_(&editor),
+            dispatcher_(&dispatcher),
+            history_(&history),
+            pickingSync_(&pickingSync) {
         }
 
         /**
@@ -148,6 +183,47 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Checks whether command execution services are available.
+         *
+         * @return True when dispatcher and history references are configured.
+         */
+        [[nodiscard]] bool has_command_services() const {
+            return
+                dispatcher_ != nullptr &&
+                history_ != nullptr;
+        }
+
+        /**
+         * @brief Executes and stores an undoable editor command.
+         *
+         * The command is routed through HistoryStack, which delegates execution to
+         * CommandDispatcher and stores the command only when appropriate.
+         *
+         * @param command Owned command to execute.
+         * @return Command execution result.
+         */
+        CommandResult execute_command(
+            std::unique_ptr<ICommand> command);
+
+        /**
+         * @brief Checks whether picking synchronization is available.
+         *
+         * @return True when a PickingSync reference is configured.
+         */
+        [[nodiscard]] bool has_picking_sync() const {
+            return pickingSync_ != nullptr;
+        }
+
+        /**
+         * @brief Resolves a graphics picking identifier into a scene node.
+         *
+         * @param pickingId Compact graphics picking identifier.
+         * @return Associated scene node, or invalid when unavailable or unmapped.
+         */
+        [[nodiscard]] SceneNodeId resolve_scene_node(
+            graphics::PickingId pickingId) const;
+
+        /**
          * @brief Marks editor subsystems as dirty.
          *
          * @param flags Dirty flags to add.
@@ -158,6 +234,9 @@ namespace locus::editor {
 
     private:
         Editor* editor_ = nullptr;
+        CommandDispatcher* dispatcher_ = nullptr;
+        HistoryStack* history_ = nullptr;
+        PickingSync* pickingSync_ = nullptr;
     };
 
 } // namespace locus::editor

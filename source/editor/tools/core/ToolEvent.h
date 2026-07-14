@@ -10,6 +10,8 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
+#include "graphics/picking/PickingId.h"
+
 namespace locus::editor {
 
     /**
@@ -207,6 +209,24 @@ namespace locus::editor {
         glm::vec2 viewportDelta{ 0.0f, 0.0f };
 
         /**
+         * @brief Compact picking identifier sampled at the pointer position.
+         *
+         * The application layer reads this value from the graphics picking buffer.
+         * The editor resolves it into a SceneNodeId through PickingSync.
+         */
+        graphics::PickingId pickingId =
+            graphics::PickingId::invalid();
+
+        /**
+         * @brief Checks whether the pointer has a valid picking sample.
+         *
+         * @return True when the sampled picking identifier is valid.
+         */
+        [[nodiscard]] bool has_picking_hit() const {
+            return pickingId.is_valid();
+        }
+
+        /**
          * @brief World-space ray passing through the pointer position.
          */
         ToolPointerRay worldRay{};
@@ -230,6 +250,13 @@ namespace locus::editor {
          * @brief Scale suitable for world-space interaction handles.
          */
         float visualScale = 1.0f;
+
+        /**
+        * @brief Clears the current graphics picking sample.
+        */
+        void clear_picking_hit() {
+            pickingId = graphics::PickingId::invalid();
+        }
     };
 
     /**
