@@ -12,12 +12,13 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
-#include "editor/tools/mesh/face/ExtrudeFaceTool.h"
+#include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <glm/geometric.hpp>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -29,9 +30,9 @@ namespace {
     using locus::editor::Editor;
     using locus::editor::EditorDirtyFlags;
     using locus::editor::EditorMode;
-    using locus::editor::ExtrudeFaceTool;
-    using locus::editor::ExtrudeFaceToolOptions;
     using locus::editor::HistoryStack;
+    using locus::editor::InsetFaceTool;
+    using locus::editor::InsetFaceToolOptions;
     using locus::editor::MeshNode;
     using locus::editor::PickingSync;
     using locus::editor::SceneNodeId;
@@ -125,7 +126,7 @@ namespace {
 
     QuadFixture create_quad(
         Editor& editor,
-        const std::string& name = "Extrude Face Fixture")
+        const std::string& name = "Inset Face Fixture")
     {
         QuadFixture fixture{};
 
@@ -294,12 +295,12 @@ namespace {
         Editor editor{};
         ToolServices services{ editor };
 
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         ok &= expect(
             tool.state() ==
             ToolState::Inactive,
-            "ExtrudeFaceTool comeca Inactive");
+            "InsetFaceTool comeca Inactive");
 
         ok &= expect(
             !tool.can_activate(
@@ -329,26 +330,26 @@ namespace {
 
         ok &= expect(
             tool.descriptor().is_valid(),
-            "descriptor da extrusao e valido");
+            "descriptor do inset e valido");
 
         ok &= expect(
             tool.descriptor().id.value ==
             std::string{
-                ExtrudeFaceTool::Id
+                InsetFaceTool::Id
             },
-            "descriptor usa id estavel da extrusao");
+            "descriptor usa id estavel do inset");
 
-        ExtrudeFaceToolOptions options =
+        InsetFaceToolOptions options =
             tool.options();
 
-        options.distancePerPixel =
-            0.05f;
+        options.factorPerPixel =
+            0.01f;
 
-        options.distanceEpsilon =
+        options.factorEpsilon =
             0.0001f;
 
-        options.keepSourceFace =
-            true;
+        options.maximumFactor =
+            0.8f;
 
         ok &= expect(
             tool.set_options(options),
@@ -356,13 +357,45 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.options().distancePerPixel,
-                0.05f),
-            "distancePerPixel foi atualizado");
+                tool.options().factorPerPixel,
+                0.01f),
+            "factorPerPixel foi atualizado");
 
         ok &= expect(
-            tool.options().keepSourceFace,
-            "keepSourceFace foi atualizado");
+            nearly_equal(
+                tool.options().maximumFactor,
+                0.8f),
+            "maximumFactor foi atualizado");
+
+        InsetFaceToolOptions invalidOptions{};
+
+        invalidOptions.factorPerPixel =
+            -1.0f;
+
+        invalidOptions.factorEpsilon =
+            -0.5f;
+
+        invalidOptions.maximumFactor =
+            2.0f;
+
+        ok &= expect(
+            tool.set_options(
+                invalidOptions),
+            "opcoes invalidas sao aceitas e sanitizadas");
+
+        ok &= expect(
+            nearly_equal(
+                tool.options().factorPerPixel,
+                0.0f),
+            "factorPerPixel negativo e limitado a zero");
+
+        ok &= expect(
+            tool.options().factorEpsilon >= 0.0f,
+            "factorEpsilon e mantido nao negativo");
+
+        ok &= expect(
+            tool.options().maximumFactor < 1.0f,
+            "maximumFactor e mantido abaixo de um");
 
         tool.deactivate(
             services.context);
@@ -373,11 +406,12 @@ namespace {
     bool test_preview_is_non_destructive()
     {
         std::cout
-            << "\n=== Non-destructive extrusion preview ===\n";
+            << "\n=== Non-destructive inset preview ===\n";
 
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -389,7 +423,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         tool.activate(
             services.context);
@@ -404,27 +438,24 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const LEM& originalMesh =
-            node->mesh();
-
         const std::size_t originalVertices =
             active_vertex_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalEdges =
             active_edge_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalLoops =
             active_loop_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalFaces =
             active_face_count(
-                originalMesh);
+                node->mesh());
 
         const glm::vec3 originalPosition =
-            originalMesh
+            node->mesh()
             .vertex(fixture.vertex0)
             .position;
 
@@ -440,7 +471,7 @@ namespace {
         ok &= expect(
             pressResult.code ==
             ToolResultCode::Started,
-            "pointer press inicia extrusao");
+            "pointer press inicia inset");
 
         ok &= expect(
             tool.state() ==
@@ -449,15 +480,21 @@ namespace {
 
         ok &= expect(
             tool.mesh_session().is_active(),
-            "extrusao inicia MeshOperationSession");
+            "inset inicia MeshOperationSession");
+
+        ok &= expect(
+            nearly_equal(
+                tool.factor(),
+                0.0f),
+            "fator inicial e zero");
 
         ok &= expect(
             !tool.has_operation_preview(),
-            "distancia inicial zero nao gera preview visivel");
+            "fator inicial zero nao gera preview visivel");
 
         ok &= expect(
             tool.operation_preview().is_empty(),
-            "preview inicial da extrusao e Empty");
+            "preview inicial do inset e Empty");
 
         const ToolResult moveResult =
             tool.handle_event(
@@ -465,31 +502,31 @@ namespace {
                 make_pointer_move(
                     glm::vec2{
                         100.0f,
-                        50.0f
+                        0.0f
                     },
                     glm::vec2{
                         0.0f,
-                        -50.0f
+                        -100.0f
                     }));
 
         ok &= expect(
             moveResult.code ==
             ToolResultCode::Updated,
-            "pointer move atualiza extrusao");
+            "pointer move atualiza inset");
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
+                tool.factor(),
                 0.5f),
-            "arrasto de 50 pixels gera distancia 0.5");
+            "arrasto de 100 pixels gera fator 0.5");
 
         ok &= expect(
             tool.has_operation_preview(),
-            "distancia valida gera preview pronto");
+            "fator valido gera preview pronto");
 
         ok &= expect(
             tool.operation_preview().is_ready(),
-            "OperationPreview da extrusao fica Ready");
+            "OperationPreview do inset fica Ready");
 
         ok &= expect(
             tool.operation_preview()
@@ -504,36 +541,40 @@ namespace {
             .empty(),
             "preview possui geometria solida");
 
-        const LEM& meshAfterPreview =
-            node->mesh();
+        ok &= expect(
+            !tool.operation_preview()
+            .mesh()
+            .wire_mesh()
+            .empty(),
+            "preview possui geometria wire");
 
         ok &= expect(
             active_vertex_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalVertices,
             "preview nao altera vertices autoritativos");
 
         ok &= expect(
             active_edge_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalEdges,
             "preview nao altera arestas autoritativas");
 
         ok &= expect(
             active_loop_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalLoops,
             "preview nao altera loops autoritativos");
 
         ok &= expect(
             active_face_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalFaces,
             "preview nao altera faces autoritativas");
 
         ok &= expect(
             nearly_equal(
-                meshAfterPreview
+                node->mesh()
                 .vertex(fixture.vertex0)
                 .position,
                 originalPosition),
@@ -545,7 +586,7 @@ namespace {
 
         ok &= expect(
             !tool.set_options(
-                ExtrudeFaceToolOptions{}),
+                InsetFaceToolOptions{}),
             "opcoes nao mudam durante interacao");
 
         tool.cancel(
@@ -562,6 +603,7 @@ namespace {
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -573,7 +615,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         tool.activate(
             services.context);
@@ -622,9 +664,9 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
-                1.0f),
-            "arrasto configura distancia final 1.0");
+                tool.factor(),
+                0.5f),
+            "arrasto configura fator final 0.5");
 
         const ToolResult releaseResult =
             tool.handle_event(
@@ -638,7 +680,7 @@ namespace {
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "pointer release confirma extrusao");
+            "pointer release confirma inset");
 
         ok &= expect(
             tool.state() ==
@@ -667,43 +709,53 @@ namespace {
                 EditorDirtyFlags::Picking),
             "commit marca Picking dirty");
 
-        const LEM& extrudedMesh =
+        const LEM& insetMesh =
             node->mesh();
 
         ok &= expect(
             active_vertex_count(
-                extrudedMesh) ==
+                insetMesh) ==
             originalVertices + 4,
-            "extrusao adiciona quatro vertices");
+            "inset adiciona quatro vertices internos");
 
         ok &= expect(
             active_face_count(
-                extrudedMesh) ==
-            5,
-            "quad extrudado possui uma tampa e quatro laterais");
+                insetMesh) == 5,
+            "quad insetado possui face interna e quatro faces externas");
 
         ok &= expect(
             active_face_count(
-                extrudedMesh) >
+                insetMesh) >
             originalFaces,
-            "extrusao aumenta quantidade de faces");
+            "inset aumenta quantidade de faces");
 
         ok &= expect(
             active_edge_count(
-                extrudedMesh) >
+                insetMesh) >
             originalEdges,
-            "extrusao aumenta quantidade de arestas");
+            "inset aumenta quantidade de arestas");
 
         ok &= expect(
             active_loop_count(
-                extrudedMesh) >
+                insetMesh) >
             originalLoops,
-            "extrusao aumenta quantidade de loops");
+            "inset aumenta quantidade de loops");
 
         ok &= expect(
-            !extrudedMesh.is_valid(
+            !insetMesh.is_valid(
                 fixture.face),
-            "face original e removida por padrao");
+            "face original e substituida pelo inset");
+
+        ok &= expect(
+            insetMesh.is_valid(
+                fixture.vertex0) &&
+            insetMesh.is_valid(
+                fixture.vertex1) &&
+            insetMesh.is_valid(
+                fixture.vertex2) &&
+            insetMesh.is_valid(
+                fixture.vertex3),
+            "vertices externos originais permanecem validos");
 
         ok &= expect(
             services.history.can_undo(),
@@ -714,13 +766,13 @@ namespace {
             "historico possui uma entrada");
 
         ok &= expect(
-            !services.history.can_redo(),
-            "redo nao esta disponivel antes do undo");
+            services.history.undo_name() ==
+            "Inset Faces",
+            "entrada possui nome Inset Faces");
 
         ok &= expect(
-            services.history.undo_name() ==
-            "Extrude Faces",
-            "entrada possui nome Extrude Faces");
+            !services.history.can_redo(),
+            "redo nao esta disponivel antes do undo");
 
         const CommandResult undoResult =
             services.history.undo(
@@ -728,7 +780,7 @@ namespace {
 
         ok &= expect(
             undoResult.success,
-            "undo da extrusao funciona");
+            "undo do inset funciona");
 
         ok &= expect(
             active_vertex_count(
@@ -765,7 +817,7 @@ namespace {
 
         ok &= expect(
             services.history.redo_name() ==
-            "Extrude Faces",
+            "Inset Faces",
             "entrada de redo preserva nome");
 
         const CommandResult redoResult =
@@ -774,28 +826,23 @@ namespace {
 
         ok &= expect(
             redoResult.success,
-            "redo da extrusao funciona");
+            "redo do inset funciona");
 
         ok &= expect(
             active_vertex_count(
                 node->mesh()) ==
             originalVertices + 4,
-            "redo restaura vertices extrudados");
+            "redo restaura vertices internos");
 
         ok &= expect(
             active_face_count(
-                node->mesh()) ==
-            5,
-            "redo restaura topologia extrudada");
+                node->mesh()) == 5,
+            "redo restaura topologia insetada");
 
         ok &= expect(
             !node->mesh().is_valid(
                 fixture.face),
-            "redo remove novamente a face original");
-
-        ok &= expect(
-            services.history.can_undo(),
-            "undo volta a ficar disponivel apos redo");
+            "redo substitui novamente a face original");
 
         return ok;
     }
@@ -808,6 +855,7 @@ namespace {
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -819,7 +867,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         tool.activate(
             services.context);
@@ -893,20 +941,26 @@ namespace {
             "cancel nao altera faces");
 
         ok &= expect(
+            node->mesh().is_valid(
+                fixture.face),
+            "cancel preserva face original");
+
+        ok &= expect(
             services.history.empty(),
             "cancel nao cria historico");
 
         return ok;
     }
 
-    bool test_zero_distance_confirmation()
+    bool test_zero_factor_confirmation()
     {
         std::cout
-            << "\n=== Zero-distance confirmation ===\n";
+            << "\n=== Zero-factor confirmation ===\n";
 
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -918,7 +972,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         tool.activate(
             services.context);
@@ -967,29 +1021,30 @@ namespace {
             active_vertex_count(
                 node->mesh()) ==
             originalVertices,
-            "distancia zero nao cria vertices");
+            "fator zero nao cria vertices");
 
         ok &= expect(
             active_face_count(
                 node->mesh()) ==
             originalFaces,
-            "distancia zero nao muda faces");
+            "fator zero nao muda faces");
 
         ok &= expect(
             services.history.empty(),
-            "distancia zero nao cria entrada no historico");
+            "fator zero nao cria entrada no historico");
 
         return ok;
     }
 
-    bool test_visual_scale_and_direction()
+    bool test_factor_clamping()
     {
         std::cout
-            << "\n=== Visual scale and drag direction ===\n";
+            << "\n=== Factor clamping ===\n";
 
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -1002,15 +1057,86 @@ namespace {
 
         ToolServices services{ editor };
 
-        ExtrudeFaceToolOptions options{};
+        InsetFaceToolOptions options{};
 
-        options.distancePerPixel =
+        options.factorPerPixel =
             0.01f;
+
+        options.maximumFactor =
+            0.75f;
+
+        InsetFaceTool tool{
+            options
+        };
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    200.0f
+                }));
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        ok &= expect(
+            nearly_equal(
+                tool.factor(),
+                0.75f),
+            "fator e limitado por maximumFactor");
+
+        ok &= expect(
+            tool.has_operation_preview(),
+            "fator limitado ainda produz preview valido");
+
+        tool.cancel(
+            services.context);
+
+        return ok;
+    }
+
+    bool test_visual_scale_and_direction()
+    {
+        std::cout
+            << "\n=== Visual scale and drag direction ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_face(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+
+        InsetFaceToolOptions options{};
+
+        options.factorPerPixel =
+            0.005f;
+
+        options.maximumFactor =
+            0.95f;
 
         options.invertDragDirection =
             true;
 
-        ExtrudeFaceTool tool{
+        InsetFaceTool tool{
             options
         };
 
@@ -1031,14 +1157,32 @@ namespace {
             make_pointer_move(
                 glm::vec2{
                     0.0f,
+                    150.0f
+                }));
+
+        ok &= expect(
+            nearly_equal(
+                tool.factor(),
+                0.5f),
+            "visualScale e invertDragDirection afetam fator");
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    0.0f,
                     50.0f
                 }));
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
-                -1.0f),
-            "visualScale e invertDragDirection afetam distancia");
+                tool.factor(),
+                0.0f),
+            "arrasto no sentido oposto e limitado a zero");
+
+        ok &= expect(
+            tool.operation_preview().is_empty(),
+            "fator retornando a zero produz preview Empty");
 
         tool.cancel(
             services.context);
@@ -1046,34 +1190,44 @@ namespace {
         return ok;
     }
 
-    bool test_keep_source_face()
+    bool test_multiple_faces()
     {
         std::cout
-            << "\n=== Keep source face ===\n";
+            << "\n=== Multiple selected faces ===\n";
 
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
-        const QuadFixture fixture =
-            create_quad(editor);
+        const QuadFixture firstFixture =
+            create_quad(
+                editor,
+                "First Quad");
 
-        select_face(
-            editor,
-            fixture);
+        const QuadFixture secondFixture =
+            create_quad(
+                editor,
+                "Second Quad");
+
+        /*
+         * MeshToolTarget supports only one active mesh node. The second fixture
+         * exists only to verify that selection from another node does not become
+         * part of the captured target.
+         */
+        auto& selection =
+            editor.selection().mesh();
+
+        selection.set_active_mesh(
+            firstFixture.nodeId);
+
+        selection.set_face(
+            firstFixture.face);
 
         ToolServices services{ editor };
-
-        ExtrudeFaceToolOptions options{};
-
-        options.keepSourceFace =
-            true;
-
-        ExtrudeFaceTool tool{
-            options
-        };
+        InsetFaceTool tool{};
 
         tool.activate(
             services.context);
@@ -1085,6 +1239,12 @@ namespace {
                     0.0f,
                     100.0f
                 }));
+
+        selection.set_active_mesh(
+            secondFixture.nodeId);
+
+        selection.set_face(
+            secondFixture.face);
 
         tool.handle_event(
             services.context,
@@ -1103,35 +1263,30 @@ namespace {
                         0.0f
                     }));
 
-        const MeshNode* node =
+        const MeshNode* firstNode =
             editor.scene().find_mesh(
-                fixture.nodeId);
+                firstFixture.nodeId);
+
+        const MeshNode* secondNode =
+            editor.scene().find_mesh(
+                secondFixture.nodeId);
 
         ok &= expect(
             result.code ==
             ToolResultCode::Confirmed,
-            "extrusao com keepSourceFace confirma");
+            "inset confirma apos mudanca de selecao");
 
         ok &= expect(
-            node != nullptr,
-            "node continua disponivel");
-
-        if (node) {
-            ok &= expect(
-                node->mesh().is_valid(
-                    fixture.face),
-                "keepSourceFace preserva face original");
-
-            ok &= expect(
-                active_face_count(
-                    node->mesh()) ==
-                6,
-                "keepSourceFace produz original, tampa e quatro laterais");
-        }
+            firstNode != nullptr &&
+            active_face_count(
+                firstNode->mesh()) == 5,
+            "inset modifica o node capturado");
 
         ok &= expect(
-            services.history.undo_size() == 1,
-            "keepSourceFace ainda cria uma entrada de historico");
+            secondNode != nullptr &&
+            active_face_count(
+                secondNode->mesh()) == 1,
+            "inset nao modifica o node selecionado depois");
 
         return ok;
     }
@@ -1144,6 +1299,7 @@ namespace {
         bool ok = true;
 
         Editor editor{};
+
         editor.set_mode(
             EditorMode::Mesh);
 
@@ -1158,7 +1314,7 @@ namespace {
             editor
         };
 
-        ExtrudeFaceTool tool{};
+        InsetFaceTool tool{};
 
         tool.activate(
             context);
@@ -1219,7 +1375,7 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor ExtrudeFaceTool "
+        << "=== Locus3D Editor InsetFaceTool "
         << "Smoke Test ===\n";
 
     bool ok = true;
@@ -1228,9 +1384,10 @@ int main()
     ok &= test_preview_is_non_destructive();
     ok &= test_commit_and_history();
     ok &= test_cancel_does_not_commit();
-    ok &= test_zero_distance_confirmation();
+    ok &= test_zero_factor_confirmation();
+    ok &= test_factor_clamping();
     ok &= test_visual_scale_and_direction();
-    ok &= test_keep_source_face();
+    ok &= test_multiple_faces();
     ok &= test_missing_command_services();
 
     std::cout
@@ -1239,14 +1396,14 @@ int main()
     if (!ok) {
         std::cout
             << "[FAIL] Um ou mais testes do "
-            << "ExtrudeFaceTool falharam.\n";
+            << "InsetFaceTool falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
         << "[OK] Todos os testes do "
-        << "ExtrudeFaceTool passaram.\n";
+        << "InsetFaceTool passaram.\n";
 
     return EXIT_SUCCESS;
 }

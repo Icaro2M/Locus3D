@@ -208,7 +208,9 @@ target_sources(locus3d_editor
          "tools/mesh/core/MeshDragOperationTool.h"
          "tools/mesh/core/MeshDragOperationTool.cpp"
          "tools/mesh/face/ExtrudeFaceTool.h"
-         "tools/mesh/face/ExtrudeFaceTool.cpp")
+         "tools/mesh/face/ExtrudeFaceTool.cpp"
+         "tools/mesh/face/InsetFaceTool.h"
+         "tools/mesh/face/InsetFaceTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
