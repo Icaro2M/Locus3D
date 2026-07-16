@@ -3,685 +3,973 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/Editor.h"
-
-#include "editor/command/CommandDispatcher.h"
-#include "editor/history/HistoryStack.h"
-#include "editor/scene/SceneNode.h"
-#include "editor/sync/PickingSync.h"
-
-#include "editor/tools/core/ToolContext.h"
-#include "editor/tools/core/ToolEvent.h"
-#include "editor/tools/management/ToolManager.h"
-#include "editor/tools/management/ToolRegistry.h"
-#include "editor/tools/transform/TransformTool.h"
-
-#include "editor/gizmo/GizmoAxis.h"
-#include "editor/gizmo/GizmoMode.h"
+#include "editor/render/PreviewRenderAdapter.h"
+#include "editor/scene/MeshNode.h"
+#include "graphics/mesh/GpuMesh.h"
+#include "kernel/geometry/render/RenderMesh.h"
+#include "kernel/modeling/preview/OperationPreview.h"
+#include "kernel/modeling/preview/PreviewMesh.h"
 
 #include <glm/geometric.hpp>
-#include <glm/vec2.hpp>
-#include <glm/vec3.hpp>
+#include <glm/gtc/quaternion.hpp>
 
-#include <cmath>
+#include <cstdlib>
 #include <iostream>
-#include <memory>
 #include <string>
 
 namespace {
 
-    using namespace locus::editor;
+    using locus::editor::MeshNode;
+    using locus::editor::PreviewRenderAdapter;
+    using locus::editor::PreviewRenderObjects;
+    using locus::editor::PreviewRenderOptions;
+    using locus::editor::PreviewRenderResult;
+    using locus::editor::SceneNodeId;
 
-    void print_result(
-        bool condition,
-        const std::string& message) {
+    using locus::graphics::BufferUsage;
+    using locus::graphics::GpuMesh;
+    using locus::graphics::MeshUploadData;
+    using locus::graphics::PrimitiveTopology;
+    using locus::graphics::RenderLayer;
 
-        std::cout
-            << (condition ? "[OK] " : "[FAIL] ")
-            << message
-            << '\n';
-    }
+    using locus::kernel::geometry::RenderMesh;
+    using locus::kernel::modeling::OperationPreview;
+    using locus::kernel::modeling::OperationPreviewStatus;
+    using locus::kernel::modeling::PreviewMesh;
 
-    const char* result_code_name(
-        ToolResultCode code) {
-
-        switch (code) {
-        case ToolResultCode::Ignored:
-            return "Ignored";
-
-        case ToolResultCode::Consumed:
-            return "Consumed";
-
-        case ToolResultCode::Started:
-            return "Started";
-
-        case ToolResultCode::Updated:
-            return "Updated";
-
-        case ToolResultCode::Confirmed:
-            return "Confirmed";
-
-        case ToolResultCode::Cancelled:
-            return "Cancelled";
-
-        case ToolResultCode::Failed:
-            return "Failed";
+    bool expect(
+        const bool condition,
+        const std::string& message)
+    {
+        if (condition) {
+            std::cout << "[OK] " << message << '\n';
+            return true;
         }
 
-        return "Unknown";
+        std::cout << "[FAIL] " << message << '\n';
+        return false;
     }
 
-    const char* tool_state_name(
-        ToolState state) {
-
-        switch (state) {
-        case ToolState::Inactive:
-            return "Inactive";
-
-        case ToolState::Ready:
-            return "Ready";
-
-        case ToolState::Interacting:
-            return "Interacting";
-
-        case ToolState::Suspended:
-            return "Suspended";
-        }
-
-        return "Unknown";
+    bool nearly_equal(
+        const float a,
+        const float b,
+        const float epsilon = 0.0001f)
+    {
+        return std::abs(a - b) <= epsilon;
     }
 
-    const char* gizmo_axis_name(
-        GizmoAxis axis) {
-
-        switch (axis) {
-        case GizmoAxis::None:
-            return "None";
-
-        case GizmoAxis::X:
-            return "X";
-
-        case GizmoAxis::Y:
-            return "Y";
-
-        case GizmoAxis::Z:
-            return "Z";
-
-        case GizmoAxis::XY:
-            return "XY";
-
-        case GizmoAxis::XZ:
-            return "XZ";
-
-        case GizmoAxis::YZ:
-            return "YZ";
-
-        case GizmoAxis::XYZ:
-            return "XYZ";
-
-        case GizmoAxis::View:
-            return "View";
-        }
-
-        return "Unknown";
+    bool nearly_equal(
+        const glm::vec3& a,
+        const glm::vec3& b,
+        const float epsilon = 0.0001f)
+    {
+        return glm::length(a - b) <= epsilon;
     }
 
-    void print_tool_result(
-        const std::string& label,
-        const ToolResult& result) {
+    bool nearly_equal(
+        const glm::quat& a,
+        const glm::quat& b,
+        const float epsilon = 0.0001f)
+    {
+        const float directDistance =
+            glm::length(glm::vec4{
+                a.w - b.w,
+                a.x - b.x,
+                a.y - b.y,
+                a.z - b.z
+                });
 
-        std::cout << label << '\n';
-
-        std::cout
-            << "  code: "
-            << result_code_name(result.code)
-            << '\n';
-
-        std::cout
-            << "  consumed: "
-            << (result.was_consumed() ? "true" : "false")
-            << '\n';
-
-        std::cout
-            << "  failed: "
-            << (result.failed() ? "true" : "false")
-            << '\n';
-
-        std::cout
-            << "  message: "
-            << result.message
-            << '\n';
-    }
-
-    void print_position(
-        const std::string& label,
-        const glm::vec3& position) {
-
-        std::cout
-            << label
-            << ": "
-            << position.x
-            << ", "
-            << position.y
-            << ", "
-            << position.z
-            << '\n';
-    }
-
-    bool almost_equal(
-        float lhs,
-        float rhs,
-        float epsilon = 0.0001f) {
-
-        return std::abs(lhs - rhs) <= epsilon;
-    }
-
-    bool almost_equal(
-        const glm::vec3& lhs,
-        const glm::vec3& rhs,
-        float epsilon = 0.0001f) {
-
-        return
-            almost_equal(lhs.x, rhs.x, epsilon) &&
-            almost_equal(lhs.y, rhs.y, epsilon) &&
-            almost_equal(lhs.z, rhs.z, epsilon);
-    }
-
-    ToolEvent make_pointer_event(
-        ToolEventType type,
-        ToolPointerButton button,
-        const glm::vec3& rayOrigin,
-        const glm::vec3& rayDirection) {
-
-        ToolEvent event{};
-
-        event.type = type;
-        event.button = button;
-
-        event.pointer.viewportPosition =
-            glm::vec2{
-                rayOrigin.x,
-                rayOrigin.y
-        };
-
-        event.pointer.worldRay.origin =
-            rayOrigin;
-
-        event.pointer.worldRay.direction =
-            glm::normalize(rayDirection);
-
-        event.pointer.viewDirection =
-            glm::vec3{
-                0.0f,
-                0.0f,
-                -1.0f
-        };
-
-        event.pointer.viewRight =
-            glm::vec3{
-                1.0f,
-                0.0f,
-                0.0f
-        };
-
-        event.pointer.viewUp =
-            glm::vec3{
-                0.0f,
-                1.0f,
-                0.0f
-        };
-
-        event.pointer.visualScale = 1.0f;
-
-        return event;
-    }
-
-    bool test_transform_tool_translation() {
-        std::cout
-            << "\n=== TransformTool: translate X ===\n";
-
-        Editor editor{};
-        editor.set_mode(EditorMode::Object);
-        editor.clear_dirty();
-
-        const SceneNodeId nodeId =
-            editor.scene().create_empty(
-                "Transform Target");
-
-        SceneNode* node =
-            editor.scene().find_node(nodeId);
-
-        print_result(
-            node != nullptr,
-            "scene node foi criado");
-
-        if (!node) {
-            return false;
-        }
-
-        node->transform().set_position(
-            glm::vec3{
-                0.0f,
-                0.0f,
-                0.0f
-            });
+        const float inverseDistance =
+            glm::length(glm::vec4{
+                a.w + b.w,
+                a.x + b.x,
+                a.y + b.y,
+                a.z + b.z
+                });
 
         /*
-         * This test prepares the selection directly because selection command
-         * behavior was already validated by the SelectTool smoke test.
+         * q and -q represent the same orientation, so either representation is
+         * accepted.
          */
-        editor.selection()
-            .objects()
-            .set(nodeId);
+        return directDistance <= epsilon ||
+            inverseDistance <= epsilon;
+    }
 
-        print_result(
-            editor.selection()
-            .objects()
-            .contains(nodeId) &&
-            editor.selection()
-            .objects()
-            .active() == nodeId,
-            "node ficou selecionado e ativo");
+    RenderMesh make_solid_quad()
+    {
+        RenderMesh mesh{};
 
-        CommandDispatcher dispatcher{ editor };
-        HistoryStack history{};
-        PickingSync pickingSync{};
+        const glm::vec3 normal{ 0.0f, 0.0f, 1.0f };
 
-        ToolContext context{
-            editor,
-            dispatcher,
-            history,
-            pickingSync
+        const auto vertex0 = mesh.add_vertex(
+            glm::vec3{ -1.0f, -1.0f, 0.0f },
+            normal);
+
+        const auto vertex1 = mesh.add_vertex(
+            glm::vec3{ 1.0f, -1.0f, 0.0f },
+            normal);
+
+        const auto vertex2 = mesh.add_vertex(
+            glm::vec3{ 1.0f, 1.0f, 0.0f },
+            normal);
+
+        const auto vertex3 = mesh.add_vertex(
+            glm::vec3{ -1.0f, 1.0f, 0.0f },
+            normal);
+
+        mesh.add_triangle(vertex0, vertex1, vertex2);
+        mesh.add_triangle(vertex0, vertex2, vertex3);
+
+        return mesh;
+    }
+
+    RenderMesh make_wire_quad()
+    {
+        RenderMesh mesh{};
+
+        const auto vertex0 =
+            mesh.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
+
+        const auto vertex1 =
+            mesh.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
+
+        const auto vertex2 =
+            mesh.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
+
+        const auto vertex3 =
+            mesh.add_vertex(glm::vec3{ -1.0f, 1.0f, 0.0f });
+
+        mesh.add_line(vertex0, vertex1);
+        mesh.add_line(vertex1, vertex2);
+        mesh.add_line(vertex2, vertex3);
+        mesh.add_line(vertex3, vertex0);
+
+        return mesh;
+    }
+
+    OperationPreview make_ready_preview()
+    {
+        PreviewMesh previewMesh{
+            make_solid_quad(),
+            make_wire_quad()
         };
 
-        ToolRegistry registry{};
+        previewMesh.set_message("Quad preview fixture.");
 
-        const bool registered =
-            registry.register_tool(
-                TransformTool::make_descriptor(),
-                [] {
-                    return std::make_unique<
-                        TransformTool>(
-                            GizmoMode::Translate);
-                });
+        return OperationPreview::ready(
+            std::move(previewMesh));
+    }
 
-        print_result(
-            registered,
-            "TransformTool foi registrada");
+    bool test_ready_preview_fixture()
+    {
+        std::cout << "\n=== Ready preview fixture ===\n";
 
-        ToolManager manager{ registry };
+        bool ok = true;
 
-        const ToolResult activation =
-            manager.activate_tool(
-                context,
-                ToolId{ TransformTool::Id });
+        const OperationPreview preview =
+            make_ready_preview();
 
-        print_tool_result(
-            "activate TransformTool",
-            activation);
+        ok &= expect(
+            preview.status() == OperationPreviewStatus::Ready,
+            "fixture produz preview Ready");
 
-        TransformTool* tool =
-            dynamic_cast<TransformTool*>(
-                manager.active_tool());
+        ok &= expect(
+            preview.is_ready(),
+            "preview pronto pode ser exibido");
 
-        print_result(
-            tool != nullptr,
-            "manager possui TransformTool ativa");
+        ok &= expect(
+            preview.mesh().valid(),
+            "payload do preview e valido");
 
-        print_result(
-            tool != nullptr &&
-            tool->state() == ToolState::Ready &&
-            tool->mode() == GizmoMode::Translate,
-            "TransformTool iniciou em Ready e Translate");
+        ok &= expect(
+            preview.mesh().solid_vertex_count() == 4,
+            "preview solido possui quatro vertices");
 
-        if (!tool) {
-            return false;
+        ok &= expect(
+            preview.mesh().solid_triangle_count() == 2,
+            "preview solido possui dois triangulos");
+
+        ok &= expect(
+            preview.mesh().wire_vertex_count() == 4,
+            "preview wire possui quatro vertices");
+
+        ok &= expect(
+            preview.mesh().wire_line_count() == 4,
+            "preview wire possui quatro linhas");
+
+        return ok;
+    }
+
+    bool test_solid_upload_data()
+    {
+        std::cout << "\n=== Solid preview upload ===\n";
+
+        bool ok = true;
+
+        const OperationPreview preview =
+            make_ready_preview();
+
+        PreviewRenderOptions options{};
+
+        options.solidUploadOptions.color = {
+            0.25f,
+            0.50f,
+            0.75f,
+            0.80f
+        };
+
+        options.solidUploadOptions.usage =
+            BufferUsage::Dynamic;
+
+        PreviewRenderResult result{};
+
+        const MeshUploadData uploadData =
+            PreviewRenderAdapter::build_solid_upload_data(
+                preview,
+                options,
+                &result);
+
+        ok &= expect(
+            !uploadData.is_empty(),
+            "adapter gera upload solido nao vazio");
+
+        ok &= expect(
+            uploadData.vertices.size() == 4,
+            "upload solido possui quatro vertices");
+
+        ok &= expect(
+            uploadData.indices.size() == 6,
+            "upload solido possui seis indices");
+
+        ok &= expect(
+            uploadData.topology == PrimitiveTopology::Triangles,
+            "upload solido usa topologia Triangles");
+
+        ok &= expect(
+            uploadData.usage == BufferUsage::Dynamic,
+            "upload solido preserva usage configurado");
+
+        ok &= expect(
+            result.previewReady,
+            "resultado informa preview pronto");
+
+        ok &= expect(
+            result.hasSolidUploadData,
+            "resultado informa upload solido disponivel");
+
+        ok &= expect(
+            result.solidUploadResult.vertexCount == 4,
+            "resultado informa quatro vertices solidos");
+
+        ok &= expect(
+            result.solidUploadResult.triangleCount == 2,
+            "resultado informa dois triangulos");
+
+        ok &= expect(
+            result.solidUploadResult.indexCount == 6,
+            "resultado informa seis indices solidos");
+
+        ok &= expect(
+            result.solidUploadResult.has_triangles(),
+            "resultado reconhece triangulos");
+
+        ok &= expect(
+            !result.message.empty(),
+            "conversao solida produz diagnostico");
+
+        if (!uploadData.vertices.empty()) {
+            const auto& vertex = uploadData.vertices.front();
+
+            ok &= expect(
+                nearly_equal(vertex.color[0], 0.25f) &&
+                nearly_equal(vertex.color[1], 0.50f) &&
+                nearly_equal(vertex.color[2], 0.75f) &&
+                nearly_equal(vertex.color[3], 0.80f),
+                "upload solido preserva a cor configurada");
         }
+
+        return ok;
+    }
+
+    bool test_wire_upload_data()
+    {
+        std::cout << "\n=== Wire preview upload ===\n";
+
+        bool ok = true;
+
+        const OperationPreview preview =
+            make_ready_preview();
+
+        PreviewRenderOptions options{};
+
+        options.wireUploadOptions.color = {
+            1.0f,
+            0.6f,
+            0.1f,
+            1.0f
+        };
+
+        options.wireUploadOptions.usage =
+            BufferUsage::Dynamic;
+
+        PreviewRenderResult result{};
+
+        const MeshUploadData uploadData =
+            PreviewRenderAdapter::build_wire_upload_data(
+                preview,
+                options,
+                &result);
+
+        ok &= expect(
+            !uploadData.is_empty(),
+            "adapter gera upload wire nao vazio");
+
+        ok &= expect(
+            uploadData.vertices.size() == 4,
+            "upload wire possui quatro vertices");
+
+        ok &= expect(
+            uploadData.indices.size() == 8,
+            "upload wire possui oito indices");
+
+        ok &= expect(
+            uploadData.topology == PrimitiveTopology::Lines,
+            "upload wire usa topologia Lines");
+
+        ok &= expect(
+            uploadData.usage == BufferUsage::Dynamic,
+            "upload wire preserva usage configurado");
+
+        ok &= expect(
+            result.previewReady,
+            "resultado wire informa preview pronto");
+
+        ok &= expect(
+            result.hasWireUploadData,
+            "resultado informa upload wire disponivel");
+
+        ok &= expect(
+            result.wireUploadResult.vertexCount == 4,
+            "resultado informa quatro vertices wire");
+
+        ok &= expect(
+            result.wireUploadResult.lineCount == 4,
+            "resultado informa quatro linhas");
+
+        ok &= expect(
+            result.wireUploadResult.indexCount == 8,
+            "resultado informa oito indices wire");
+
+        ok &= expect(
+            result.wireUploadResult.has_lines(),
+            "resultado reconhece linhas");
+
+        ok &= expect(
+            !result.message.empty(),
+            "conversao wire produz diagnostico");
+
+        return ok;
+    }
+
+    bool test_disabled_parts()
+    {
+        std::cout << "\n=== Disabled preview parts ===\n";
+
+        bool ok = true;
+
+        const OperationPreview preview =
+            make_ready_preview();
+
+        PreviewRenderOptions solidOptions{};
+        solidOptions.includeSolid = false;
+
+        PreviewRenderResult solidResult{};
+
+        const MeshUploadData solidUpload =
+            PreviewRenderAdapter::build_solid_upload_data(
+                preview,
+                solidOptions,
+                &solidResult);
+
+        ok &= expect(
+            solidUpload.is_empty(),
+            "solido desabilitado nao gera upload");
+
+        ok &= expect(
+            solidResult.skipped,
+            "resultado marca solido desabilitado como skipped");
+
+        ok &= expect(
+            !solidResult.hasSolidUploadData,
+            "solido desabilitado nao informa upload disponivel");
+
+        PreviewRenderOptions wireOptions{};
+        wireOptions.includeWire = false;
+
+        PreviewRenderResult wireResult{};
+
+        const MeshUploadData wireUpload =
+            PreviewRenderAdapter::build_wire_upload_data(
+                preview,
+                wireOptions,
+                &wireResult);
+
+        ok &= expect(
+            wireUpload.is_empty(),
+            "wire desabilitado nao gera upload");
+
+        ok &= expect(
+            wireResult.skipped,
+            "resultado marca wire desabilitado como skipped");
+
+        ok &= expect(
+            !wireResult.hasWireUploadData,
+            "wire desabilitado nao informa upload disponivel");
+
+        return ok;
+    }
+
+    bool test_invalid_preview_states()
+    {
+        std::cout << "\n=== Invalid preview states ===\n";
+
+        bool ok = true;
+
+        {
+            const OperationPreview preview =
+                OperationPreview::empty(
+                    "No preview geometry.");
+
+            PreviewRenderResult result{};
+
+            const MeshUploadData upload =
+                PreviewRenderAdapter::build_solid_upload_data(
+                    preview,
+                    {},
+                    &result);
+
+            ok &= expect(
+                upload.is_empty(),
+                "preview Empty nao gera upload");
+
+            ok &= expect(
+                result.status == OperationPreviewStatus::Empty,
+                "resultado preserva status Empty");
+
+            ok &= expect(
+                result.skipped,
+                "preview Empty e marcado como skipped");
+
+            ok &= expect(
+                !result.previewReady,
+                "preview Empty nao e marcado como pronto");
+
+            ok &= expect(
+                result.message == "No preview geometry.",
+                "preview Empty preserva diagnostico");
+        }
+
+        {
+            const OperationPreview preview =
+                OperationPreview::invalidated(
+                    "Preview became stale.");
+
+            PreviewRenderResult result{};
+
+            const MeshUploadData upload =
+                PreviewRenderAdapter::build_wire_upload_data(
+                    preview,
+                    {},
+                    &result);
+
+            ok &= expect(
+                upload.is_empty(),
+                "preview Invalidated nao gera upload");
+
+            ok &= expect(
+                result.status ==
+                OperationPreviewStatus::Invalidated,
+                "resultado preserva status Invalidated");
+
+            ok &= expect(
+                !result.previewReady,
+                "preview Invalidated nao e marcado como pronto");
+
+            ok &= expect(
+                result.message == "Preview became stale.",
+                "preview Invalidated preserva diagnostico");
+        }
+
+        {
+            const OperationPreview preview =
+                OperationPreview::failed(
+                    "Operation failed.");
+
+            PreviewRenderResult result{};
+
+            const MeshUploadData upload =
+                PreviewRenderAdapter::build_solid_upload_data(
+                    preview,
+                    {},
+                    &result);
+
+            ok &= expect(
+                upload.is_empty(),
+                "preview Failed nao gera upload");
+
+            ok &= expect(
+                result.status == OperationPreviewStatus::Failed,
+                "resultado preserva status Failed");
+
+            ok &= expect(
+                !result.previewReady,
+                "preview Failed nao e marcado como pronto");
+
+            ok &= expect(
+                result.message == "Operation failed.",
+                "preview Failed preserva diagnostico");
+        }
+
+        {
+            PreviewMesh invalidMesh{
+                make_solid_quad(),
+                make_wire_quad()
+            };
+
+            invalidMesh.set_valid(false);
+            invalidMesh.set_message(
+                "Preview mesh payload is invalid.");
+
+            const OperationPreview preview =
+                OperationPreview::ready(
+                    std::move(invalidMesh));
+
+            PreviewRenderResult result{};
+
+            const MeshUploadData upload =
+                PreviewRenderAdapter::build_solid_upload_data(
+                    preview,
+                    {},
+                    &result);
+
+            ok &= expect(
+                upload.is_empty(),
+                "payload invalido nao gera upload");
+
+            ok &= expect(
+                result.status == OperationPreviewStatus::Ready,
+                "payload invalido ainda preserva status Ready");
+
+            ok &= expect(
+                !result.previewReady ||
+                !result.hasSolidUploadData,
+                "payload invalido nao produz dados utilizaveis");
+
+            ok &= expect(
+                result.message ==
+                "Preview mesh payload is invalid.",
+                "payload invalido preserva diagnostico");
+        }
+
+        return ok;
+    }
+
+    bool test_render_objects()
+    {
+        std::cout << "\n=== Preview render objects ===\n";
+
+        bool ok = true;
+
+        MeshNode node{
+            SceneNodeId{ 42 },
+            "Extrude Face"
+        };
+
+        const glm::vec3 expectedPosition{
+            3.0f,
+            -2.0f,
+            5.0f
+        };
+
+        const glm::quat expectedRotation =
+            glm::angleAxis(
+                glm::radians(35.0f),
+                glm::normalize(
+                    glm::vec3{
+                        0.0f,
+                        1.0f,
+                        1.0f
+                    }));
+
+        const glm::vec3 expectedScale{
+            2.0f,
+            0.5f,
+            1.5f
+        };
+
+        node.transform().set_position(expectedPosition);
+        node.transform().set_rotation(expectedRotation);
+        node.transform().set_scale(expectedScale);
+
+        const OperationPreview preview =
+            make_ready_preview();
 
         /*
-         * Ray through x = 0.75, y = 0.0 and toward -Z.
-         *
-         * With pivot at the origin, this intersects the X handle without entering
-         * the center handle.
+         * The adapter only stores non-owning pointers. These GpuMesh objects do
+         * not need uploaded OpenGL resources for this CPU-side smoke test.
          */
-        const ToolEvent hoverEvent =
-            make_pointer_event(
-                ToolEventType::PointerMove,
-                ToolPointerButton::None,
-                glm::vec3{
-                    0.75f,
-                    0.0f,
-                    5.0f
-                },
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    -1.0f
-                });
+        GpuMesh solidMesh{};
+        GpuMesh wireMesh{};
 
-        const ToolResult hoverResult =
-            manager.handle_event(
-                context,
-                hoverEvent);
+        PreviewRenderOptions options{};
+        options.solidObjectId = 1001;
+        options.wireObjectId = 1002;
+        options.solidLayer = RenderLayer::Preview;
+        options.wireLayer = RenderLayer::Preview;
 
-        print_tool_result(
-            "hover X handle",
-            hoverResult);
+        PreviewRenderResult result{};
 
-        const GizmoHit hovered =
-            tool->gizmo_state().hovered;
+        const PreviewRenderObjects objects =
+            PreviewRenderAdapter::build_render_objects(
+                node,
+                preview,
+                &solidMesh,
+                &wireMesh,
+                options,
+                &result);
 
-        std::cout
-            << "  hovered axis: "
-            << gizmo_axis_name(hovered.axis)
-            << '\n';
+        ok &= expect(
+            !objects.empty(),
+            "adapter gera objetos de preview");
 
-        print_result(
-            hovered.is_valid() &&
-            hovered.mode == GizmoMode::Translate &&
-            hovered.axis == GizmoAxis::X,
-            "ray reconheceu o eixo X do gizmo");
+        ok &= expect(
+            objects.hasSolid,
+            "adapter gera objeto solido");
 
-        print_result(
-            tool->gizmo_state().pivot ==
-            glm::vec3{
-                0.0f,
-                0.0f,
-                0.0f
-            },
-            "pivot do gizmo ficou na origem do objeto");
+        ok &= expect(
+            objects.hasWire,
+            "adapter gera objeto wire");
 
-        editor.clear_dirty();
+        ok &= expect(
+            result.hasSolidObject,
+            "resultado informa objeto solido");
 
-        const ToolEvent pressEvent =
-            make_pointer_event(
-                ToolEventType::PointerPress,
-                ToolPointerButton::Primary,
-                glm::vec3{
-                    0.75f,
-                    0.0f,
-                    5.0f
-                },
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    -1.0f
-                });
+        ok &= expect(
+            result.hasWireObject,
+            "resultado informa objeto wire");
 
-        const ToolResult beginResult =
-            manager.handle_event(
-                context,
-                pressEvent);
+        ok &= expect(
+            result.nodeId.value == node.id().value,
+            "resultado preserva SceneNodeId");
 
-        print_tool_result(
-            "begin drag X",
-            beginResult);
+        ok &= expect(
+            objects.solid.id == 1001,
+            "objeto solido preserva id configurado");
 
-        print_result(
-            beginResult.code ==
-            ToolResultCode::Started &&
-            tool->state() ==
-            ToolState::Interacting,
-            "pointer press iniciou transform drag");
+        ok &= expect(
+            objects.wire.id == 1002,
+            "objeto wire preserva id configurado");
 
-        print_result(
-            tool->gizmo_state().dragging &&
-            tool->gizmo_state().active.is_valid() &&
-            tool->gizmo_state().active.axis ==
-            GizmoAxis::X,
-            "gizmo ativou handle X");
+        ok &= expect(
+            objects.solid.name ==
+            "Extrude Face Preview Solid",
+            "objeto solido recebe nome semantico");
 
-        print_result(
-            tool->object_session().is_active(),
-            "ObjectTransformToolSession ficou ativa");
+        ok &= expect(
+            objects.wire.name ==
+            "Extrude Face Preview Wire",
+            "objeto wire recebe nome semantico");
 
-        const glm::vec3 initialPosition =
-            node->transform().position();
+        ok &= expect(
+            objects.solid.mesh == &solidMesh,
+            "objeto solido referencia GpuMesh fornecida");
 
-        print_position(
-            "initial position",
-            initialPosition);
+        ok &= expect(
+            objects.wire.mesh == &wireMesh,
+            "objeto wire referencia GpuMesh fornecida");
 
-        /*
-         * Move the ray two world units along X.
-         *
-         * The closest point on the X axis changes from x = 0.75 to x = 2.75,
-         * producing a translation delta of approximately +2.0.
-         */
-        const ToolEvent moveEvent =
-            make_pointer_event(
-                ToolEventType::PointerMove,
-                ToolPointerButton::None,
-                glm::vec3{
-                    2.75f,
-                    0.0f,
-                    5.0f
-                },
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    -1.0f
-                });
+        ok &= expect(
+            objects.solid.layer == RenderLayer::Preview &&
+            objects.wire.layer == RenderLayer::Preview,
+            "objetos usam camada Preview");
 
-        const ToolResult updateResult =
-            manager.handle_event(
-                context,
-                moveEvent);
+        ok &= expect(
+            nearly_equal(
+                objects.solid.transform.position,
+                expectedPosition) &&
+            nearly_equal(
+                objects.wire.transform.position,
+                expectedPosition),
+            "objetos preservam posicao do MeshNode");
 
-        print_tool_result(
-            "update drag X",
-            updateResult);
+        ok &= expect(
+            nearly_equal(
+                objects.solid.transform.rotation,
+                expectedRotation) &&
+            nearly_equal(
+                objects.wire.transform.rotation,
+                expectedRotation),
+            "objetos preservam rotacao do MeshNode");
 
-        node =
-            editor.scene().find_node(nodeId);
+        ok &= expect(
+            nearly_equal(
+                objects.solid.transform.scale,
+                expectedScale) &&
+            nearly_equal(
+                objects.wire.transform.scale,
+                expectedScale),
+            "objetos preservam escala do MeshNode");
 
-        if (!node) {
-            print_result(
-                false,
-                "node ainda existe depois do preview");
+        ok &= expect(
+            objects.solid.visibility.visible &&
+            objects.wire.visibility.visible,
+            "objetos preservam visibilidade do MeshNode");
 
-            return false;
+        ok &= expect(
+            !objects.solid.visibility.selectable &&
+            !objects.wire.visibility.selectable,
+            "preview nao participa da selecao");
+
+        ok &= expect(
+            !objects.solid.visibility.castsShadow &&
+            !objects.solid.visibility.receivesShadow &&
+            !objects.wire.visibility.castsShadow &&
+            !objects.wire.visibility.receivesShadow,
+            "preview nao participa de sombras");
+
+        ok &= expect(
+            !objects.solid.pickingId.is_valid() &&
+            !objects.wire.pickingId.is_valid(),
+            "preview nao possui PickingId valido");
+
+        ok &= expect(
+            !objects.solid.selected &&
+            !objects.solid.hovered &&
+            !objects.wire.selected &&
+            !objects.wire.hovered,
+            "preview nao herda estado de selecao ou hover");
+
+        ok &= expect(
+            !objects.solid.wireframe &&
+            !objects.wire.wireframe,
+            "objetos nao ativam rasterizacao wireframe");
+
+        ok &= expect(
+            !result.message.empty(),
+            "construcao de objetos produz diagnostico");
+
+        return ok;
+    }
+
+    bool test_partial_render_objects()
+    {
+        std::cout << "\n=== Partial preview render objects ===\n";
+
+        bool ok = true;
+
+        MeshNode node{
+            SceneNodeId{ 7 },
+            "Partial Preview"
+        };
+
+        const OperationPreview preview =
+            make_ready_preview();
+
+        GpuMesh solidMesh{};
+        GpuMesh wireMesh{};
+
+        {
+            PreviewRenderOptions options{};
+
+            PreviewRenderResult result{};
+
+            const PreviewRenderObjects objects =
+                PreviewRenderAdapter::build_render_objects(
+                    node,
+                    preview,
+                    &solidMesh,
+                    nullptr,
+                    options,
+                    &result);
+
+            ok &= expect(
+                objects.hasSolid && !objects.hasWire,
+                "somente GpuMesh solida gera apenas objeto solido");
+
+            ok &= expect(
+                result.hasSolidObject &&
+                !result.hasWireObject,
+                "resultado parcial informa apenas objeto solido");
         }
 
-        const glm::vec3 previewPosition =
-            node->transform().position();
+        {
+            PreviewRenderOptions options{};
 
-        print_position(
-            "preview position",
-            previewPosition);
+            PreviewRenderResult result{};
 
-        print_result(
-            updateResult.code ==
-            ToolResultCode::Updated,
-            "pointer move atualizou preview");
+            const PreviewRenderObjects objects =
+                PreviewRenderAdapter::build_render_objects(
+                    node,
+                    preview,
+                    nullptr,
+                    &wireMesh,
+                    options,
+                    &result);
 
-        print_result(
-            almost_equal(
-                previewPosition,
-                glm::vec3{
-                    2.0f,
-                    0.0f,
-                    0.0f
-                }),
-            "preview moveu objeto em +2 no eixo X");
+            ok &= expect(
+                !objects.hasSolid && objects.hasWire,
+                "somente GpuMesh wire gera apenas objeto wire");
 
-        print_result(
-            history.undo_size() == 0u,
-            "preview ainda nao entrou no historico");
-
-        print_result(
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Scene) &&
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Render) &&
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Picking),
-            "preview marcou Scene, Render e Picking dirty");
-
-        editor.clear_dirty();
-
-        const ToolEvent releaseEvent =
-            make_pointer_event(
-                ToolEventType::PointerRelease,
-                ToolPointerButton::Primary,
-                glm::vec3{
-                    2.75f,
-                    0.0f,
-                    5.0f
-                },
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    -1.0f
-                });
-
-        const ToolResult confirmResult =
-            manager.handle_event(
-                context,
-                releaseEvent);
-
-        print_tool_result(
-            "release and confirm",
-            confirmResult);
-
-        node =
-            editor.scene().find_node(nodeId);
-
-        if (!node) {
-            print_result(
-                false,
-                "node ainda existe depois do commit");
-
-            return false;
+            ok &= expect(
+                !result.hasSolidObject &&
+                result.hasWireObject,
+                "resultado parcial informa apenas objeto wire");
         }
 
-        const glm::vec3 committedPosition =
-            node->transform().position();
+        {
+            PreviewRenderOptions options{};
 
-        print_position(
-            "committed position",
-            committedPosition);
+            PreviewRenderResult result{};
 
-        print_result(
-            confirmResult.code ==
-            ToolResultCode::Confirmed &&
-            tool->state() ==
-            ToolState::Ready,
-            "release confirmou e retornou a Ready");
+            const PreviewRenderObjects objects =
+                PreviewRenderAdapter::build_render_objects(
+                    node,
+                    preview,
+                    nullptr,
+                    nullptr,
+                    options,
+                    &result);
 
-        print_result(
-            almost_equal(
-                committedPosition,
-                glm::vec3{
-                    2.0f,
-                    0.0f,
-                    0.0f
-                }),
-            "commit preservou transform final");
+            ok &= expect(
+                objects.empty(),
+                "ausencia de GpuMesh nao gera objetos");
 
-        print_result(
-            history.undo_size() == 1u &&
-            history.redo_size() == 0u,
-            "drag gerou uma unica entrada de historico");
+            ok &= expect(
+                result.skipped,
+                "ausencia de GpuMesh e marcada como skipped");
 
-        print_result(
-            !tool->object_session().is_active() &&
-            !tool->gizmo_state().dragging,
-            "sessao e dragging foram encerrados");
+            ok &= expect(
+                !result.message.empty(),
+                "ausencia de GpuMesh produz diagnostico");
+        }
 
-        const CommandResult undoResult =
-            history.undo(dispatcher);
+        return ok;
+    }
 
-        node =
-            editor.scene().find_node(nodeId);
+    bool test_hidden_source_node()
+    {
+        std::cout << "\n=== Hidden source node ===\n";
 
-        const bool undoCorrect =
-            undoResult.success &&
-            node != nullptr &&
-            almost_equal(
-                node->transform().position(),
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    0.0f
-                });
+        bool ok = true;
 
-        print_result(
-            undoCorrect,
-            "undo restaurou posicao inicial");
+        MeshNode node{
+            SceneNodeId{ 88 },
+            "Hidden Preview"
+        };
 
-        print_result(
-            history.undo_size() == 0u &&
-            history.redo_size() == 1u,
-            "undo moveu command para redo");
+        node.metadata().visible = false;
 
-        const CommandResult redoResult =
-            history.redo(dispatcher);
+        const OperationPreview preview =
+            make_ready_preview();
 
-        node =
-            editor.scene().find_node(nodeId);
+        GpuMesh solidMesh{};
+        GpuMesh wireMesh{};
 
-        const bool redoCorrect =
-            redoResult.success &&
-            node != nullptr &&
-            almost_equal(
-                node->transform().position(),
-                glm::vec3{
-                    2.0f,
-                    0.0f,
-                    0.0f
-                });
+        const PreviewRenderObjects objects =
+            PreviewRenderAdapter::build_render_objects(
+                node,
+                preview,
+                &solidMesh,
+                &wireMesh);
 
-        print_result(
-            redoCorrect,
-            "redo reaplicou posicao final");
+        ok &= expect(
+            objects.hasSolid && objects.hasWire,
+            "node oculto ainda gera descritores de render");
 
-        print_result(
-            history.undo_size() == 1u &&
-            history.redo_size() == 0u,
-            "redo restaurou estado do historico");
+        ok &= expect(
+            !objects.solid.visibility.visible &&
+            !objects.wire.visibility.visible,
+            "objetos de preview preservam node oculto");
 
-        return
-            registered &&
-            !activation.failed() &&
-            hovered.is_valid() &&
-            hovered.axis == GizmoAxis::X &&
-            beginResult.code ==
-            ToolResultCode::Started &&
-            updateResult.code ==
-            ToolResultCode::Updated &&
-            almost_equal(
-                previewPosition,
-                glm::vec3{
-                    2.0f,
-                    0.0f,
-                    0.0f
-                }) &&
-            confirmResult.code ==
-            ToolResultCode::Confirmed &&
-            history.undo_size() == 1u &&
-            undoCorrect &&
-            redoCorrect;
+        return ok;
+    }
+
+    bool test_invalid_node()
+    {
+        std::cout << "\n=== Invalid source node ===\n";
+
+        bool ok = true;
+
+        MeshNode node{
+            SceneNodeId{},
+            "Invalid Node"
+        };
+
+        const OperationPreview preview =
+            make_ready_preview();
+
+        GpuMesh solidMesh{};
+        GpuMesh wireMesh{};
+
+        PreviewRenderResult result{};
+
+        const PreviewRenderObjects objects =
+            PreviewRenderAdapter::build_render_objects(
+                node,
+                preview,
+                &solidMesh,
+                &wireMesh,
+                {},
+                &result);
+
+        ok &= expect(
+            objects.empty(),
+            "node com id invalido nao gera objetos");
+
+        ok &= expect(
+            !result.hasSolidObject &&
+            !result.hasWireObject,
+            "resultado de node invalido nao informa objetos");
+
+        ok &= expect(
+            !result.message.empty(),
+            "node invalido produz diagnostico");
+
+        return ok;
     }
 
 } // namespace
 
-int main() {
+int main()
+{
     std::cout
-        << "=== Locus3D Editor TransformTool Smoke Test ===\n";
+        << "=== Locus3D Editor PreviewRenderAdapter Smoke Test ===\n";
 
-    const bool ok =
-        test_transform_tool_translation();
+    bool ok = true;
+
+    ok &= test_ready_preview_fixture();
+    ok &= test_solid_upload_data();
+    ok &= test_wire_upload_data();
+    ok &= test_disabled_parts();
+    ok &= test_invalid_preview_states();
+    ok &= test_render_objects();
+    ok &= test_partial_render_objects();
+    ok &= test_hidden_source_node();
+    ok &= test_invalid_node();
+
+    std::cout << "\n=== Resultado final ===\n";
+
+    if (!ok) {
+        std::cout
+            << "[FAIL] Um ou mais testes do "
+            << "PreviewRenderAdapter falharam.\n";
+
+        return EXIT_FAILURE;
+    }
 
     std::cout
-        << "\n=== Resultado final ===\n";
+        << "[OK] Todos os testes do "
+        << "PreviewRenderAdapter passaram.\n";
 
-    print_result(
-        ok,
-        "TransformTool object translation smoke test");
-
-    return ok ? 0 : 1;
+    return EXIT_SUCCESS;
 }

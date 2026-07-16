@@ -199,7 +199,9 @@ target_sources(locus3d_editor
          "tools/transform/ObjectTransformToolSession.h"
          "tools/transform/ObjectTransformToolSession.cpp"
          "tools/transform/TransformTool.h"
-         "tools/transform/TransformTool.cpp")
+         "tools/transform/TransformTool.cpp"
+         "render/PreviewRenderAdapter.h"
+         "render/PreviewRenderAdapter.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

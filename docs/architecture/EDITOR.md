@@ -371,8 +371,8 @@ source\editor
 |       SelectionRenderAdapter.cpp 
 |       OverlayRenderAdapter.h
 |       OverlayRenderAdapter.cpp
-|       PreviewRenderAdapter.h [!]
-|       PreviewRenderAdapter.cpp [!]
+|       PreviewRenderAdapter.h
+|       PreviewRenderAdapter.cpp
 |       PickingRenderAdapter.h
 |       PickingRenderAdapter.cpp
 |
@@ -408,11 +408,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/selection/shapes/CircleSelectionShape.cpp`
 - [!] `tools/selection/shapes/LassoSelectionShape.h`
 - [!] `tools/selection/shapes/LassoSelectionShape.cpp`
-- [!] `tools/transform/TransformTool.h`
-- [!] `tools/transform/TransformTool.cpp`
-- [!] `tools/transform/ITransformToolSession.h`
-- [!] `tools/transform/ObjectTransformToolSession.h`
-- [!] `tools/transform/ObjectTransformToolSession.cpp`
 - [!] `tools/transform/MeshTransformToolSession.h`
 - [!] `tools/transform/MeshTransformToolSession.cpp`
 - [!] `tools/transform/PivotTool.h`
@@ -461,8 +456,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `actions/mesh/topology/register_topology_actions.h`
 - [!] `actions/mesh/topology/register_topology_actions.cpp`
 - [!] `actions/Actions.h`
-- [!] `render/PreviewRenderAdapter.h`
-- [!] `render/PreviewRenderAdapter.cpp`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
 - [!] `io/IDocumentSerializer.h`
