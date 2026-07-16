@@ -196,25 +196,38 @@ namespace locus::kernel::modeling {
          * @brief Connects newly created cut vertices across active faces.
          *
          * @param editor Editor used to mutate topology.
-         * @param cutVertices Newly created vertices.
+         * @param edgeCuts Newly created vertices grouped by source edge.
          * @return Number of accepted face splits.
          */
-        [[nodiscard]] std::size_t connect_cut_vertices(
+        [[nodiscard]] std::size_t connect_edge_cuts(
             geometry::LEMEditor& editor,
-            const std::vector<geometry::VertexHandle>& cutVertices) const;
+            const std::vector<EdgeCut>& edgeCuts) const;
 
         /**
-         * @brief Tries to split one face through two cut vertices.
+         * @brief Tries to connect two cut vertices by splitting a shared face.
          *
          * @param editor Editor used to mutate topology.
-         * @param face Face to split.
-         * @param cutVertices Newly created vertices.
+         * @param vertexA First cut vertex.
+         * @param vertexB Second cut vertex.
          * @return True when a split was accepted.
          */
-        [[nodiscard]] bool split_face_through_cut_vertices(
+        [[nodiscard]] bool connect_cut_pair(
             geometry::LEMEditor& editor,
-            geometry::FaceHandle face,
-            const std::vector<geometry::VertexHandle>& cutVertices) const;
+            geometry::VertexHandle vertexA,
+            geometry::VertexHandle vertexB) const;
+
+        /**
+         * @brief Checks whether the second cut sequence should be paired reversed.
+         *
+         * @param mesh Mesh used to query vertex positions.
+         * @param first First edge cut sequence.
+         * @param second Second edge cut sequence.
+         * @return True when reversed pairing is spatially shorter.
+         */
+        [[nodiscard]] bool should_reverse_cut_order(
+            const geometry::LEM& mesh,
+            const EdgeCut& first,
+            const EdgeCut& second) const;
 
         /**
          * @brief Checks whether a handle already exists in a vector.

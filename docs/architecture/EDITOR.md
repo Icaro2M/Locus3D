@@ -262,9 +262,9 @@ source\editor
 |   |   |       BevelTool.h
 |   |   |       BevelTool.cpp
 |   |   |
-|   |   \---topology [!]
-|   |           LoopCutTool.h [!]
-|   |           LoopCutTool.cpp [!]
+|   |   \---topology
+|   |           LoopCutTool.h
+|   |           LoopCutTool.cpp
 |   |
 |   +---creation [!]
 |   |       PrimitiveCreateTool.h [!]
@@ -412,8 +412,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/transform/MeshTransformToolSession.cpp`
 - [!] `tools/transform/PivotTool.h`
 - [!] `tools/transform/PivotTool.cpp`
-- [!] `tools/mesh/topology/LoopCutTool.h`
-- [!] `tools/mesh/topology/LoopCutTool.cpp`
 - [!] `tools/creation/PrimitiveCreateTool.h`
 - [!] `tools/creation/PrimitiveCreateTool.cpp`
 - [!] `tools/utility/MeasureTool.h`

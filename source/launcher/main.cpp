@@ -12,7 +12,7 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
-#include "editor/tools/mesh/edge/BevelTool.h"
+#include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
@@ -26,14 +26,14 @@
 
 namespace {
 
-    using locus::editor::BevelTool;
-    using locus::editor::BevelToolOptions;
     using locus::editor::CommandDispatcher;
     using locus::editor::CommandResult;
     using locus::editor::Editor;
     using locus::editor::EditorDirtyFlags;
     using locus::editor::EditorMode;
     using locus::editor::HistoryStack;
+    using locus::editor::LoopCutTool;
+    using locus::editor::LoopCutToolOptions;
     using locus::editor::MeshNode;
     using locus::editor::PickingSync;
     using locus::editor::SceneNodeId;
@@ -114,14 +114,6 @@ namespace {
         return std::abs(lhs - rhs) <= epsilon;
     }
 
-    bool nearly_equal(
-        const glm::vec3& lhs,
-        const glm::vec3& rhs,
-        const float epsilon = 0.0001f)
-    {
-        return glm::length(lhs - rhs) <= epsilon;
-    }
-
     bool has_dirty_flag(
         const ToolResult& result,
         const EditorDirtyFlags flag)
@@ -133,7 +125,7 @@ namespace {
 
     QuadFixture create_quad(
         Editor& editor,
-        const std::string& name = "Bevel Fixture")
+        const std::string& name = "Loop Cut Fixture")
     {
         QuadFixture fixture{};
 
@@ -157,7 +149,7 @@ namespace {
          *    |                |
          * vertex0 -------- vertex1
          *
-         * bottomEdge is the bevel target.
+         * bottomEdge and topEdge are the two loop-cut targets.
          */
         fixture.vertex0 =
             mesh.add_vertex(
@@ -222,7 +214,24 @@ namespace {
         return fixture;
     }
 
-    void select_bottom_edge(
+    void select_opposite_edges(
+        Editor& editor,
+        const QuadFixture& fixture)
+    {
+        auto& selection =
+            editor.selection().mesh();
+
+        selection.set_active_mesh(
+            fixture.nodeId);
+
+        selection.set_edge(
+            fixture.bottomEdge);
+
+        selection.add_edge(
+            fixture.topEdge);
+    }
+
+    void select_single_edge(
         Editor& editor,
         const QuadFixture& fixture)
     {
@@ -320,9 +329,11 @@ namespace {
             mesh).size();
     }
 
-    bool contains_vertex_position(
+    bool contains_vertex_near_x(
         const LEM& mesh,
-        const glm::vec3& expectedPosition)
+        const float expectedX,
+        const float expectedY,
+        const float epsilon = 0.0001f)
     {
         const std::vector<VertexHandle> vertices =
             TopologyTraversal::vertices(mesh);
@@ -332,9 +343,11 @@ namespace {
                 continue;
             }
 
-            if (nearly_equal(
-                mesh.vertex(vertex).position,
-                expectedPosition)) {
+            const glm::vec3 position =
+                mesh.vertex(vertex).position;
+
+            if (std::abs(position.x - expectedX) <= epsilon &&
+                std::abs(position.y - expectedY) <= epsilon) {
                 return true;
             }
         }
@@ -416,12 +429,12 @@ namespace {
         Editor editor{};
         ToolServices services{ editor };
 
-        BevelTool tool{};
+        LoopCutTool tool{};
 
         ok &= expect(
             tool.state() ==
             ToolState::Inactive,
-            "BevelTool comeca Inactive");
+            "LoopCutTool comeca Inactive");
 
         ok &= expect(
             !tool.can_activate(
@@ -451,28 +464,37 @@ namespace {
 
         ok &= expect(
             tool.descriptor().is_valid(),
-            "descriptor do bevel e valido");
+            "descriptor do loop cut e valido");
 
         ok &= expect(
             tool.descriptor().id.value ==
             std::string{
-                BevelTool::Id
+                LoopCutTool::Id
             },
-            "descriptor usa id estavel do bevel");
+            "descriptor usa id estavel do loop cut");
 
-        BevelToolOptions options =
+        LoopCutToolOptions options =
             tool.options();
 
-        options.widthPerPixel =
-            0.02f;
+        options.factorPerPixel =
+            0.01f;
 
-        options.widthEpsilon =
+        options.factorEpsilon =
             0.0001f;
 
-        options.maximumWidth =
-            0.75f;
+        options.minimumFactor =
+            0.1f;
 
-        options.invertDragDirection =
+        options.maximumFactor =
+            0.9f;
+
+        options.initialFactor =
+            0.25f;
+
+        options.cuts =
+            2;
+
+        options.evenSpacing =
             true;
 
         ok &= expect(
@@ -481,30 +503,43 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.options().widthPerPixel,
-                0.02f),
-            "widthPerPixel foi atualizado");
+                tool.options().factorPerPixel,
+                0.01f),
+            "factorPerPixel foi atualizado");
 
         ok &= expect(
             nearly_equal(
-                tool.options().maximumWidth,
-                0.75f),
-            "maximumWidth foi atualizado");
+                tool.options().initialFactor,
+                0.25f),
+            "initialFactor foi atualizado");
 
         ok &= expect(
-            tool.options().invertDragDirection,
-            "invertDragDirection foi atualizado");
+            tool.cuts() == 2,
+            "cuts foi atualizado");
 
-        BevelToolOptions invalidOptions{};
+        ok &= expect(
+            tool.options().evenSpacing,
+            "evenSpacing foi atualizado");
 
-        invalidOptions.widthPerPixel =
+        LoopCutToolOptions invalidOptions{};
+
+        invalidOptions.factorPerPixel =
             -1.0f;
 
-        invalidOptions.widthEpsilon =
+        invalidOptions.factorEpsilon =
             -0.5f;
 
-        invalidOptions.maximumWidth =
-            -2.0f;
+        invalidOptions.minimumFactor =
+            -10.0f;
+
+        invalidOptions.maximumFactor =
+            10.0f;
+
+        invalidOptions.initialFactor =
+            5.0f;
+
+        invalidOptions.cuts =
+            0;
 
         ok &= expect(
             tool.set_options(
@@ -513,21 +548,34 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.options().widthPerPixel,
+                tool.options().factorPerPixel,
                 0.0f),
-            "widthPerPixel negativo e limitado a zero");
+            "factorPerPixel negativo e limitado a zero");
 
         ok &= expect(
             nearly_equal(
-                tool.options().widthEpsilon,
+                tool.options().factorEpsilon,
                 0.0f),
-            "widthEpsilon negativo e limitado a zero");
+            "factorEpsilon negativo e limitado a zero");
 
         ok &= expect(
-            nearly_equal(
-                tool.options().maximumWidth,
-                0.0f),
-            "maximumWidth negativo e limitado a zero");
+            tool.options().minimumFactor >= 0.0001f,
+            "minimumFactor respeita limite do kernel");
+
+        ok &= expect(
+            tool.options().maximumFactor <= 0.9999f,
+            "maximumFactor respeita limite do kernel");
+
+        ok &= expect(
+            tool.options().initialFactor >=
+            tool.options().minimumFactor &&
+            tool.options().initialFactor <=
+            tool.options().maximumFactor,
+            "initialFactor fica dentro do intervalo");
+
+        ok &= expect(
+            tool.cuts() == 1,
+            "cuts zero e limitado a um");
 
         tool.deactivate(
             services.context);
@@ -535,10 +583,10 @@ namespace {
         return ok;
     }
 
-    bool test_preview_is_non_destructive()
+    bool test_interactive_preview_is_non_destructive()
     {
         std::cout
-            << "\n=== Non-destructive bevel preview ===\n";
+            << "\n=== Non-destructive interactive preview ===\n";
 
         bool ok = true;
 
@@ -550,12 +598,35 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        BevelTool tool{};
+
+        LoopCutToolOptions options{};
+
+        options.factorPerPixel =
+            0.005f;
+
+        options.initialFactor =
+            0.5f;
+
+        options.minimumFactor =
+            0.1f;
+
+        options.maximumFactor =
+            0.9f;
+
+        options.cuts =
+            1;
+
+        options.evenSpacing =
+            false;
+
+        LoopCutTool tool{
+            options
+        };
 
         tool.activate(
             services.context);
@@ -586,16 +657,6 @@ namespace {
             active_face_count(
                 node->mesh());
 
-        const glm::vec3 originalPosition0 =
-            node->mesh()
-            .vertex(fixture.vertex0)
-            .position;
-
-        const glm::vec3 originalPosition1 =
-            node->mesh()
-            .vertex(fixture.vertex1)
-            .position;
-
         const ToolResult pressResult =
             tool.handle_event(
                 services.context,
@@ -608,7 +669,7 @@ namespace {
         ok &= expect(
             pressResult.code ==
             ToolResultCode::Started,
-            "pointer press inicia bevel");
+            "pointer press inicia loop cut");
 
         ok &= expect(
             tool.state() ==
@@ -617,21 +678,21 @@ namespace {
 
         ok &= expect(
             tool.mesh_session().is_active(),
-            "bevel inicia MeshOperationSession");
+            "loop cut inicia MeshOperationSession");
 
         ok &= expect(
             nearly_equal(
-                tool.width(),
-                0.0f),
-            "largura inicial e zero");
+                tool.factor(),
+                0.5f),
+            "interacao comeca no initialFactor");
 
         ok &= expect(
-            !tool.has_operation_preview(),
-            "largura inicial zero nao gera preview pronto");
+            tool.has_operation_preview(),
+            "loop cut gera preview inicial pronto");
 
         ok &= expect(
-            tool.operation_preview().is_empty(),
-            "preview inicial do bevel e Empty");
+            tool.operation_preview().is_ready(),
+            "preview inicial possui status Ready");
 
         const ToolResult moveResult =
             tool.handle_event(
@@ -649,21 +710,17 @@ namespace {
         ok &= expect(
             moveResult.code ==
             ToolResultCode::Updated,
-            "pointer move atualiza bevel");
+            "pointer move atualiza loop cut");
 
         ok &= expect(
             nearly_equal(
-                tool.width(),
-                0.5f),
-            "arrasto de 50 pixels gera largura 0.5");
+                tool.factor(),
+                0.75f),
+            "arrasto de 50 pixels move fator para 0.75");
 
         ok &= expect(
             tool.has_operation_preview(),
-            "largura valida gera preview pronto");
-
-        ok &= expect(
-            tool.operation_preview().is_ready(),
-            "OperationPreview do bevel fica Ready");
+            "fator atualizado preserva preview pronto");
 
         ok &= expect(
             tool.operation_preview()
@@ -710,25 +767,12 @@ namespace {
             "preview nao altera faces autoritativas");
 
         ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                originalPosition0) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                originalPosition1),
-            "preview nao altera posicoes autoritativas");
-
-        ok &= expect(
             services.history.empty(),
             "preview nao cria entrada no historico");
 
         ok &= expect(
             !tool.set_options(
-                BevelToolOptions{}),
+                LoopCutToolOptions{}),
             "opcoes nao mudam durante interacao");
 
         tool.cancel(
@@ -737,10 +781,10 @@ namespace {
         return ok;
     }
 
-    bool test_commit_and_history()
+    bool test_single_cut_commit_and_history()
     {
         std::cout
-            << "\n=== Commit, undo and redo ===\n";
+            << "\n=== Single cut commit, undo and redo ===\n";
 
         bool ok = true;
 
@@ -752,12 +796,26 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        BevelTool tool{};
+
+        LoopCutToolOptions options{};
+
+        options.initialFactor =
+            0.5f;
+
+        options.cuts =
+            1;
+
+        options.evenSpacing =
+            false;
+
+        LoopCutTool tool{
+            options
+        };
 
         tool.activate(
             services.context);
@@ -792,37 +850,27 @@ namespace {
             services.context,
             make_pointer_press(
                 glm::vec2{
-                    0.0f,
-                    100.0f
-                }));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
+                    100.0f,
                     100.0f
                 }));
 
         ok &= expect(
-            nearly_equal(
-                tool.width(),
-                0.5f),
-            "arrasto configura largura final 0.5");
+            tool.has_operation_preview(),
+            "single cut possui preview pronto antes do release");
 
         const ToolResult releaseResult =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
                     glm::vec2{
-                        50.0f,
+                        100.0f,
                         100.0f
                     }));
 
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "pointer release confirma bevel");
+            "pointer release confirma loop cut");
 
         ok &= expect(
             tool.state() ==
@@ -851,87 +899,45 @@ namespace {
                 EditorDirtyFlags::Picking),
             "commit marca Picking dirty");
 
-        const LEM& beveledMesh =
+        const LEM& cutMesh =
             node->mesh();
 
         ok &= expect(
             active_vertex_count(
-                beveledMesh) ==
-            originalVertices + 4,
-            "bevel de uma aresta adiciona quatro vertices de corte");
-
-        ok &= expect(
-            active_face_count(
-                beveledMesh) == 3,
-            "bevel produz face reconstruida e duas faces de chanfro");
+                cutMesh) ==
+            originalVertices + 2,
+            "single cut adiciona um vertice em cada aresta alvo");
 
         ok &= expect(
             active_edge_count(
-                beveledMesh) >
+                cutMesh) >
             originalEdges,
-            "bevel aumenta quantidade de arestas");
+            "single cut aumenta quantidade de arestas");
 
         ok &= expect(
             active_loop_count(
-                beveledMesh) >
+                cutMesh) >
             originalLoops,
-            "bevel aumenta quantidade de loops");
+            "single cut aumenta quantidade de loops");
 
         ok &= expect(
-            !beveledMesh.is_valid(
-                fixture.face),
-            "face original e substituida");
+            active_face_count(
+                cutMesh) == 2,
+            "single cut divide o quad em duas faces");
 
         ok &= expect(
-            beveledMesh.is_valid(
-                fixture.vertex0) &&
-            beveledMesh.is_valid(
-                fixture.vertex1) &&
-            beveledMesh.is_valid(
-                fixture.vertex2) &&
-            beveledMesh.is_valid(
-                fixture.vertex3),
-            "vertices originais permanecem validos");
+            contains_vertex_near_x(
+                cutMesh,
+                0.0f,
+                -1.0f),
+            "single cut cria vertice central na aresta inferior");
 
         ok &= expect(
-            contains_vertex_position(
-                beveledMesh,
-                glm::vec3{
-                    -1.0f,
-                    -0.5f,
-                    0.0f
-                }),
-            "bevel cria corte de vertex0 em direcao a vertex3");
-
-        ok &= expect(
-            contains_vertex_position(
-                beveledMesh,
-                glm::vec3{
-                    -0.5f,
-                    -1.0f,
-                    0.0f
-                }),
-            "bevel cria corte de vertex0 em direcao a vertex1");
-
-        ok &= expect(
-            contains_vertex_position(
-                beveledMesh,
-                glm::vec3{
-                    0.5f,
-                    -1.0f,
-                    0.0f
-                }),
-            "bevel cria corte de vertex1 em direcao a vertex0");
-
-        ok &= expect(
-            contains_vertex_position(
-                beveledMesh,
-                glm::vec3{
-                    1.0f,
-                    -0.5f,
-                    0.0f
-                }),
-            "bevel cria corte de vertex1 em direcao a vertex2");
+            contains_vertex_near_x(
+                cutMesh,
+                0.0f,
+                1.0f),
+            "single cut cria vertice central na aresta superior");
 
         ok &= expect(
             services.history.can_undo(),
@@ -943,8 +949,8 @@ namespace {
 
         ok &= expect(
             services.history.undo_name() ==
-            "Bevel Edges",
-            "entrada possui nome Bevel Edges");
+            "Loop Cut",
+            "entrada possui nome Loop Cut");
 
         ok &= expect(
             !services.history.can_redo(),
@@ -956,7 +962,7 @@ namespace {
 
         ok &= expect(
             undoResult.success,
-            "undo do bevel funciona");
+            "undo do loop cut funciona");
 
         ok &= expect(
             active_vertex_count(
@@ -993,7 +999,7 @@ namespace {
 
         ok &= expect(
             services.history.redo_name() ==
-            "Bevel Edges",
+            "Loop Cut",
             "entrada de redo preserva nome");
 
         const CommandResult redoResult =
@@ -1002,31 +1008,26 @@ namespace {
 
         ok &= expect(
             redoResult.success,
-            "redo do bevel funciona");
+            "redo do loop cut funciona");
 
         ok &= expect(
             active_vertex_count(
                 node->mesh()) ==
-            originalVertices + 4,
+            originalVertices + 2,
             "redo restaura vertices de corte");
 
         ok &= expect(
             active_face_count(
-                node->mesh()) == 3,
-            "redo restaura topologia chanfrada");
-
-        ok &= expect(
-            !node->mesh().is_valid(
-                fixture.face),
-            "redo substitui novamente a face original");
+                node->mesh()) == 2,
+            "redo restaura divisao do quad");
 
         return ok;
     }
 
-    bool test_kernel_width_limit()
+    bool test_multiple_even_cuts()
     {
         std::cout
-            << "\n=== Kernel width limit ===\n";
+            << "\n=== Multiple evenly spaced cuts ===\n";
 
         bool ok = true;
 
@@ -1038,30 +1039,43 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             fixture);
 
         ToolServices services{ editor };
 
-        BevelToolOptions options{};
+        LoopCutToolOptions options{};
 
-        options.widthPerPixel =
-            0.1f;
+        options.cuts =
+            2;
 
-        /*
-         * No explicit tool-side maximum. A very large requested width should
-         * still be limited locally by BevelOp.
-         */
-        options.maximumWidth =
-            0.0f;
+        options.evenSpacing =
+            true;
 
-        BevelTool tool{
+        options.initialFactor =
+            0.2f;
+
+        LoopCutTool tool{
             options
         };
 
         tool.activate(
             services.context);
+
+        MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
+
+        if (!node) {
+            return expect(
+                false,
+                "fixture possui MeshNode");
+        }
+
+        const std::size_t originalVertices =
+            active_vertex_count(
+                node->mesh());
 
         tool.handle_event(
             services.context,
@@ -1071,21 +1085,34 @@ namespace {
                     0.0f
                 }));
 
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    100.0f,
-                    0.0f
-                }));
+        ok &= expect(
+            tool.has_operation_preview(),
+            "dois cortes geram preview pronto");
+
+        const float factorBeforeMove =
+            tool.factor();
+
+        const ToolResult moveResult =
+            tool.handle_event(
+                services.context,
+                make_pointer_move(
+                    glm::vec2{
+                        100.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            moveResult.code ==
+            ToolResultCode::Ignored,
+            "multiple cuts ignoram movimento de posicionamento");
 
         ok &= expect(
             nearly_equal(
-                tool.width(),
-                10.0f),
-            "tool preserva largura solicitada sem maximumWidth");
+                tool.factor(),
+                factorBeforeMove),
+            "multiple cuts preservam factor interno");
 
-        const ToolResult result =
+        const ToolResult releaseResult =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
@@ -1094,192 +1121,41 @@ namespace {
                         0.0f
                     }));
 
-        const MeshNode* node =
-            editor.scene().find_mesh(
-                fixture.nodeId);
-
-        ok &= expect(
-            result.code ==
-            ToolResultCode::Confirmed,
-            "largura grande ainda confirma");
-
-        ok &= expect(
-            node != nullptr,
-            "node continua disponivel");
-
-        if (node) {
-            /*
-             * Each adjacent source edge has length 2.0, so BevelOp limits each
-             * local cut to 0.9.
-             */
-            ok &= expect(
-                contains_vertex_position(
-                    node->mesh(),
-                    glm::vec3{
-                        -1.0f,
-                        -0.1f,
-                        0.0f
-                    }),
-                "kernel limita corte lateral a 45 por cento");
-
-            ok &= expect(
-                contains_vertex_position(
-                    node->mesh(),
-                    glm::vec3{
-                        -0.1f,
-                        -1.0f,
-                        0.0f
-                    }),
-                "kernel limita corte horizontal a 45 por cento");
-        }
-
-        return ok;
-    }
-
-    bool test_tool_width_clamp()
-    {
-        std::cout
-            << "\n=== Tool width clamp ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_bottom_edge(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-
-        BevelToolOptions options{};
-
-        options.widthPerPixel =
-            0.01f;
-
-        options.maximumWidth =
-            0.25f;
-
-        BevelTool tool{
-            options
-        };
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    0.0f,
-                    0.0f
-                }));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    100.0f,
-                    0.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.width(),
-                0.25f),
-            "maximumWidth limita largura interativa");
-
-        ok &= expect(
-            tool.has_operation_preview(),
-            "largura limitada produz preview pronto");
-
-        tool.cancel(
-            services.context);
-
-        return ok;
-    }
-
-    bool test_opposite_direction_returns_to_zero()
-    {
-        std::cout
-            << "\n=== Opposite drag direction ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_bottom_edge(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-        BevelTool tool{};
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    100.0f,
-                    0.0f
-                }));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
-                    0.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.width(),
-                0.0f),
-            "arrasto oposto e limitado a largura zero");
-
-        ok &= expect(
-            tool.operation_preview().is_empty(),
-            "largura zero produz preview Empty");
-
-        const ToolResult releaseResult =
-            tool.handle_event(
-                services.context,
-                make_pointer_release(
-                    glm::vec2{
-                        50.0f,
-                        0.0f
-                    }));
-
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "largura zero conclui como no-op");
+            "multiple cuts confirmam");
 
         ok &= expect(
-            services.history.empty(),
-            "largura zero nao cria historico");
+            active_vertex_count(
+                node->mesh()) ==
+            originalVertices + 4,
+            "dois cortes adicionam quatro vertices");
+
+        const std::size_t resultingFaceCount =
+            active_face_count(
+                node->mesh());
+
+        std::cout
+            << "faces apos dois cortes: "
+            << resultingFaceCount
+            << '\n';
+
+        ok &= expect(
+            resultingFaceCount == 3,
+            "dois cortes dividem o quad em tres faces");
+
+        ok &= expect(
+            services.history.undo_size() == 1,
+            "multiple cuts criam uma entrada de historico");
 
         return ok;
     }
 
-    bool test_visual_scale_and_direction()
+    bool test_single_edge_only()
     {
         std::cout
-            << "\n=== Visual scale and drag direction ===\n";
+            << "\n=== Single selected edge ===\n";
 
         bool ok = true;
 
@@ -1291,77 +1167,26 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_bottom_edge(
+        select_single_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
 
-        BevelToolOptions options{};
+        LoopCutToolOptions options{};
 
-        options.widthPerPixel =
-            0.01f;
+        options.cuts =
+            1;
 
-        options.invertDragDirection =
-            true;
+        options.evenSpacing =
+            false;
 
-        BevelTool tool{
+        options.initialFactor =
+            0.5f;
+
+        LoopCutTool tool{
             options
         };
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    100.0f,
-                    0.0f
-                },
-                2.0f));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
-                    0.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.width(),
-                1.0f),
-            "visualScale e invertDragDirection afetam largura");
-
-        tool.cancel(
-            services.context);
-
-        return ok;
-    }
-
-    bool test_cancel_does_not_commit()
-    {
-        std::cout
-            << "\n=== Cancellation ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_bottom_edge(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -1392,11 +1217,185 @@ namespace {
                     0.0f
                 }));
 
+        const ToolResult releaseResult =
+            tool.handle_event(
+                services.context,
+                make_pointer_release(
+                    glm::vec2{
+                        0.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Confirmed,
+            "uma aresta selecionada ainda executa corte");
+
+        ok &= expect(
+            active_vertex_count(
+                node->mesh()) ==
+            originalVertices + 1,
+            "uma aresta cria um vertice de corte");
+
+        ok &= expect(
+            active_face_count(
+                node->mesh()) ==
+            originalFaces,
+            "um unico vertice de corte nao divide a face");
+
+        ok &= expect(
+            services.history.undo_size() == 1,
+            "subdivisao de uma aresta cria historico");
+
+        return ok;
+    }
+
+    bool test_factor_clamping_and_direction()
+    {
+        std::cout
+            << "\n=== Factor clamping and direction ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_opposite_edges(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+
+        LoopCutToolOptions options{};
+
+        options.factorPerPixel =
+            0.01f;
+
+        options.minimumFactor =
+            0.2f;
+
+        options.maximumFactor =
+            0.8f;
+
+        options.initialFactor =
+            0.5f;
+
+        options.cuts =
+            1;
+
+        options.evenSpacing =
+            false;
+
+        options.invertDragDirection =
+            true;
+
+        LoopCutTool tool{
+            options
+        };
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    100.0f,
+                    0.0f
+                },
+                2.0f));
+
         tool.handle_event(
             services.context,
             make_pointer_move(
                 glm::vec2{
                     50.0f,
+                    0.0f
+                }));
+
+        ok &= expect(
+            nearly_equal(
+                tool.factor(),
+                0.8f),
+            "visualScale, direcao invertida e clamp afetam fator");
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    200.0f,
+                    0.0f
+                }));
+
+        ok &= expect(
+            nearly_equal(
+                tool.factor(),
+                0.2f),
+            "fator tambem e limitado pelo minimo");
+
+        tool.cancel(
+            services.context);
+
+        return ok;
+    }
+
+    bool test_cancel_does_not_commit()
+    {
+        std::cout
+            << "\n=== Cancellation ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_opposite_edges(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+        LoopCutTool tool{};
+
+        tool.activate(
+            services.context);
+
+        MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
+
+        if (!node) {
+            return expect(
+                false,
+                "fixture possui MeshNode");
+        }
+
+        const std::size_t originalVertices =
+            active_vertex_count(
+                node->mesh());
+
+        const std::size_t originalEdges =
+            active_edge_count(
+                node->mesh());
+
+        const std::size_t originalFaces =
+            active_face_count(
+                node->mesh());
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
                     0.0f
                 }));
 
@@ -1429,103 +1428,20 @@ namespace {
             "cancel nao altera vertices");
 
         ok &= expect(
+            active_edge_count(
+                node->mesh()) ==
+            originalEdges,
+            "cancel nao altera arestas");
+
+        ok &= expect(
             active_face_count(
                 node->mesh()) ==
             originalFaces,
             "cancel nao altera faces");
 
         ok &= expect(
-            node->mesh().is_valid(
-                fixture.face),
-            "cancel preserva face original");
-
-        ok &= expect(
             services.history.empty(),
             "cancel nao cria historico");
-
-        return ok;
-    }
-
-    bool test_zero_width_confirmation()
-    {
-        std::cout
-            << "\n=== Zero-width confirmation ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_bottom_edge(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-        BevelTool tool{};
-
-        tool.activate(
-            services.context);
-
-        MeshNode* node =
-            editor.scene().find_mesh(
-                fixture.nodeId);
-
-        if (!node) {
-            return expect(
-                false,
-                "fixture possui MeshNode");
-        }
-
-        const std::size_t originalVertices =
-            active_vertex_count(
-                node->mesh());
-
-        const std::size_t originalFaces =
-            active_face_count(
-                node->mesh());
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    20.0f,
-                    20.0f
-                }));
-
-        const ToolResult releaseResult =
-            tool.handle_event(
-                services.context,
-                make_pointer_release(
-                    glm::vec2{
-                        20.0f,
-                        20.0f
-                    }));
-
-        ok &= expect(
-            releaseResult.code ==
-            ToolResultCode::Confirmed,
-            "release sem movimento conclui interacao");
-
-        ok &= expect(
-            active_vertex_count(
-                node->mesh()) ==
-            originalVertices,
-            "largura zero nao cria vertices");
-
-        ok &= expect(
-            active_face_count(
-                node->mesh()) ==
-            originalFaces,
-            "largura zero nao muda faces");
-
-        ok &= expect(
-            services.history.empty(),
-            "largura zero nao cria entrada no historico");
 
         return ok;
     }
@@ -1552,12 +1468,12 @@ namespace {
                 editor,
                 "Second Quad");
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             firstFixture);
 
         ToolServices services{ editor };
-        BevelTool tool{};
+        LoopCutTool tool{};
 
         tool.activate(
             services.context);
@@ -1570,24 +1486,16 @@ namespace {
                     0.0f
                 }));
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             secondFixture);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
-                    0.0f
-                }));
 
         const ToolResult releaseResult =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
                     glm::vec2{
-                        50.0f,
+                        0.0f,
                         0.0f
                     }));
 
@@ -1602,19 +1510,19 @@ namespace {
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "bevel confirma apos mudanca de selecao");
+            "loop cut confirma apos mudanca de selecao");
 
         ok &= expect(
             firstNode != nullptr &&
             active_face_count(
-                firstNode->mesh()) == 3,
-            "bevel modifica node capturado");
+                firstNode->mesh()) == 2,
+            "loop cut modifica node capturado");
 
         ok &= expect(
             secondNode != nullptr &&
             active_face_count(
                 secondNode->mesh()) == 1,
-            "bevel nao modifica node selecionado depois");
+            "loop cut nao modifica node selecionado depois");
 
         return ok;
     }
@@ -1634,7 +1542,7 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_bottom_edge(
+        select_opposite_edges(
             editor,
             fixture);
 
@@ -1642,7 +1550,7 @@ namespace {
             editor
         };
 
-        BevelTool tool{};
+        LoopCutTool tool{};
 
         tool.activate(
             context);
@@ -1655,20 +1563,12 @@ namespace {
                     0.0f
                 }));
 
-        tool.handle_event(
-            context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
-                    0.0f
-                }));
-
         const ToolResult releaseResult =
             tool.handle_event(
                 context,
                 make_pointer_release(
                     glm::vec2{
-                        50.0f,
+                        0.0f,
                         0.0f
                     }));
 
@@ -1703,21 +1603,19 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor BevelTool "
+        << "=== Locus3D Editor LoopCutTool "
         << "Smoke Test ===\n";
 
     bool ok = true;
 
     ok &= test_fixture();
     ok &= test_activation_and_options();
-    ok &= test_preview_is_non_destructive();
-    ok &= test_commit_and_history();
-    ok &= test_kernel_width_limit();
-    ok &= test_tool_width_clamp();
-    ok &= test_opposite_direction_returns_to_zero();
-    ok &= test_visual_scale_and_direction();
+    ok &= test_interactive_preview_is_non_destructive();
+    ok &= test_single_cut_commit_and_history();
+    ok &= test_multiple_even_cuts();
+    ok &= test_single_edge_only();
+    ok &= test_factor_clamping_and_direction();
     ok &= test_cancel_does_not_commit();
-    ok &= test_zero_width_confirmation();
     ok &= test_stable_captured_target();
     ok &= test_missing_command_services();
 
@@ -1727,14 +1625,14 @@ int main()
     if (!ok) {
         std::cout
             << "[FAIL] Um ou mais testes do "
-            << "BevelTool falharam.\n";
+            << "LoopCutTool falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
         << "[OK] Todos os testes do "
-        << "BevelTool passaram.\n";
+        << "LoopCutTool passaram.\n";
 
     return EXIT_SUCCESS;
 }

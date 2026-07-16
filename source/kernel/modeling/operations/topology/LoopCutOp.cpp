@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <glm/common.hpp>
+#include <glm/geometric.hpp>
 #include <utility>
 
 namespace locus::kernel::modeling {
@@ -106,7 +107,7 @@ namespace locus::kernel::modeling {
 
         geometry::LEMEditor editor(mesh);
 
-        std::vector<geometry::VertexHandle> cutVertices;
+        std::vector<EdgeCut> edgeCuts;
         std::size_t splitCount = 0;
 
         for (geometry::EdgeHandle edge : targets) {
@@ -120,12 +121,7 @@ namespace locus::kernel::modeling {
             }
 
             splitCount += cut.vertices.size();
-
-            for (geometry::VertexHandle vertex : cut.vertices) {
-                if (mesh.is_valid(vertex) && !contains(cutVertices, vertex)) {
-                    cutVertices.push_back(vertex);
-                }
-            }
+            edgeCuts.push_back(std::move(cut));
         }
 
         if (splitCount == 0) {
@@ -133,7 +129,8 @@ namespace locus::kernel::modeling {
                 "LoopCut operation did not split any edge.");
         }
 
-        connect_cut_vertices(editor, cutVertices);
+        [[maybe_unused]] const std::size_t connectedCutPairs =
+            connect_edge_cuts(editor, edgeCuts);
 
         if (context.rebuildNormals) {
             editor.rebuild_face_normals();
@@ -250,34 +247,52 @@ namespace locus::kernel::modeling {
         return cut;
     }
 
-    std::size_t LoopCutOp::connect_cut_vertices(
+    std::size_t LoopCutOp::connect_edge_cuts(
         geometry::LEMEditor& editor,
-        const std::vector<geometry::VertexHandle>& cutVertices) const
+        const std::vector<EdgeCut>& edgeCuts) const
     {
         geometry::LEM& mesh = editor.mesh();
 
-        if (cutVertices.size() < 2) {
+        if (edgeCuts.size() < 2) {
             return 0;
         }
 
         std::size_t splitCount = 0;
-        bool changed = true;
 
-        while (changed) {
-            changed = false;
+        for (std::size_t firstIndex = 0; firstIndex < edgeCuts.size(); ++firstIndex) {
+            const EdgeCut& first = edgeCuts[firstIndex];
 
-            const std::vector<geometry::FaceHandle> faces =
-                geometry::TopologyTraversal::faces(mesh);
+            if (first.vertices.empty()) {
+                continue;
+            }
 
-            for (geometry::FaceHandle face : faces) {
-                if (!mesh.is_valid(face)) {
+            for (std::size_t secondIndex = firstIndex + 1;
+                secondIndex < edgeCuts.size();
+                ++secondIndex) {
+                const EdgeCut& second = edgeCuts[secondIndex];
+
+                if (second.vertices.empty()) {
                     continue;
                 }
 
-                if (split_face_through_cut_vertices(editor, face, cutVertices)) {
-                    ++splitCount;
-                    changed = true;
-                    break;
+                const bool reverseSecond =
+                    should_reverse_cut_order(mesh, first, second);
+
+                const std::size_t pairCount =
+                    std::min(first.vertices.size(), second.vertices.size());
+
+                for (std::size_t index = 0; index < pairCount; ++index) {
+                    const std::size_t secondVertexIndex =
+                        reverseSecond
+                            ? second.vertices.size() - index - 1
+                            : index;
+
+                    if (connect_cut_pair(
+                        editor,
+                        first.vertices[index],
+                        second.vertices[secondVertexIndex])) {
+                        ++splitCount;
+                    }
                 }
             }
         }
@@ -285,65 +300,91 @@ namespace locus::kernel::modeling {
         return splitCount;
     }
 
-    bool LoopCutOp::split_face_through_cut_vertices(
+    bool LoopCutOp::connect_cut_pair(
         geometry::LEMEditor& editor,
-        geometry::FaceHandle face,
-        const std::vector<geometry::VertexHandle>& cutVertices) const
+        geometry::VertexHandle vertexA,
+        geometry::VertexHandle vertexB) const
     {
         geometry::LEM& mesh = editor.mesh();
 
-        if (!mesh.is_valid(face)) {
+        if (!mesh.is_valid(vertexA) ||
+            !mesh.is_valid(vertexB) ||
+            vertexA == vertexB) {
             return false;
         }
 
-        const std::vector<geometry::VertexHandle> faceVertices =
-            geometry::TopologyTraversal::face_vertices(mesh, face);
-
-        if (faceVertices.size() < 4) {
+        if (mesh.find_edge(vertexA, vertexB).is_valid()) {
             return false;
         }
 
-        std::vector<geometry::VertexHandle> candidates;
-        candidates.reserve(faceVertices.size());
+        const std::vector<geometry::FaceHandle> faces =
+            geometry::TopologyTraversal::faces(mesh);
 
-        for (geometry::VertexHandle vertex : faceVertices) {
-            if (!mesh.is_valid(vertex)) {
+        for (geometry::FaceHandle face : faces) {
+            if (!mesh.is_valid(face)) {
                 continue;
             }
 
-            if (!contains(cutVertices, vertex)) {
+            const std::vector<geometry::VertexHandle> faceVertices =
+                geometry::TopologyTraversal::face_vertices(mesh, face);
+
+            if (faceVertices.size() < 4) {
                 continue;
             }
 
-            if (!contains(candidates, vertex)) {
-                candidates.push_back(vertex);
+            if (!contains(faceVertices, vertexA) ||
+                !contains(faceVertices, vertexB)) {
+                continue;
             }
-        }
 
-        if (candidates.size() < 2) {
-            return false;
-        }
-
-        for (std::size_t a = 0; a < candidates.size(); ++a) {
-            for (std::size_t b = a + 1; b < candidates.size(); ++b) {
-                geometry::VertexHandle vertexA = candidates[a];
-                geometry::VertexHandle vertexB = candidates[b];
-
-                if (!mesh.is_valid(vertexA) || !mesh.is_valid(vertexB)) {
-                    continue;
-                }
-
-                if (mesh.find_edge(vertexA, vertexB).is_valid()) {
-                    continue;
-                }
-
-                if (editor.split_face(face, vertexA, vertexB).has_value()) {
-                    return true;
-                }
+            if (editor.split_face(face, vertexA, vertexB).has_value()) {
+                return true;
             }
         }
 
         return false;
+    }
+
+    bool LoopCutOp::should_reverse_cut_order(
+        const geometry::LEM& mesh,
+        const EdgeCut& first,
+        const EdgeCut& second) const
+    {
+        const std::size_t pairCount =
+            std::min(first.vertices.size(), second.vertices.size());
+
+        if (pairCount == 0) {
+            return false;
+        }
+
+        float directDistance = 0.0f;
+        float reversedDistance = 0.0f;
+        std::size_t validPairs = 0;
+
+        for (std::size_t index = 0; index < pairCount; ++index) {
+            const geometry::VertexHandle firstVertex = first.vertices[index];
+            const geometry::VertexHandle directSecondVertex = second.vertices[index];
+            const geometry::VertexHandle reversedSecondVertex =
+                second.vertices[second.vertices.size() - index - 1];
+
+            if (!mesh.is_valid(firstVertex) ||
+                !mesh.is_valid(directSecondVertex) ||
+                !mesh.is_valid(reversedSecondVertex)) {
+                continue;
+            }
+
+            const glm::vec3 firstPosition = mesh.vertex(firstVertex).position;
+            const glm::vec3 directDelta =
+                firstPosition - mesh.vertex(directSecondVertex).position;
+            const glm::vec3 reversedDelta =
+                firstPosition - mesh.vertex(reversedSecondVertex).position;
+
+            directDistance += glm::dot(directDelta, directDelta);
+            reversedDistance += glm::dot(reversedDelta, reversedDelta);
+            ++validPairs;
+        }
+
+        return validPairs > 0 && reversedDistance < directDistance;
     }
 
 }
