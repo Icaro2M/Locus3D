@@ -12,7 +12,7 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
-#include "editor/tools/mesh/edge/EdgeSlideTool.h"
+#include "editor/tools/mesh/edge/BevelTool.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
@@ -22,16 +22,17 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
+    using locus::editor::BevelTool;
+    using locus::editor::BevelToolOptions;
     using locus::editor::CommandDispatcher;
     using locus::editor::CommandResult;
     using locus::editor::Editor;
     using locus::editor::EditorDirtyFlags;
     using locus::editor::EditorMode;
-    using locus::editor::EdgeSlideTool;
-    using locus::editor::EdgeSlideToolOptions;
     using locus::editor::HistoryStack;
     using locus::editor::MeshNode;
     using locus::editor::PickingSync;
@@ -132,7 +133,7 @@ namespace {
 
     QuadFixture create_quad(
         Editor& editor,
-        const std::string& name = "Edge Slide Fixture")
+        const std::string& name = "Bevel Fixture")
     {
         QuadFixture fixture{};
 
@@ -156,7 +157,7 @@ namespace {
          *    |                |
          * vertex0 -------- vertex1
          *
-         * bottomEdge is the edge targeted by the slide operation.
+         * bottomEdge is the bevel target.
          */
         fixture.vertex0 =
             mesh.add_vertex(
@@ -319,6 +320,28 @@ namespace {
             mesh).size();
     }
 
+    bool contains_vertex_position(
+        const LEM& mesh,
+        const glm::vec3& expectedPosition)
+    {
+        const std::vector<VertexHandle> vertices =
+            TopologyTraversal::vertices(mesh);
+
+        for (const VertexHandle vertex : vertices) {
+            if (!mesh.is_valid(vertex)) {
+                continue;
+            }
+
+            if (nearly_equal(
+                mesh.vertex(vertex).position,
+                expectedPosition)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     bool test_fixture()
     {
         std::cout
@@ -347,30 +370,21 @@ namespace {
             node->mesh();
 
         ok &= expect(
-            mesh.is_valid(
-                fixture.vertex0) &&
-            mesh.is_valid(
-                fixture.vertex1) &&
-            mesh.is_valid(
-                fixture.vertex2) &&
-            mesh.is_valid(
-                fixture.vertex3),
+            mesh.is_valid(fixture.vertex0) &&
+            mesh.is_valid(fixture.vertex1) &&
+            mesh.is_valid(fixture.vertex2) &&
+            mesh.is_valid(fixture.vertex3),
             "fixture possui quatro vertices validos");
 
         ok &= expect(
-            mesh.is_valid(
-                fixture.bottomEdge) &&
-            mesh.is_valid(
-                fixture.rightEdge) &&
-            mesh.is_valid(
-                fixture.topEdge) &&
-            mesh.is_valid(
-                fixture.leftEdge),
+            mesh.is_valid(fixture.bottomEdge) &&
+            mesh.is_valid(fixture.rightEdge) &&
+            mesh.is_valid(fixture.topEdge) &&
+            mesh.is_valid(fixture.leftEdge),
             "fixture possui quatro arestas validas");
 
         ok &= expect(
-            mesh.is_valid(
-                fixture.face),
+            mesh.is_valid(fixture.face),
             "fixture possui face valida");
 
         ok &= expect(
@@ -402,12 +416,12 @@ namespace {
         Editor editor{};
         ToolServices services{ editor };
 
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         ok &= expect(
             tool.state() ==
             ToolState::Inactive,
-            "EdgeSlideTool comeca Inactive");
+            "BevelTool comeca Inactive");
 
         ok &= expect(
             !tool.can_activate(
@@ -437,29 +451,29 @@ namespace {
 
         ok &= expect(
             tool.descriptor().is_valid(),
-            "descriptor do edge slide e valido");
+            "descriptor do bevel e valido");
 
         ok &= expect(
             tool.descriptor().id.value ==
             std::string{
-                EdgeSlideTool::Id
+                BevelTool::Id
             },
-            "descriptor usa id estavel do edge slide");
+            "descriptor usa id estavel do bevel");
 
-        EdgeSlideToolOptions options =
+        BevelToolOptions options =
             tool.options();
 
-        options.distancePerPixel =
-            0.05f;
+        options.widthPerPixel =
+            0.02f;
 
-        options.distanceEpsilon =
+        options.widthEpsilon =
             0.0001f;
+
+        options.maximumWidth =
+            0.75f;
 
         options.invertDragDirection =
             true;
-
-        options.excludeTargetEdgesFromRails =
-            false;
 
         ok &= expect(
             tool.set_options(options),
@@ -467,43 +481,53 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.options().distancePerPixel,
-                0.05f),
-            "distancePerPixel foi atualizado");
+                tool.options().widthPerPixel,
+                0.02f),
+            "widthPerPixel foi atualizado");
+
+        ok &= expect(
+            nearly_equal(
+                tool.options().maximumWidth,
+                0.75f),
+            "maximumWidth foi atualizado");
 
         ok &= expect(
             tool.options().invertDragDirection,
             "invertDragDirection foi atualizado");
 
-        ok &= expect(
-            !tool.options()
-            .excludeTargetEdgesFromRails,
-            "opcao de trilhos foi atualizada");
+        BevelToolOptions invalidOptions{};
 
-        EdgeSlideToolOptions invalidOptions{};
-
-        invalidOptions.distancePerPixel =
+        invalidOptions.widthPerPixel =
             -1.0f;
 
-        invalidOptions.distanceEpsilon =
+        invalidOptions.widthEpsilon =
             -0.5f;
+
+        invalidOptions.maximumWidth =
+            -2.0f;
 
         ok &= expect(
             tool.set_options(
                 invalidOptions),
-            "opcoes numericas invalidas sao sanitizadas");
+            "opcoes invalidas sao sanitizadas");
 
         ok &= expect(
             nearly_equal(
-                tool.options().distancePerPixel,
+                tool.options().widthPerPixel,
                 0.0f),
-            "distancePerPixel negativo e limitado a zero");
+            "widthPerPixel negativo e limitado a zero");
 
         ok &= expect(
             nearly_equal(
-                tool.options().distanceEpsilon,
+                tool.options().widthEpsilon,
                 0.0f),
-            "distanceEpsilon negativo e limitado a zero");
+            "widthEpsilon negativo e limitado a zero");
+
+        ok &= expect(
+            nearly_equal(
+                tool.options().maximumWidth,
+                0.0f),
+            "maximumWidth negativo e limitado a zero");
 
         tool.deactivate(
             services.context);
@@ -514,7 +538,7 @@ namespace {
     bool test_preview_is_non_destructive()
     {
         std::cout
-            << "\n=== Non-destructive edge slide preview ===\n";
+            << "\n=== Non-destructive bevel preview ===\n";
 
         bool ok = true;
 
@@ -531,7 +555,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -546,32 +570,29 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const LEM& originalMesh =
-            node->mesh();
-
         const std::size_t originalVertices =
             active_vertex_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalEdges =
             active_edge_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalLoops =
             active_loop_count(
-                originalMesh);
+                node->mesh());
 
         const std::size_t originalFaces =
             active_face_count(
-                originalMesh);
+                node->mesh());
 
         const glm::vec3 originalPosition0 =
-            originalMesh
+            node->mesh()
             .vertex(fixture.vertex0)
             .position;
 
         const glm::vec3 originalPosition1 =
-            originalMesh
+            node->mesh()
             .vertex(fixture.vertex1)
             .position;
 
@@ -587,7 +608,7 @@ namespace {
         ok &= expect(
             pressResult.code ==
             ToolResultCode::Started,
-            "pointer press inicia edge slide");
+            "pointer press inicia bevel");
 
         ok &= expect(
             tool.state() ==
@@ -596,21 +617,21 @@ namespace {
 
         ok &= expect(
             tool.mesh_session().is_active(),
-            "edge slide inicia MeshOperationSession");
+            "bevel inicia MeshOperationSession");
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
+                tool.width(),
                 0.0f),
-            "distancia inicial e zero");
+            "largura inicial e zero");
 
         ok &= expect(
             !tool.has_operation_preview(),
-            "distancia inicial zero nao gera preview pronto");
+            "largura inicial zero nao gera preview pronto");
 
         ok &= expect(
             tool.operation_preview().is_empty(),
-            "preview inicial do edge slide e Empty");
+            "preview inicial do bevel e Empty");
 
         const ToolResult moveResult =
             tool.handle_event(
@@ -628,21 +649,21 @@ namespace {
         ok &= expect(
             moveResult.code ==
             ToolResultCode::Updated,
-            "pointer move atualiza edge slide");
+            "pointer move atualiza bevel");
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
+                tool.width(),
                 0.5f),
-            "arrasto de 50 pixels gera distancia 0.5");
+            "arrasto de 50 pixels gera largura 0.5");
 
         ok &= expect(
             tool.has_operation_preview(),
-            "distancia valida gera preview pronto");
+            "largura valida gera preview pronto");
 
         ok &= expect(
             tool.operation_preview().is_ready(),
-            "OperationPreview do edge slide fica Ready");
+            "OperationPreview do bevel fica Ready");
 
         ok &= expect(
             tool.operation_preview()
@@ -664,41 +685,38 @@ namespace {
             .empty(),
             "preview possui geometria wire");
 
-        const LEM& meshAfterPreview =
-            node->mesh();
-
         ok &= expect(
             active_vertex_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalVertices,
             "preview nao altera vertices autoritativos");
 
         ok &= expect(
             active_edge_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalEdges,
             "preview nao altera arestas autoritativas");
 
         ok &= expect(
             active_loop_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalLoops,
             "preview nao altera loops autoritativos");
 
         ok &= expect(
             active_face_count(
-                meshAfterPreview) ==
+                node->mesh()) ==
             originalFaces,
             "preview nao altera faces autoritativas");
 
         ok &= expect(
             nearly_equal(
-                meshAfterPreview
+                node->mesh()
                 .vertex(fixture.vertex0)
                 .position,
                 originalPosition0) &&
             nearly_equal(
-                meshAfterPreview
+                node->mesh()
                 .vertex(fixture.vertex1)
                 .position,
                 originalPosition1),
@@ -710,7 +728,7 @@ namespace {
 
         ok &= expect(
             !tool.set_options(
-                EdgeSlideToolOptions{}),
+                BevelToolOptions{}),
             "opcoes nao mudam durante interacao");
 
         tool.cancel(
@@ -719,10 +737,10 @@ namespace {
         return ok;
     }
 
-    bool test_positive_commit_and_history()
+    bool test_commit_and_history()
     {
         std::cout
-            << "\n=== Positive commit, undo and redo ===\n";
+            << "\n=== Commit, undo and redo ===\n";
 
         bool ok = true;
 
@@ -739,7 +757,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -754,44 +772,21 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const LEM& initialMesh =
-            node->mesh();
-
         const std::size_t originalVertices =
             active_vertex_count(
-                initialMesh);
+                node->mesh());
 
         const std::size_t originalEdges =
             active_edge_count(
-                initialMesh);
+                node->mesh());
 
         const std::size_t originalLoops =
             active_loop_count(
-                initialMesh);
+                node->mesh());
 
         const std::size_t originalFaces =
             active_face_count(
-                initialMesh);
-
-        const glm::vec3 originalPosition0 =
-            initialMesh
-            .vertex(fixture.vertex0)
-            .position;
-
-        const glm::vec3 originalPosition1 =
-            initialMesh
-            .vertex(fixture.vertex1)
-            .position;
-
-        const glm::vec3 originalPosition2 =
-            initialMesh
-            .vertex(fixture.vertex2)
-            .position;
-
-        const glm::vec3 originalPosition3 =
-            initialMesh
-            .vertex(fixture.vertex3)
-            .position;
+                node->mesh());
 
         tool.handle_event(
             services.context,
@@ -811,9 +806,9 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
+                tool.width(),
                 0.5f),
-            "arrasto configura distancia final 0.5");
+            "arrasto configura largura final 0.5");
 
         const ToolResult releaseResult =
             tool.handle_event(
@@ -827,7 +822,7 @@ namespace {
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "pointer release confirma edge slide");
+            "pointer release confirma bevel");
 
         ok &= expect(
             tool.state() ==
@@ -856,99 +851,87 @@ namespace {
                 EditorDirtyFlags::Picking),
             "commit marca Picking dirty");
 
-        const LEM& slidMesh =
+        const LEM& beveledMesh =
             node->mesh();
 
         ok &= expect(
             active_vertex_count(
-                slidMesh) ==
-            originalVertices,
-            "edge slide preserva quantidade de vertices");
-
-        ok &= expect(
-            active_edge_count(
-                slidMesh) ==
-            originalEdges,
-            "edge slide preserva quantidade de arestas");
-
-        ok &= expect(
-            active_loop_count(
-                slidMesh) ==
-            originalLoops,
-            "edge slide preserva quantidade de loops");
+                beveledMesh) ==
+            originalVertices + 4,
+            "bevel de uma aresta adiciona quatro vertices de corte");
 
         ok &= expect(
             active_face_count(
-                slidMesh) ==
-            originalFaces,
-            "edge slide preserva quantidade de faces");
+                beveledMesh) == 3,
+            "bevel produz face reconstruida e duas faces de chanfro");
 
         ok &= expect(
-            slidMesh.is_valid(
+            active_edge_count(
+                beveledMesh) >
+            originalEdges,
+            "bevel aumenta quantidade de arestas");
+
+        ok &= expect(
+            active_loop_count(
+                beveledMesh) >
+            originalLoops,
+            "bevel aumenta quantidade de loops");
+
+        ok &= expect(
+            !beveledMesh.is_valid(
+                fixture.face),
+            "face original e substituida");
+
+        ok &= expect(
+            beveledMesh.is_valid(
                 fixture.vertex0) &&
-            slidMesh.is_valid(
+            beveledMesh.is_valid(
                 fixture.vertex1) &&
-            slidMesh.is_valid(
+            beveledMesh.is_valid(
                 fixture.vertex2) &&
-            slidMesh.is_valid(
+            beveledMesh.is_valid(
                 fixture.vertex3),
-            "edge slide preserva handles de vertices");
+            "vertices originais permanecem validos");
 
         ok &= expect(
-            slidMesh.is_valid(
-                fixture.bottomEdge) &&
-            slidMesh.is_valid(
-                fixture.rightEdge) &&
-            slidMesh.is_valid(
-                fixture.topEdge) &&
-            slidMesh.is_valid(
-                fixture.leftEdge),
-            "edge slide preserva handles de arestas");
-
-        const glm::vec3 expectedPosition0 =
-            originalPosition0 +
-            glm::vec3{
-                0.0f,
-                0.5f,
-                0.0f
-        };
-
-        const glm::vec3 expectedPosition1 =
-            originalPosition1 +
-            glm::vec3{
-                0.0f,
-                0.5f,
-                0.0f
-        };
+            contains_vertex_position(
+                beveledMesh,
+                glm::vec3{
+                    -1.0f,
+                    -0.5f,
+                    0.0f
+                }),
+            "bevel cria corte de vertex0 em direcao a vertex3");
 
         ok &= expect(
-            nearly_equal(
-                slidMesh
-                .vertex(fixture.vertex0)
-                .position,
-                expectedPosition0),
-            "vertice esquerdo desliza pela aresta lateral");
+            contains_vertex_position(
+                beveledMesh,
+                glm::vec3{
+                    -0.5f,
+                    -1.0f,
+                    0.0f
+                }),
+            "bevel cria corte de vertex0 em direcao a vertex1");
 
         ok &= expect(
-            nearly_equal(
-                slidMesh
-                .vertex(fixture.vertex1)
-                .position,
-                expectedPosition1),
-            "vertice direito desliza pela aresta lateral");
+            contains_vertex_position(
+                beveledMesh,
+                glm::vec3{
+                    0.5f,
+                    -1.0f,
+                    0.0f
+                }),
+            "bevel cria corte de vertex1 em direcao a vertex0");
 
         ok &= expect(
-            nearly_equal(
-                slidMesh
-                .vertex(fixture.vertex2)
-                .position,
-                originalPosition2) &&
-            nearly_equal(
-                slidMesh
-                .vertex(fixture.vertex3)
-                .position,
-                originalPosition3),
-            "vertices nao alvo permanecem parados");
+            contains_vertex_position(
+                beveledMesh,
+                glm::vec3{
+                    1.0f,
+                    -0.5f,
+                    0.0f
+                }),
+            "bevel cria corte de vertex1 em direcao a vertex2");
 
         ok &= expect(
             services.history.can_undo(),
@@ -960,8 +943,8 @@ namespace {
 
         ok &= expect(
             services.history.undo_name() ==
-            "Slide Edges",
-            "entrada possui nome Slide Edges");
+            "Bevel Edges",
+            "entrada possui nome Bevel Edges");
 
         ok &= expect(
             !services.history.can_redo(),
@@ -973,35 +956,36 @@ namespace {
 
         ok &= expect(
             undoResult.success,
-            "undo do edge slide funciona");
-
-        ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                originalPosition0) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                originalPosition1),
-            "undo restaura vertices alvo");
+            "undo do bevel funciona");
 
         ok &= expect(
             active_vertex_count(
                 node->mesh()) ==
-            originalVertices &&
+            originalVertices,
+            "undo restaura vertices originais");
+
+        ok &= expect(
             active_edge_count(
                 node->mesh()) ==
-            originalEdges &&
+            originalEdges,
+            "undo restaura arestas originais");
+
+        ok &= expect(
             active_loop_count(
                 node->mesh()) ==
-            originalLoops &&
+            originalLoops,
+            "undo restaura loops originais");
+
+        ok &= expect(
             active_face_count(
                 node->mesh()) ==
             originalFaces,
-            "undo preserva topologia original");
+            "undo restaura face original");
+
+        ok &= expect(
+            node->mesh().is_valid(
+                fixture.face),
+            "undo restaura handle da face original");
 
         ok &= expect(
             services.history.can_redo(),
@@ -1009,7 +993,7 @@ namespace {
 
         ok &= expect(
             services.history.redo_name() ==
-            "Slide Edges",
+            "Bevel Edges",
             "entrada de redo preserva nome");
 
         const CommandResult redoResult =
@@ -1018,28 +1002,31 @@ namespace {
 
         ok &= expect(
             redoResult.success,
-            "redo do edge slide funciona");
+            "redo do bevel funciona");
 
         ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                expectedPosition0) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                expectedPosition1),
-            "redo restaura posicoes deslizadas");
+            active_vertex_count(
+                node->mesh()) ==
+            originalVertices + 4,
+            "redo restaura vertices de corte");
+
+        ok &= expect(
+            active_face_count(
+                node->mesh()) == 3,
+            "redo restaura topologia chanfrada");
+
+        ok &= expect(
+            !node->mesh().is_valid(
+                fixture.face),
+            "redo substitui novamente a face original");
 
         return ok;
     }
 
-    bool test_negative_distance()
+    bool test_kernel_width_limit()
     {
         std::cout
-            << "\n=== Negative slide distance ===\n";
+            << "\n=== Kernel width limit ===\n";
 
         bool ok = true;
 
@@ -1056,92 +1043,300 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+
+        BevelToolOptions options{};
+
+        options.widthPerPixel =
+            0.1f;
+
+        /*
+         * No explicit tool-side maximum. A very large requested width should
+         * still be limited locally by BevelOp.
+         */
+        options.maximumWidth =
+            0.0f;
+
+        BevelTool tool{
+            options
+        };
 
         tool.activate(
             services.context);
-
-        MeshNode* node =
-            editor.scene().find_mesh(
-                fixture.nodeId);
-
-        if (!node) {
-            return expect(
-                false,
-                "fixture possui MeshNode");
-        }
-
-        const glm::vec3 originalPosition0 =
-            node->mesh()
-            .vertex(fixture.vertex0)
-            .position;
-
-        const glm::vec3 originalPosition1 =
-            node->mesh()
-            .vertex(fixture.vertex1)
-            .position;
 
         tool.handle_event(
             services.context,
             make_pointer_press(
                 glm::vec2{
-                    100.0f,
-                    100.0f
+                    0.0f,
+                    0.0f
                 }));
 
         tool.handle_event(
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    75.0f,
-                    100.0f
+                    100.0f,
+                    0.0f
                 }));
 
         ok &= expect(
             nearly_equal(
-                tool.distance(),
-                -0.25f),
-            "arrasto para esquerda gera distancia negativa");
+                tool.width(),
+                10.0f),
+            "tool preserva largura solicitada sem maximumWidth");
 
         const ToolResult result =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
                     glm::vec2{
-                        75.0f,
-                        100.0f
+                        100.0f,
+                        0.0f
                     }));
+
+        const MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
 
         ok &= expect(
             result.code ==
             ToolResultCode::Confirmed,
-            "edge slide negativo confirma");
+            "largura grande ainda confirma");
+
+        ok &= expect(
+            node != nullptr,
+            "node continua disponivel");
+
+        if (node) {
+            /*
+             * Each adjacent source edge has length 2.0, so BevelOp limits each
+             * local cut to 0.9.
+             */
+            ok &= expect(
+                contains_vertex_position(
+                    node->mesh(),
+                    glm::vec3{
+                        -1.0f,
+                        -0.1f,
+                        0.0f
+                    }),
+                "kernel limita corte lateral a 45 por cento");
+
+            ok &= expect(
+                contains_vertex_position(
+                    node->mesh(),
+                    glm::vec3{
+                        -0.1f,
+                        -1.0f,
+                        0.0f
+                    }),
+                "kernel limita corte horizontal a 45 por cento");
+        }
+
+        return ok;
+    }
+
+    bool test_tool_width_clamp()
+    {
+        std::cout
+            << "\n=== Tool width clamp ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_bottom_edge(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+
+        BevelToolOptions options{};
+
+        options.widthPerPixel =
+            0.01f;
+
+        options.maximumWidth =
+            0.25f;
+
+        BevelTool tool{
+            options
+        };
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    100.0f,
+                    0.0f
+                }));
 
         ok &= expect(
             nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                originalPosition0 +
-                glm::vec3{
-                    0.0f,
-                    -0.25f,
+                tool.width(),
+                0.25f),
+            "maximumWidth limita largura interativa");
+
+        ok &= expect(
+            tool.has_operation_preview(),
+            "largura limitada produz preview pronto");
+
+        tool.cancel(
+            services.context);
+
+        return ok;
+    }
+
+    bool test_opposite_direction_returns_to_zero()
+    {
+        std::cout
+            << "\n=== Opposite drag direction ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_bottom_edge(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+        BevelTool tool{};
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    100.0f,
                     0.0f
-                }),
-            "vertice esquerdo aceita deslocamento negativo");
+                }));
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    50.0f,
+                    0.0f
+                }));
 
         ok &= expect(
             nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                originalPosition1 +
-                glm::vec3{
-                    0.0f,
-                    -0.25f,
+                tool.width(),
+                0.0f),
+            "arrasto oposto e limitado a largura zero");
+
+        ok &= expect(
+            tool.operation_preview().is_empty(),
+            "largura zero produz preview Empty");
+
+        const ToolResult releaseResult =
+            tool.handle_event(
+                services.context,
+                make_pointer_release(
+                    glm::vec2{
+                        50.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Confirmed,
+            "largura zero conclui como no-op");
+
+        ok &= expect(
+            services.history.empty(),
+            "largura zero nao cria historico");
+
+        return ok;
+    }
+
+    bool test_visual_scale_and_direction()
+    {
+        std::cout
+            << "\n=== Visual scale and drag direction ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_bottom_edge(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+
+        BevelToolOptions options{};
+
+        options.widthPerPixel =
+            0.01f;
+
+        options.invertDragDirection =
+            true;
+
+        BevelTool tool{
+            options
+        };
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    100.0f,
                     0.0f
-                }),
-            "vertice direito aceita deslocamento negativo");
+                },
+                2.0f));
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    50.0f,
+                    0.0f
+                }));
+
+        ok &= expect(
+            nearly_equal(
+                tool.width(),
+                1.0f),
+            "visualScale e invertDragDirection afetam largura");
+
+        tool.cancel(
+            services.context);
 
         return ok;
     }
@@ -1166,7 +1361,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -1181,15 +1376,13 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const glm::vec3 originalPosition0 =
-            node->mesh()
-            .vertex(fixture.vertex0)
-            .position;
+        const std::size_t originalVertices =
+            active_vertex_count(
+                node->mesh());
 
-        const glm::vec3 originalPosition1 =
-            node->mesh()
-            .vertex(fixture.vertex1)
-            .position;
+        const std::size_t originalFaces =
+            active_face_count(
+                node->mesh());
 
         tool.handle_event(
             services.context,
@@ -1203,7 +1396,7 @@ namespace {
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    100.0f,
+                    50.0f,
                     0.0f
                 }));
 
@@ -1230,17 +1423,21 @@ namespace {
             "cancel limpa sessao");
 
         ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                originalPosition0) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                originalPosition1),
+            active_vertex_count(
+                node->mesh()) ==
+            originalVertices,
             "cancel nao altera vertices");
+
+        ok &= expect(
+            active_face_count(
+                node->mesh()) ==
+            originalFaces,
+            "cancel nao altera faces");
+
+        ok &= expect(
+            node->mesh().is_valid(
+                fixture.face),
+            "cancel preserva face original");
 
         ok &= expect(
             services.history.empty(),
@@ -1249,10 +1446,10 @@ namespace {
         return ok;
     }
 
-    bool test_zero_distance_confirmation()
+    bool test_zero_width_confirmation()
     {
         std::cout
-            << "\n=== Zero-distance confirmation ===\n";
+            << "\n=== Zero-width confirmation ===\n";
 
         bool ok = true;
 
@@ -1269,7 +1466,7 @@ namespace {
             fixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -1284,15 +1481,13 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const glm::vec3 originalPosition0 =
-            node->mesh()
-            .vertex(fixture.vertex0)
-            .position;
+        const std::size_t originalVertices =
+            active_vertex_count(
+                node->mesh());
 
-        const glm::vec3 originalPosition1 =
-            node->mesh()
-            .vertex(fixture.vertex1)
-            .position;
+        const std::size_t originalFaces =
+            active_face_count(
+                node->mesh());
 
         tool.handle_event(
             services.context,
@@ -1317,223 +1512,20 @@ namespace {
             "release sem movimento conclui interacao");
 
         ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex0)
-                .position,
-                originalPosition0) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(fixture.vertex1)
-                .position,
-                originalPosition1),
-            "distancia zero nao move vertices");
+            active_vertex_count(
+                node->mesh()) ==
+            originalVertices,
+            "largura zero nao cria vertices");
+
+        ok &= expect(
+            active_face_count(
+                node->mesh()) ==
+            originalFaces,
+            "largura zero nao muda faces");
 
         ok &= expect(
             services.history.empty(),
-            "distancia zero nao cria entrada no historico");
-
-        return ok;
-    }
-
-    bool test_visual_scale_and_direction()
-    {
-        std::cout
-            << "\n=== Visual scale and drag direction ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_bottom_edge(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-
-        EdgeSlideToolOptions options{};
-
-        options.distancePerPixel =
-            0.01f;
-
-        options.invertDragDirection =
-            true;
-
-        EdgeSlideTool tool{
-            options
-        };
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    0.0f,
-                    0.0f
-                },
-                2.0f));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    50.0f,
-                    0.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.distance(),
-                -1.0f),
-            "visualScale e invertDragDirection afetam distancia");
-
-        tool.cancel(
-            services.context);
-
-        return ok;
-    }
-
-    bool test_no_valid_rails()
-    {
-        std::cout
-            << "\n=== Target without valid rails ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const SceneNodeId nodeId =
-            editor.scene().create_mesh(
-                "Loose Edge");
-
-        MeshNode* node =
-            editor.scene().find_mesh(
-                nodeId);
-
-        if (!node) {
-            return expect(
-                false,
-                "fixture loose edge possui MeshNode");
-        }
-
-        LEM& mesh =
-            node->mesh();
-
-        const VertexHandle vertex0 =
-            mesh.add_vertex(
-                glm::vec3{
-                    -1.0f,
-                    0.0f,
-                    0.0f
-                });
-
-        const VertexHandle vertex1 =
-            mesh.add_vertex(
-                glm::vec3{
-                    1.0f,
-                    0.0f,
-                    0.0f
-                });
-
-        const EdgeHandle edge =
-            mesh.find_or_create_edge(
-                vertex0,
-                vertex1);
-
-        auto& selection =
-            editor.selection().mesh();
-
-        selection.set_active_mesh(
-            nodeId);
-
-        selection.set_edge(
-            edge);
-
-        ToolServices services{ editor };
-        EdgeSlideTool tool{};
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    0.0f,
-                    0.0f
-                }));
-
-        const ToolResult moveResult =
-            tool.handle_event(
-                services.context,
-                make_pointer_move(
-                    glm::vec2{
-                        50.0f,
-                        0.0f
-                    }));
-
-        ok &= expect(
-            moveResult.code ==
-            ToolResultCode::Updated,
-            "operacao sem trilhos ainda processa update");
-
-        ok &= expect(
-            tool.operation_preview().is_empty(),
-            "aresta solta sem trilhos produz preview Empty");
-
-        ok &= expect(
-            !tool.has_operation_preview(),
-            "aresta solta nao produz preview pronto");
-
-        const ToolResult releaseResult =
-            tool.handle_event(
-                services.context,
-                make_pointer_release(
-                    glm::vec2{
-                        50.0f,
-                        0.0f
-                    }));
-
-        ok &= expect(
-            releaseResult.code ==
-            ToolResultCode::Confirmed,
-            "preview Empty conclui como no-op");
-
-        ok &= expect(
-            nearly_equal(
-                node->mesh()
-                .vertex(vertex0)
-                .position,
-                glm::vec3{
-                    -1.0f,
-                    0.0f,
-                    0.0f
-                }) &&
-            nearly_equal(
-                node->mesh()
-                .vertex(vertex1)
-                .position,
-                glm::vec3{
-                    1.0f,
-                    0.0f,
-                    0.0f
-                }),
-            "aresta sem trilhos nao move vertices");
-
-        ok &= expect(
-            services.history.empty(),
-            "aresta sem trilhos nao cria historico");
+            "largura zero nao cria entrada no historico");
 
         return ok;
     }
@@ -1565,7 +1557,7 @@ namespace {
             firstFixture);
 
         ToolServices services{ editor };
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             services.context);
@@ -1610,33 +1602,19 @@ namespace {
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "edge slide confirma apos mudanca de selecao");
+            "bevel confirma apos mudanca de selecao");
 
         ok &= expect(
             firstNode != nullptr &&
-            nearly_equal(
-                firstNode->mesh()
-                .vertex(firstFixture.vertex0)
-                .position,
-                glm::vec3{
-                    -1.0f,
-                    -0.5f,
-                    0.0f
-                }),
-            "edge slide modifica node capturado");
+            active_face_count(
+                firstNode->mesh()) == 3,
+            "bevel modifica node capturado");
 
         ok &= expect(
             secondNode != nullptr &&
-            nearly_equal(
-                secondNode->mesh()
-                .vertex(secondFixture.vertex0)
-                .position,
-                glm::vec3{
-                    -1.0f,
-                    -1.0f,
-                    0.0f
-                }),
-            "edge slide nao modifica node selecionado depois");
+            active_face_count(
+                secondNode->mesh()) == 1,
+            "bevel nao modifica node selecionado depois");
 
         return ok;
     }
@@ -1664,7 +1642,7 @@ namespace {
             editor
         };
 
-        EdgeSlideTool tool{};
+        BevelTool tool{};
 
         tool.activate(
             context);
@@ -1725,7 +1703,7 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor EdgeSlideTool "
+        << "=== Locus3D Editor BevelTool "
         << "Smoke Test ===\n";
 
     bool ok = true;
@@ -1733,12 +1711,13 @@ int main()
     ok &= test_fixture();
     ok &= test_activation_and_options();
     ok &= test_preview_is_non_destructive();
-    ok &= test_positive_commit_and_history();
-    ok &= test_negative_distance();
-    ok &= test_cancel_does_not_commit();
-    ok &= test_zero_distance_confirmation();
+    ok &= test_commit_and_history();
+    ok &= test_kernel_width_limit();
+    ok &= test_tool_width_clamp();
+    ok &= test_opposite_direction_returns_to_zero();
     ok &= test_visual_scale_and_direction();
-    ok &= test_no_valid_rails();
+    ok &= test_cancel_does_not_commit();
+    ok &= test_zero_width_confirmation();
     ok &= test_stable_captured_target();
     ok &= test_missing_command_services();
 
@@ -1748,14 +1727,14 @@ int main()
     if (!ok) {
         std::cout
             << "[FAIL] Um ou mais testes do "
-            << "EdgeSlideTool falharam.\n";
+            << "BevelTool falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
         << "[OK] Todos os testes do "
-        << "EdgeSlideTool passaram.\n";
+        << "BevelTool passaram.\n";
 
     return EXIT_SUCCESS;
 }

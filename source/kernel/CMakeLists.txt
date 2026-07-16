@@ -105,7 +105,11 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/operations/edge/EdgeSlideOp.h"
     "modeling/operations/edge/EdgeSlideOp.cpp"
     "modeling/operations/edge/BevelOp.h"
-    "modeling/operations/edge/BevelOp.cpp" "modeling/preview/PreviewMesh.h" "modeling/preview/OperationPreview.h" "modeling/preview/IPreviewStrategy.h" "modeling/preview/GhostMeshBuilder.h")
+    "modeling/operations/edge/BevelOp.cpp"
+    "modeling/preview/PreviewMesh.h"
+    "modeling/preview/OperationPreview.h"
+    "modeling/preview/IPreviewStrategy.h"
+    "modeling/preview/GhostMeshBuilder.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

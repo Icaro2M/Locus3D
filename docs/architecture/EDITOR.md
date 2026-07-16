@@ -259,8 +259,8 @@ source\editor
 |   |   +---edge
 |   |   |       EdgeSlideTool.h
 |   |   |       EdgeSlideTool.cpp
-|   |   |       BevelTool.h [!]
-|   |   |       BevelTool.cpp [!]
+|   |   |       BevelTool.h
+|   |   |       BevelTool.cpp
 |   |   |
 |   |   \---topology [!]
 |   |           LoopCutTool.h [!]
@@ -412,8 +412,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/transform/MeshTransformToolSession.cpp`
 - [!] `tools/transform/PivotTool.h`
 - [!] `tools/transform/PivotTool.cpp`
-- [!] `tools/mesh/edge/BevelTool.h`
-- [!] `tools/mesh/edge/BevelTool.cpp`
 - [!] `tools/mesh/topology/LoopCutTool.h`
 - [!] `tools/mesh/topology/LoopCutTool.cpp`
 - [!] `tools/creation/PrimitiveCreateTool.h`
