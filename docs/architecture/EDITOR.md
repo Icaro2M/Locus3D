@@ -256,9 +256,9 @@ source\editor
 |   |   |       InsetFaceTool.h
 |   |   |       InsetFaceTool.cpp
 |   |   |
-|   |   +---edge [!]
-|   |   |       EdgeSlideTool.h [!]
-|   |   |       EdgeSlideTool.cpp [!]
+|   |   +---edge
+|   |   |       EdgeSlideTool.h
+|   |   |       EdgeSlideTool.cpp
 |   |   |       BevelTool.h [!]
 |   |   |       BevelTool.cpp [!]
 |   |   |
@@ -412,8 +412,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/transform/MeshTransformToolSession.cpp`
 - [!] `tools/transform/PivotTool.h`
 - [!] `tools/transform/PivotTool.cpp`
-- [!] `tools/mesh/edge/EdgeSlideTool.h`
-- [!] `tools/mesh/edge/EdgeSlideTool.cpp`
 - [!] `tools/mesh/edge/BevelTool.h`
 - [!] `tools/mesh/edge/BevelTool.cpp`
 - [!] `tools/mesh/topology/LoopCutTool.h`

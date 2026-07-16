@@ -210,7 +210,9 @@ target_sources(locus3d_editor
          "tools/mesh/face/ExtrudeFaceTool.h"
          "tools/mesh/face/ExtrudeFaceTool.cpp"
          "tools/mesh/face/InsetFaceTool.h"
-         "tools/mesh/face/InsetFaceTool.cpp")
+         "tools/mesh/face/InsetFaceTool.cpp"
+         "tools/mesh/edge/EdgeSlideTool.h"
+         "tools/mesh/edge/EdgeSlideTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

@@ -12,7 +12,7 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
-#include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
@@ -30,9 +30,9 @@ namespace {
     using locus::editor::Editor;
     using locus::editor::EditorDirtyFlags;
     using locus::editor::EditorMode;
+    using locus::editor::EdgeSlideTool;
+    using locus::editor::EdgeSlideToolOptions;
     using locus::editor::HistoryStack;
-    using locus::editor::InsetFaceTool;
-    using locus::editor::InsetFaceToolOptions;
     using locus::editor::MeshNode;
     using locus::editor::PickingSync;
     using locus::editor::SceneNodeId;
@@ -44,6 +44,7 @@ namespace {
     using locus::editor::ToolResultCode;
     using locus::editor::ToolState;
 
+    using locus::kernel::geometry::EdgeHandle;
     using locus::kernel::geometry::FaceHandle;
     using locus::kernel::geometry::LEM;
     using locus::kernel::geometry::TopologyTraversal;
@@ -56,6 +57,11 @@ namespace {
         VertexHandle vertex1{};
         VertexHandle vertex2{};
         VertexHandle vertex3{};
+
+        EdgeHandle bottomEdge{};
+        EdgeHandle rightEdge{};
+        EdgeHandle topEdge{};
+        EdgeHandle leftEdge{};
 
         FaceHandle face{};
     };
@@ -126,7 +132,7 @@ namespace {
 
     QuadFixture create_quad(
         Editor& editor,
-        const std::string& name = "Inset Face Fixture")
+        const std::string& name = "Edge Slide Fixture")
     {
         QuadFixture fixture{};
 
@@ -144,6 +150,14 @@ namespace {
         LEM& mesh =
             node->mesh();
 
+        /*
+         * vertex3 -------- vertex2
+         *    |                |
+         *    |                |
+         * vertex0 -------- vertex1
+         *
+         * bottomEdge is the edge targeted by the slide operation.
+         */
         fixture.vertex0 =
             mesh.add_vertex(
                 glm::vec3{
@@ -184,10 +198,30 @@ namespace {
                 fixture.vertex3
                 });
 
+        fixture.bottomEdge =
+            mesh.find_edge(
+                fixture.vertex0,
+                fixture.vertex1);
+
+        fixture.rightEdge =
+            mesh.find_edge(
+                fixture.vertex1,
+                fixture.vertex2);
+
+        fixture.topEdge =
+            mesh.find_edge(
+                fixture.vertex2,
+                fixture.vertex3);
+
+        fixture.leftEdge =
+            mesh.find_edge(
+                fixture.vertex3,
+                fixture.vertex0);
+
         return fixture;
     }
 
-    void select_face(
+    void select_bottom_edge(
         Editor& editor,
         const QuadFixture& fixture)
     {
@@ -197,8 +231,8 @@ namespace {
         selection.set_active_mesh(
             fixture.nodeId);
 
-        selection.set_face(
-            fixture.face);
+        selection.set_edge(
+            fixture.bottomEdge);
     }
 
     ToolEvent make_pointer_press(
@@ -285,6 +319,79 @@ namespace {
             mesh).size();
     }
 
+    bool test_fixture()
+    {
+        std::cout
+            << "\n=== Quad fixture ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        const MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
+
+        ok &= expect(
+            node != nullptr,
+            "fixture cria MeshNode");
+
+        if (!node) {
+            return false;
+        }
+
+        const LEM& mesh =
+            node->mesh();
+
+        ok &= expect(
+            mesh.is_valid(
+                fixture.vertex0) &&
+            mesh.is_valid(
+                fixture.vertex1) &&
+            mesh.is_valid(
+                fixture.vertex2) &&
+            mesh.is_valid(
+                fixture.vertex3),
+            "fixture possui quatro vertices validos");
+
+        ok &= expect(
+            mesh.is_valid(
+                fixture.bottomEdge) &&
+            mesh.is_valid(
+                fixture.rightEdge) &&
+            mesh.is_valid(
+                fixture.topEdge) &&
+            mesh.is_valid(
+                fixture.leftEdge),
+            "fixture possui quatro arestas validas");
+
+        ok &= expect(
+            mesh.is_valid(
+                fixture.face),
+            "fixture possui face valida");
+
+        ok &= expect(
+            active_vertex_count(mesh) == 4,
+            "quad possui quatro vertices ativos");
+
+        ok &= expect(
+            active_edge_count(mesh) == 4,
+            "quad possui quatro arestas ativas");
+
+        ok &= expect(
+            active_loop_count(mesh) == 4,
+            "quad possui quatro loops ativos");
+
+        ok &= expect(
+            active_face_count(mesh) == 1,
+            "quad possui uma face ativa");
+
+        return ok;
+    }
+
     bool test_activation_and_options()
     {
         std::cout
@@ -295,12 +402,12 @@ namespace {
         Editor editor{};
         ToolServices services{ editor };
 
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         ok &= expect(
             tool.state() ==
             ToolState::Inactive,
-            "InsetFaceTool comeca Inactive");
+            "EdgeSlideTool comeca Inactive");
 
         ok &= expect(
             !tool.can_activate(
@@ -330,26 +437,29 @@ namespace {
 
         ok &= expect(
             tool.descriptor().is_valid(),
-            "descriptor do inset e valido");
+            "descriptor do edge slide e valido");
 
         ok &= expect(
             tool.descriptor().id.value ==
             std::string{
-                InsetFaceTool::Id
+                EdgeSlideTool::Id
             },
-            "descriptor usa id estavel do inset");
+            "descriptor usa id estavel do edge slide");
 
-        InsetFaceToolOptions options =
+        EdgeSlideToolOptions options =
             tool.options();
 
-        options.factorPerPixel =
-            0.01f;
+        options.distancePerPixel =
+            0.05f;
 
-        options.factorEpsilon =
+        options.distanceEpsilon =
             0.0001f;
 
-        options.maximumFactor =
-            0.8f;
+        options.invertDragDirection =
+            true;
+
+        options.excludeTargetEdgesFromRails =
+            false;
 
         ok &= expect(
             tool.set_options(options),
@@ -357,45 +467,43 @@ namespace {
 
         ok &= expect(
             nearly_equal(
-                tool.options().factorPerPixel,
-                0.01f),
-            "factorPerPixel foi atualizado");
+                tool.options().distancePerPixel,
+                0.05f),
+            "distancePerPixel foi atualizado");
 
         ok &= expect(
-            nearly_equal(
-                tool.options().maximumFactor,
-                0.8f),
-            "maximumFactor foi atualizado");
+            tool.options().invertDragDirection,
+            "invertDragDirection foi atualizado");
 
-        InsetFaceToolOptions invalidOptions{};
+        ok &= expect(
+            !tool.options()
+            .excludeTargetEdgesFromRails,
+            "opcao de trilhos foi atualizada");
 
-        invalidOptions.factorPerPixel =
+        EdgeSlideToolOptions invalidOptions{};
+
+        invalidOptions.distancePerPixel =
             -1.0f;
 
-        invalidOptions.factorEpsilon =
+        invalidOptions.distanceEpsilon =
             -0.5f;
-
-        invalidOptions.maximumFactor =
-            2.0f;
 
         ok &= expect(
             tool.set_options(
                 invalidOptions),
-            "opcoes invalidas sao aceitas e sanitizadas");
+            "opcoes numericas invalidas sao sanitizadas");
 
         ok &= expect(
             nearly_equal(
-                tool.options().factorPerPixel,
+                tool.options().distancePerPixel,
                 0.0f),
-            "factorPerPixel negativo e limitado a zero");
+            "distancePerPixel negativo e limitado a zero");
 
         ok &= expect(
-            tool.options().factorEpsilon >= 0.0f,
-            "factorEpsilon e mantido nao negativo");
-
-        ok &= expect(
-            tool.options().maximumFactor < 1.0f,
-            "maximumFactor e mantido abaixo de um");
+            nearly_equal(
+                tool.options().distanceEpsilon,
+                0.0f),
+            "distanceEpsilon negativo e limitado a zero");
 
         tool.deactivate(
             services.context);
@@ -406,7 +514,7 @@ namespace {
     bool test_preview_is_non_destructive()
     {
         std::cout
-            << "\n=== Non-destructive inset preview ===\n";
+            << "\n=== Non-destructive edge slide preview ===\n";
 
         bool ok = true;
 
@@ -418,12 +526,12 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             services.context);
@@ -438,25 +546,33 @@ namespace {
                 "fixture possui MeshNode");
         }
 
+        const LEM& originalMesh =
+            node->mesh();
+
         const std::size_t originalVertices =
             active_vertex_count(
-                node->mesh());
+                originalMesh);
 
         const std::size_t originalEdges =
             active_edge_count(
-                node->mesh());
+                originalMesh);
 
         const std::size_t originalLoops =
             active_loop_count(
-                node->mesh());
+                originalMesh);
 
         const std::size_t originalFaces =
             active_face_count(
-                node->mesh());
+                originalMesh);
 
-        const glm::vec3 originalPosition =
-            node->mesh()
+        const glm::vec3 originalPosition0 =
+            originalMesh
             .vertex(fixture.vertex0)
+            .position;
+
+        const glm::vec3 originalPosition1 =
+            originalMesh
+            .vertex(fixture.vertex1)
             .position;
 
         const ToolResult pressResult =
@@ -471,7 +587,7 @@ namespace {
         ok &= expect(
             pressResult.code ==
             ToolResultCode::Started,
-            "pointer press inicia inset");
+            "pointer press inicia edge slide");
 
         ok &= expect(
             tool.state() ==
@@ -480,53 +596,53 @@ namespace {
 
         ok &= expect(
             tool.mesh_session().is_active(),
-            "inset inicia MeshOperationSession");
+            "edge slide inicia MeshOperationSession");
 
         ok &= expect(
             nearly_equal(
-                tool.factor(),
+                tool.distance(),
                 0.0f),
-            "fator inicial e zero");
+            "distancia inicial e zero");
 
         ok &= expect(
             !tool.has_operation_preview(),
-            "fator inicial zero nao gera preview visivel");
+            "distancia inicial zero nao gera preview pronto");
 
         ok &= expect(
             tool.operation_preview().is_empty(),
-            "preview inicial do inset e Empty");
+            "preview inicial do edge slide e Empty");
 
         const ToolResult moveResult =
             tool.handle_event(
                 services.context,
                 make_pointer_move(
                     glm::vec2{
-                        100.0f,
-                        0.0f
+                        150.0f,
+                        100.0f
                     },
                     glm::vec2{
-                        0.0f,
-                        -100.0f
+                        50.0f,
+                        0.0f
                     }));
 
         ok &= expect(
             moveResult.code ==
             ToolResultCode::Updated,
-            "pointer move atualiza inset");
+            "pointer move atualiza edge slide");
 
         ok &= expect(
             nearly_equal(
-                tool.factor(),
+                tool.distance(),
                 0.5f),
-            "arrasto de 100 pixels gera fator 0.5");
+            "arrasto de 50 pixels gera distancia 0.5");
 
         ok &= expect(
             tool.has_operation_preview(),
-            "fator valido gera preview pronto");
+            "distancia valida gera preview pronto");
 
         ok &= expect(
             tool.operation_preview().is_ready(),
-            "OperationPreview do inset fica Ready");
+            "OperationPreview do edge slide fica Ready");
 
         ok &= expect(
             tool.operation_preview()
@@ -548,36 +664,44 @@ namespace {
             .empty(),
             "preview possui geometria wire");
 
+        const LEM& meshAfterPreview =
+            node->mesh();
+
         ok &= expect(
             active_vertex_count(
-                node->mesh()) ==
+                meshAfterPreview) ==
             originalVertices,
             "preview nao altera vertices autoritativos");
 
         ok &= expect(
             active_edge_count(
-                node->mesh()) ==
+                meshAfterPreview) ==
             originalEdges,
             "preview nao altera arestas autoritativas");
 
         ok &= expect(
             active_loop_count(
-                node->mesh()) ==
+                meshAfterPreview) ==
             originalLoops,
             "preview nao altera loops autoritativos");
 
         ok &= expect(
             active_face_count(
-                node->mesh()) ==
+                meshAfterPreview) ==
             originalFaces,
             "preview nao altera faces autoritativas");
 
         ok &= expect(
             nearly_equal(
-                node->mesh()
+                meshAfterPreview
                 .vertex(fixture.vertex0)
                 .position,
-                originalPosition),
+                originalPosition0) &&
+            nearly_equal(
+                meshAfterPreview
+                .vertex(fixture.vertex1)
+                .position,
+                originalPosition1),
             "preview nao altera posicoes autoritativas");
 
         ok &= expect(
@@ -586,7 +710,7 @@ namespace {
 
         ok &= expect(
             !tool.set_options(
-                InsetFaceToolOptions{}),
+                EdgeSlideToolOptions{}),
             "opcoes nao mudam durante interacao");
 
         tool.cancel(
@@ -595,10 +719,10 @@ namespace {
         return ok;
     }
 
-    bool test_commit_and_history()
+    bool test_positive_commit_and_history()
     {
         std::cout
-            << "\n=== Commit, undo and redo ===\n";
+            << "\n=== Positive commit, undo and redo ===\n";
 
         bool ok = true;
 
@@ -610,12 +734,12 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             services.context);
@@ -630,27 +754,50 @@ namespace {
                 "fixture possui MeshNode");
         }
 
+        const LEM& initialMesh =
+            node->mesh();
+
         const std::size_t originalVertices =
             active_vertex_count(
-                node->mesh());
+                initialMesh);
 
         const std::size_t originalEdges =
             active_edge_count(
-                node->mesh());
+                initialMesh);
 
         const std::size_t originalLoops =
             active_loop_count(
-                node->mesh());
+                initialMesh);
 
         const std::size_t originalFaces =
             active_face_count(
-                node->mesh());
+                initialMesh);
+
+        const glm::vec3 originalPosition0 =
+            initialMesh
+            .vertex(fixture.vertex0)
+            .position;
+
+        const glm::vec3 originalPosition1 =
+            initialMesh
+            .vertex(fixture.vertex1)
+            .position;
+
+        const glm::vec3 originalPosition2 =
+            initialMesh
+            .vertex(fixture.vertex2)
+            .position;
+
+        const glm::vec3 originalPosition3 =
+            initialMesh
+            .vertex(fixture.vertex3)
+            .position;
 
         tool.handle_event(
             services.context,
             make_pointer_press(
                 glm::vec2{
-                    100.0f,
+                    0.0f,
                     100.0f
                 }));
 
@@ -658,29 +805,29 @@ namespace {
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    100.0f,
-                    0.0f
+                    50.0f,
+                    100.0f
                 }));
 
         ok &= expect(
             nearly_equal(
-                tool.factor(),
+                tool.distance(),
                 0.5f),
-            "arrasto configura fator final 0.5");
+            "arrasto configura distancia final 0.5");
 
         const ToolResult releaseResult =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
                     glm::vec2{
-                        100.0f,
-                        0.0f
+                        50.0f,
+                        100.0f
                     }));
 
         ok &= expect(
             releaseResult.code ==
             ToolResultCode::Confirmed,
-            "pointer release confirma inset");
+            "pointer release confirma edge slide");
 
         ok &= expect(
             tool.state() ==
@@ -709,53 +856,99 @@ namespace {
                 EditorDirtyFlags::Picking),
             "commit marca Picking dirty");
 
-        const LEM& insetMesh =
+        const LEM& slidMesh =
             node->mesh();
 
         ok &= expect(
             active_vertex_count(
-                insetMesh) ==
-            originalVertices + 4,
-            "inset adiciona quatro vertices internos");
-
-        ok &= expect(
-            active_face_count(
-                insetMesh) == 5,
-            "quad insetado possui face interna e quatro faces externas");
-
-        ok &= expect(
-            active_face_count(
-                insetMesh) >
-            originalFaces,
-            "inset aumenta quantidade de faces");
+                slidMesh) ==
+            originalVertices,
+            "edge slide preserva quantidade de vertices");
 
         ok &= expect(
             active_edge_count(
-                insetMesh) >
+                slidMesh) ==
             originalEdges,
-            "inset aumenta quantidade de arestas");
+            "edge slide preserva quantidade de arestas");
 
         ok &= expect(
             active_loop_count(
-                insetMesh) >
+                slidMesh) ==
             originalLoops,
-            "inset aumenta quantidade de loops");
+            "edge slide preserva quantidade de loops");
 
         ok &= expect(
-            !insetMesh.is_valid(
-                fixture.face),
-            "face original e substituida pelo inset");
+            active_face_count(
+                slidMesh) ==
+            originalFaces,
+            "edge slide preserva quantidade de faces");
 
         ok &= expect(
-            insetMesh.is_valid(
+            slidMesh.is_valid(
                 fixture.vertex0) &&
-            insetMesh.is_valid(
+            slidMesh.is_valid(
                 fixture.vertex1) &&
-            insetMesh.is_valid(
+            slidMesh.is_valid(
                 fixture.vertex2) &&
-            insetMesh.is_valid(
+            slidMesh.is_valid(
                 fixture.vertex3),
-            "vertices externos originais permanecem validos");
+            "edge slide preserva handles de vertices");
+
+        ok &= expect(
+            slidMesh.is_valid(
+                fixture.bottomEdge) &&
+            slidMesh.is_valid(
+                fixture.rightEdge) &&
+            slidMesh.is_valid(
+                fixture.topEdge) &&
+            slidMesh.is_valid(
+                fixture.leftEdge),
+            "edge slide preserva handles de arestas");
+
+        const glm::vec3 expectedPosition0 =
+            originalPosition0 +
+            glm::vec3{
+                0.0f,
+                0.5f,
+                0.0f
+        };
+
+        const glm::vec3 expectedPosition1 =
+            originalPosition1 +
+            glm::vec3{
+                0.0f,
+                0.5f,
+                0.0f
+        };
+
+        ok &= expect(
+            nearly_equal(
+                slidMesh
+                .vertex(fixture.vertex0)
+                .position,
+                expectedPosition0),
+            "vertice esquerdo desliza pela aresta lateral");
+
+        ok &= expect(
+            nearly_equal(
+                slidMesh
+                .vertex(fixture.vertex1)
+                .position,
+                expectedPosition1),
+            "vertice direito desliza pela aresta lateral");
+
+        ok &= expect(
+            nearly_equal(
+                slidMesh
+                .vertex(fixture.vertex2)
+                .position,
+                originalPosition2) &&
+            nearly_equal(
+                slidMesh
+                .vertex(fixture.vertex3)
+                .position,
+                originalPosition3),
+            "vertices nao alvo permanecem parados");
 
         ok &= expect(
             services.history.can_undo(),
@@ -767,8 +960,8 @@ namespace {
 
         ok &= expect(
             services.history.undo_name() ==
-            "Inset Faces",
-            "entrada possui nome Inset Faces");
+            "Slide Edges",
+            "entrada possui nome Slide Edges");
 
         ok &= expect(
             !services.history.can_redo(),
@@ -780,36 +973,35 @@ namespace {
 
         ok &= expect(
             undoResult.success,
-            "undo do inset funciona");
+            "undo do edge slide funciona");
+
+        ok &= expect(
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex0)
+                .position,
+                originalPosition0) &&
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex1)
+                .position,
+                originalPosition1),
+            "undo restaura vertices alvo");
 
         ok &= expect(
             active_vertex_count(
                 node->mesh()) ==
-            originalVertices,
-            "undo restaura vertices originais");
-
-        ok &= expect(
+            originalVertices &&
             active_edge_count(
                 node->mesh()) ==
-            originalEdges,
-            "undo restaura arestas originais");
-
-        ok &= expect(
+            originalEdges &&
             active_loop_count(
                 node->mesh()) ==
-            originalLoops,
-            "undo restaura loops originais");
-
-        ok &= expect(
+            originalLoops &&
             active_face_count(
                 node->mesh()) ==
             originalFaces,
-            "undo restaura face original");
-
-        ok &= expect(
-            node->mesh().is_valid(
-                fixture.face),
-            "undo restaura handle da face original");
+            "undo preserva topologia original");
 
         ok &= expect(
             services.history.can_redo(),
@@ -817,7 +1009,7 @@ namespace {
 
         ok &= expect(
             services.history.redo_name() ==
-            "Inset Faces",
+            "Slide Edges",
             "entrada de redo preserva nome");
 
         const CommandResult redoResult =
@@ -826,23 +1018,130 @@ namespace {
 
         ok &= expect(
             redoResult.success,
-            "redo do inset funciona");
+            "redo do edge slide funciona");
 
         ok &= expect(
-            active_vertex_count(
-                node->mesh()) ==
-            originalVertices + 4,
-            "redo restaura vertices internos");
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex0)
+                .position,
+                expectedPosition0) &&
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex1)
+                .position,
+                expectedPosition1),
+            "redo restaura posicoes deslizadas");
+
+        return ok;
+    }
+
+    bool test_negative_distance()
+    {
+        std::cout
+            << "\n=== Negative slide distance ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_bottom_edge(
+            editor,
+            fixture);
+
+        ToolServices services{ editor };
+        EdgeSlideTool tool{};
+
+        tool.activate(
+            services.context);
+
+        MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
+
+        if (!node) {
+            return expect(
+                false,
+                "fixture possui MeshNode");
+        }
+
+        const glm::vec3 originalPosition0 =
+            node->mesh()
+            .vertex(fixture.vertex0)
+            .position;
+
+        const glm::vec3 originalPosition1 =
+            node->mesh()
+            .vertex(fixture.vertex1)
+            .position;
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    100.0f,
+                    100.0f
+                }));
+
+        tool.handle_event(
+            services.context,
+            make_pointer_move(
+                glm::vec2{
+                    75.0f,
+                    100.0f
+                }));
 
         ok &= expect(
-            active_face_count(
-                node->mesh()) == 5,
-            "redo restaura topologia insetada");
+            nearly_equal(
+                tool.distance(),
+                -0.25f),
+            "arrasto para esquerda gera distancia negativa");
+
+        const ToolResult result =
+            tool.handle_event(
+                services.context,
+                make_pointer_release(
+                    glm::vec2{
+                        75.0f,
+                        100.0f
+                    }));
 
         ok &= expect(
-            !node->mesh().is_valid(
-                fixture.face),
-            "redo substitui novamente a face original");
+            result.code ==
+            ToolResultCode::Confirmed,
+            "edge slide negativo confirma");
+
+        ok &= expect(
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex0)
+                .position,
+                originalPosition0 +
+                glm::vec3{
+                    0.0f,
+                    -0.25f,
+                    0.0f
+                }),
+            "vertice esquerdo aceita deslocamento negativo");
+
+        ok &= expect(
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex1)
+                .position,
+                originalPosition1 +
+                glm::vec3{
+                    0.0f,
+                    -0.25f,
+                    0.0f
+                }),
+            "vertice direito aceita deslocamento negativo");
 
         return ok;
     }
@@ -862,12 +1161,12 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             services.context);
@@ -882,28 +1181,30 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const std::size_t originalVertices =
-            active_vertex_count(
-                node->mesh());
+        const glm::vec3 originalPosition0 =
+            node->mesh()
+            .vertex(fixture.vertex0)
+            .position;
 
-        const std::size_t originalFaces =
-            active_face_count(
-                node->mesh());
+        const glm::vec3 originalPosition1 =
+            node->mesh()
+            .vertex(fixture.vertex1)
+            .position;
 
         tool.handle_event(
             services.context,
             make_pointer_press(
                 glm::vec2{
                     0.0f,
-                    100.0f
+                    0.0f
                 }));
 
         tool.handle_event(
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    0.0f,
-                    20.0f
+                    100.0f,
+                    0.0f
                 }));
 
         ok &= expect(
@@ -929,21 +1230,17 @@ namespace {
             "cancel limpa sessao");
 
         ok &= expect(
-            active_vertex_count(
-                node->mesh()) ==
-            originalVertices,
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex0)
+                .position,
+                originalPosition0) &&
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex1)
+                .position,
+                originalPosition1),
             "cancel nao altera vertices");
-
-        ok &= expect(
-            active_face_count(
-                node->mesh()) ==
-            originalFaces,
-            "cancel nao altera faces");
-
-        ok &= expect(
-            node->mesh().is_valid(
-                fixture.face),
-            "cancel preserva face original");
 
         ok &= expect(
             services.history.empty(),
@@ -952,10 +1249,10 @@ namespace {
         return ok;
     }
 
-    bool test_zero_factor_confirmation()
+    bool test_zero_distance_confirmation()
     {
         std::cout
-            << "\n=== Zero-factor confirmation ===\n";
+            << "\n=== Zero-distance confirmation ===\n";
 
         bool ok = true;
 
@@ -967,12 +1264,12 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             services.context);
@@ -987,13 +1284,15 @@ namespace {
                 "fixture possui MeshNode");
         }
 
-        const std::size_t originalVertices =
-            active_vertex_count(
-                node->mesh());
+        const glm::vec3 originalPosition0 =
+            node->mesh()
+            .vertex(fixture.vertex0)
+            .position;
 
-        const std::size_t originalFaces =
-            active_face_count(
-                node->mesh());
+        const glm::vec3 originalPosition1 =
+            node->mesh()
+            .vertex(fixture.vertex1)
+            .position;
 
         tool.handle_event(
             services.context,
@@ -1018,88 +1317,21 @@ namespace {
             "release sem movimento conclui interacao");
 
         ok &= expect(
-            active_vertex_count(
-                node->mesh()) ==
-            originalVertices,
-            "fator zero nao cria vertices");
-
-        ok &= expect(
-            active_face_count(
-                node->mesh()) ==
-            originalFaces,
-            "fator zero nao muda faces");
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex0)
+                .position,
+                originalPosition0) &&
+            nearly_equal(
+                node->mesh()
+                .vertex(fixture.vertex1)
+                .position,
+                originalPosition1),
+            "distancia zero nao move vertices");
 
         ok &= expect(
             services.history.empty(),
-            "fator zero nao cria entrada no historico");
-
-        return ok;
-    }
-
-    bool test_factor_clamping()
-    {
-        std::cout
-            << "\n=== Factor clamping ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        editor.set_mode(
-            EditorMode::Mesh);
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        select_face(
-            editor,
-            fixture);
-
-        ToolServices services{ editor };
-
-        InsetFaceToolOptions options{};
-
-        options.factorPerPixel =
-            0.01f;
-
-        options.maximumFactor =
-            0.75f;
-
-        InsetFaceTool tool{
-            options
-        };
-
-        tool.activate(
-            services.context);
-
-        tool.handle_event(
-            services.context,
-            make_pointer_press(
-                glm::vec2{
-                    0.0f,
-                    200.0f
-                }));
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    0.0f,
-                    0.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.factor(),
-                0.75f),
-            "fator e limitado por maximumFactor");
-
-        ok &= expect(
-            tool.has_operation_preview(),
-            "fator limitado ainda produz preview valido");
-
-        tool.cancel(
-            services.context);
+            "distancia zero nao cria entrada no historico");
 
         return ok;
     }
@@ -1119,24 +1351,21 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
         ToolServices services{ editor };
 
-        InsetFaceToolOptions options{};
+        EdgeSlideToolOptions options{};
 
-        options.factorPerPixel =
-            0.005f;
-
-        options.maximumFactor =
-            0.95f;
+        options.distancePerPixel =
+            0.01f;
 
         options.invertDragDirection =
             true;
 
-        InsetFaceTool tool{
+        EdgeSlideTool tool{
             options
         };
 
@@ -1148,7 +1377,7 @@ namespace {
             make_pointer_press(
                 glm::vec2{
                     0.0f,
-                    100.0f
+                    0.0f
                 },
                 2.0f));
 
@@ -1156,33 +1385,15 @@ namespace {
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    0.0f,
-                    150.0f
+                    50.0f,
+                    0.0f
                 }));
 
         ok &= expect(
             nearly_equal(
-                tool.factor(),
-                0.5f),
-            "visualScale e invertDragDirection afetam fator");
-
-        tool.handle_event(
-            services.context,
-            make_pointer_move(
-                glm::vec2{
-                    0.0f,
-                    50.0f
-                }));
-
-        ok &= expect(
-            nearly_equal(
-                tool.factor(),
-                0.0f),
-            "arrasto no sentido oposto e limitado a zero");
-
-        ok &= expect(
-            tool.operation_preview().is_empty(),
-            "fator retornando a zero produz preview Empty");
+                tool.distance(),
+                -1.0f),
+            "visualScale e invertDragDirection afetam distancia");
 
         tool.cancel(
             services.context);
@@ -1190,10 +1401,147 @@ namespace {
         return ok;
     }
 
-    bool test_multiple_faces()
+    bool test_no_valid_rails()
     {
         std::cout
-            << "\n=== Multiple selected faces ===\n";
+            << "\n=== Target without valid rails ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        editor.set_mode(
+            EditorMode::Mesh);
+
+        const SceneNodeId nodeId =
+            editor.scene().create_mesh(
+                "Loose Edge");
+
+        MeshNode* node =
+            editor.scene().find_mesh(
+                nodeId);
+
+        if (!node) {
+            return expect(
+                false,
+                "fixture loose edge possui MeshNode");
+        }
+
+        LEM& mesh =
+            node->mesh();
+
+        const VertexHandle vertex0 =
+            mesh.add_vertex(
+                glm::vec3{
+                    -1.0f,
+                    0.0f,
+                    0.0f
+                });
+
+        const VertexHandle vertex1 =
+            mesh.add_vertex(
+                glm::vec3{
+                    1.0f,
+                    0.0f,
+                    0.0f
+                });
+
+        const EdgeHandle edge =
+            mesh.find_or_create_edge(
+                vertex0,
+                vertex1);
+
+        auto& selection =
+            editor.selection().mesh();
+
+        selection.set_active_mesh(
+            nodeId);
+
+        selection.set_edge(
+            edge);
+
+        ToolServices services{ editor };
+        EdgeSlideTool tool{};
+
+        tool.activate(
+            services.context);
+
+        tool.handle_event(
+            services.context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        const ToolResult moveResult =
+            tool.handle_event(
+                services.context,
+                make_pointer_move(
+                    glm::vec2{
+                        50.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            moveResult.code ==
+            ToolResultCode::Updated,
+            "operacao sem trilhos ainda processa update");
+
+        ok &= expect(
+            tool.operation_preview().is_empty(),
+            "aresta solta sem trilhos produz preview Empty");
+
+        ok &= expect(
+            !tool.has_operation_preview(),
+            "aresta solta nao produz preview pronto");
+
+        const ToolResult releaseResult =
+            tool.handle_event(
+                services.context,
+                make_pointer_release(
+                    glm::vec2{
+                        50.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Confirmed,
+            "preview Empty conclui como no-op");
+
+        ok &= expect(
+            nearly_equal(
+                node->mesh()
+                .vertex(vertex0)
+                .position,
+                glm::vec3{
+                    -1.0f,
+                    0.0f,
+                    0.0f
+                }) &&
+            nearly_equal(
+                node->mesh()
+                .vertex(vertex1)
+                .position,
+                glm::vec3{
+                    1.0f,
+                    0.0f,
+                    0.0f
+                }),
+            "aresta sem trilhos nao move vertices");
+
+        ok &= expect(
+            services.history.empty(),
+            "aresta sem trilhos nao cria historico");
+
+        return ok;
+    }
+
+    bool test_stable_captured_target()
+    {
+        std::cout
+            << "\n=== Stable captured target ===\n";
 
         bool ok = true;
 
@@ -1212,22 +1560,12 @@ namespace {
                 editor,
                 "Second Quad");
 
-        /*
-         * MeshToolTarget supports only one active mesh node. The second fixture
-         * exists only to verify that selection from another node does not become
-         * part of the captured target.
-         */
-        auto& selection =
-            editor.selection().mesh();
-
-        selection.set_active_mesh(
-            firstFixture.nodeId);
-
-        selection.set_face(
-            firstFixture.face);
+        select_bottom_edge(
+            editor,
+            firstFixture);
 
         ToolServices services{ editor };
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             services.context);
@@ -1237,29 +1575,27 @@ namespace {
             make_pointer_press(
                 glm::vec2{
                     0.0f,
-                    100.0f
+                    0.0f
                 }));
 
-        selection.set_active_mesh(
-            secondFixture.nodeId);
-
-        selection.set_face(
-            secondFixture.face);
+        select_bottom_edge(
+            editor,
+            secondFixture);
 
         tool.handle_event(
             services.context,
             make_pointer_move(
                 glm::vec2{
-                    0.0f,
+                    50.0f,
                     0.0f
                 }));
 
-        const ToolResult result =
+        const ToolResult releaseResult =
             tool.handle_event(
                 services.context,
                 make_pointer_release(
                     glm::vec2{
-                        0.0f,
+                        50.0f,
                         0.0f
                     }));
 
@@ -1272,21 +1608,35 @@ namespace {
                 secondFixture.nodeId);
 
         ok &= expect(
-            result.code ==
+            releaseResult.code ==
             ToolResultCode::Confirmed,
-            "inset confirma apos mudanca de selecao");
+            "edge slide confirma apos mudanca de selecao");
 
         ok &= expect(
             firstNode != nullptr &&
-            active_face_count(
-                firstNode->mesh()) == 5,
-            "inset modifica o node capturado");
+            nearly_equal(
+                firstNode->mesh()
+                .vertex(firstFixture.vertex0)
+                .position,
+                glm::vec3{
+                    -1.0f,
+                    -0.5f,
+                    0.0f
+                }),
+            "edge slide modifica node capturado");
 
         ok &= expect(
             secondNode != nullptr &&
-            active_face_count(
-                secondNode->mesh()) == 1,
-            "inset nao modifica o node selecionado depois");
+            nearly_equal(
+                secondNode->mesh()
+                .vertex(secondFixture.vertex0)
+                .position,
+                glm::vec3{
+                    -1.0f,
+                    -1.0f,
+                    0.0f
+                }),
+            "edge slide nao modifica node selecionado depois");
 
         return ok;
     }
@@ -1306,7 +1656,7 @@ namespace {
         const QuadFixture fixture =
             create_quad(editor);
 
-        select_face(
+        select_bottom_edge(
             editor,
             fixture);
 
@@ -1314,7 +1664,7 @@ namespace {
             editor
         };
 
-        InsetFaceTool tool{};
+        EdgeSlideTool tool{};
 
         tool.activate(
             context);
@@ -1324,14 +1674,14 @@ namespace {
             make_pointer_press(
                 glm::vec2{
                     0.0f,
-                    100.0f
+                    0.0f
                 }));
 
         tool.handle_event(
             context,
             make_pointer_move(
                 glm::vec2{
-                    0.0f,
+                    50.0f,
                     0.0f
                 }));
 
@@ -1340,7 +1690,7 @@ namespace {
                 context,
                 make_pointer_release(
                     glm::vec2{
-                        0.0f,
+                        50.0f,
                         0.0f
                     }));
 
@@ -1375,19 +1725,21 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor InsetFaceTool "
+        << "=== Locus3D Editor EdgeSlideTool "
         << "Smoke Test ===\n";
 
     bool ok = true;
 
+    ok &= test_fixture();
     ok &= test_activation_and_options();
     ok &= test_preview_is_non_destructive();
-    ok &= test_commit_and_history();
+    ok &= test_positive_commit_and_history();
+    ok &= test_negative_distance();
     ok &= test_cancel_does_not_commit();
-    ok &= test_zero_factor_confirmation();
-    ok &= test_factor_clamping();
+    ok &= test_zero_distance_confirmation();
     ok &= test_visual_scale_and_direction();
-    ok &= test_multiple_faces();
+    ok &= test_no_valid_rails();
+    ok &= test_stable_captured_target();
     ok &= test_missing_command_services();
 
     std::cout
@@ -1396,14 +1748,14 @@ int main()
     if (!ok) {
         std::cout
             << "[FAIL] Um ou mais testes do "
-            << "InsetFaceTool falharam.\n";
+            << "EdgeSlideTool falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
         << "[OK] Todos os testes do "
-        << "InsetFaceTool passaram.\n";
+        << "EdgeSlideTool passaram.\n";
 
     return EXIT_SUCCESS;
 }
