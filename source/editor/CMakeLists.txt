@@ -204,7 +204,9 @@ target_sources(locus3d_editor
          "render/PreviewRenderAdapter.cpp"
          "tools/mesh/core/MeshToolTarget.h"
          "tools/mesh/core/MeshOperationSession.h"
-         "tools/mesh/core/MeshOperationSession.cpp")
+         "tools/mesh/core/MeshOperationSession.cpp"
+         "tools/mesh/core/MeshDragOperationTool.h"
+         "tools/mesh/core/MeshDragOperationTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

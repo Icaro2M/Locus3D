@@ -6,8 +6,12 @@
 #include "editor/Editor.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/tools/core/ToolContext.h"
+#include "editor/tools/core/ToolDescriptor.h"
+#include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolResult.h"
-#include "editor/tools/mesh/core/MeshOperationSession.h"
+#include "editor/tools/core/ToolState.h"
+#include "editor/tools/interaction/DragTool.h"
+#include "editor/tools/mesh/core/MeshDragOperationTool.h"
 #include "editor/tools/mesh/core/MeshToolTarget.h"
 #include "kernel/common/Error.h"
 #include "kernel/geometry/mesh/LEMDiff.h"
@@ -19,24 +23,33 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
-#include <vector>
 
 namespace {
 
+    using locus::editor::DragCompletionPolicy;
     using locus::editor::Editor;
     using locus::editor::EditorDirtyFlags;
+    using locus::editor::EditorMode;
+    using locus::editor::MeshDragOperationTool;
     using locus::editor::MeshNode;
-    using locus::editor::MeshOperationSession;
-    using locus::editor::MeshOperationSessionState;
     using locus::editor::MeshToolTarget;
     using locus::editor::SceneNodeId;
     using locus::editor::SelectionGranularity;
+    using locus::editor::ToolCapabilities;
+    using locus::editor::ToolCategory;
     using locus::editor::ToolContext;
+    using locus::editor::ToolDescriptor;
+    using locus::editor::ToolEvent;
+    using locus::editor::ToolEventType;
+    using locus::editor::ToolId;
+    using locus::editor::ToolPointerButton;
     using locus::editor::ToolResult;
     using locus::editor::ToolResultCode;
+    using locus::editor::ToolState;
 
     using locus::kernel::ErrorCode;
 
@@ -52,10 +65,12 @@ namespace {
 
     struct QuadFixture {
         SceneNodeId nodeId{};
+
         VertexHandle vertex0{};
         VertexHandle vertex1{};
         VertexHandle vertex2{};
         VertexHandle vertex3{};
+
         FaceHandle face{};
     };
 
@@ -73,16 +88,25 @@ namespace {
     }
 
     bool nearly_equal(
-        const glm::vec3& a,
-        const glm::vec3& b,
+        const glm::vec3& lhs,
+        const glm::vec3& rhs,
         const float epsilon = 0.0001f)
     {
-        return glm::length(a - b) <= epsilon;
+        return glm::length(lhs - rhs) <= epsilon;
+    }
+
+    bool has_dirty_flag(
+        const ToolResult& result,
+        const EditorDirtyFlags flag)
+    {
+        return locus::editor::has_flag(
+            result.dirtyFlags,
+            flag);
     }
 
     QuadFixture create_quad(
         Editor& editor,
-        const std::string& name = "Mesh Operation Fixture")
+        const std::string& name = "Mesh Drag Fixture")
     {
         QuadFixture fixture{};
 
@@ -137,7 +161,7 @@ namespace {
         return fixture;
     }
 
-    MeshToolTarget make_face_target(
+    void select_fixture_face(
         Editor& editor,
         const QuadFixture& fixture)
     {
@@ -146,10 +170,53 @@ namespace {
 
         selection.set_active_mesh(fixture.nodeId);
         selection.set_face(fixture.face);
+    }
 
-        return MeshToolTarget::capture(
-            selection,
-            SelectionGranularity::Face);
+    ToolEvent make_pointer_event(
+        const ToolEventType type,
+        const glm::vec2 position,
+        const ToolPointerButton button =
+        ToolPointerButton::None)
+    {
+        ToolEvent event{};
+
+        event.type = type;
+        event.button = button;
+        event.pointer.viewportPosition = position;
+
+        return event;
+    }
+
+    ToolEvent make_pointer_press(
+        const glm::vec2 position)
+    {
+        return make_pointer_event(
+            ToolEventType::PointerPress,
+            position,
+            ToolPointerButton::Primary);
+    }
+
+    ToolEvent make_pointer_move(
+        const glm::vec2 position,
+        const glm::vec2 delta = glm::vec2{ 0.0f })
+    {
+        ToolEvent event =
+            make_pointer_event(
+                ToolEventType::PointerMove,
+                position);
+
+        event.pointer.viewportDelta = delta;
+
+        return event;
+    }
+
+    ToolEvent make_pointer_release(
+        const glm::vec2 position)
+    {
+        return make_pointer_event(
+            ToolEventType::PointerRelease,
+            position,
+            ToolPointerButton::Primary);
     }
 
     class MoveVertexOperation final : public IOperation {
@@ -173,7 +240,8 @@ namespace {
         OperationResult execute_impl(
             OperationContext& context) override
         {
-            LEM& mesh = context.editable_mesh();
+            LEM& mesh =
+                context.editable_mesh();
 
             if (!mesh.is_valid(vertex_)) {
                 return OperationResult::fail(
@@ -184,6 +252,7 @@ namespace {
             mesh.vertex(vertex_).position += delta_;
 
             LEMDiff diff{};
+
             diff.record(
                 LEMChangeType::VertexModified,
                 vertex_);
@@ -196,249 +265,431 @@ namespace {
         glm::vec3 delta_{ 0.0f };
     };
 
-    class NoChangeOperation final : public IOperation {
+    class TestMeshDragTool final :
+        public MeshDragOperationTool {
     public:
-        [[nodiscard]]
-        std::string_view name() const override
+        explicit TestMeshDragTool(
+            const DragCompletionPolicy completionPolicy =
+            DragCompletionPolicy::ConfirmOnRelease)
+            : MeshDragOperationTool(
+                make_descriptor(),
+                SelectionGranularity::Face,
+                completionPolicy)
         {
-            return "NoChangeOperation";
+        }
+
+        [[nodiscard]]
+        float amount() const
+        {
+            return amount_;
+        }
+
+        [[nodiscard]]
+        int begin_count() const
+        {
+            return beginCount_;
+        }
+
+        [[nodiscard]]
+        int update_count() const
+        {
+            return updateCount_;
+        }
+
+        [[nodiscard]]
+        int preview_build_count() const
+        {
+            return previewBuildCount_;
+        }
+
+        [[nodiscard]]
+        int commit_count() const
+        {
+            return commitCount_;
+        }
+
+        [[nodiscard]]
+        int clear_count() const
+        {
+            return clearCount_;
+        }
+
+        [[nodiscard]]
+        bool concrete_state_active() const
+        {
+            return concreteStateActive_;
+        }
+
+        [[nodiscard]]
+        SceneNodeId committed_node() const
+        {
+            return committedNode_;
+        }
+
+        [[nodiscard]]
+        float committed_amount() const
+        {
+            return committedAmount_;
+        }
+
+        void set_fail_begin(
+            const bool fail)
+        {
+            failBegin_ = fail;
+        }
+
+        void set_fail_commit(
+            const bool fail)
+        {
+            failCommit_ = fail;
+        }
+
+        void set_null_preview_operation(
+            const bool enabled)
+        {
+            nullPreviewOperation_ = enabled;
+        }
+
+        void set_ignore_updates(
+            const bool enabled)
+        {
+            ignoreUpdates_ = enabled;
+        }
+
+    protected:
+        ToolResult begin_mesh_operation(
+            ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target) override
+        {
+            (void)context;
+
+            ++beginCount_;
+
+            if (failBegin_) {
+                return ToolResult::fail(
+                    "Intentional mesh operation begin failure.");
+            }
+
+            if (!target.targets_faces()) {
+                return ToolResult::fail(
+                    "Test mesh tool requires a face target.");
+            }
+
+            startPosition_ =
+                event.pointer.viewportPosition;
+
+            amount_ = 0.0f;
+            concreteStateActive_ = true;
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::None,
+                "Test mesh operation initialized.");
+        }
+
+        ToolResult update_mesh_operation(
+            ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target) override
+        {
+            (void)context;
+            (void)target;
+
+            ++updateCount_;
+
+            if (ignoreUpdates_) {
+                return ToolResult::ignored();
+            }
+
+            const glm::vec2 offset =
+                event.pointer.viewportPosition -
+                startPosition_;
+
+            amount_ = offset.x * 0.1f;
+
+            return ToolResult::updated(
+                EditorDirtyFlags::None,
+                "Test mesh parameters updated.");
+        }
+
+        [[nodiscard]]
+        std::unique_ptr<IOperation>
+            build_preview_operation(
+                const ToolContext& context,
+                const MeshToolTarget& target) const override
+        {
+            ++previewBuildCount_;
+
+            if (nullPreviewOperation_) {
+                return nullptr;
+            }
+
+            const MeshNode* node =
+                context.scene().find_mesh(
+                    target.nodeId);
+
+            if (!node ||
+                target.faces.empty()) {
+                return nullptr;
+            }
+
+            const LEM& mesh =
+                node->mesh();
+
+            const FaceHandle face =
+                target.faces.front();
+
+            if (!mesh.is_valid(face)) {
+                return nullptr;
+            }
+
+            const auto& faceElement =
+                mesh.face(face);
+
+            if (faceElement.loop.is_invalid()) {
+                return nullptr;
+            }
+
+            const auto& loopElement =
+                mesh.loop(faceElement.loop);
+
+            if (loopElement.vertex.is_invalid()) {
+                return nullptr;
+            }
+
+            return std::make_unique<MoveVertexOperation>(
+                loopElement.vertex,
+                glm::vec3{
+                    0.0f,
+                    0.0f,
+                    amount_
+                });
+        }
+
+        ToolResult commit_mesh_operation(
+            ToolContext& context,
+            const MeshToolTarget& target) override
+        {
+            (void)context;
+
+            if (failCommit_) {
+                return ToolResult::fail(
+                    "Intentional mesh operation commit failure.");
+            }
+
+            ++commitCount_;
+
+            committedNode_ = target.nodeId;
+            committedAmount_ = amount_;
+
+            return ToolResult::confirmed(
+                EditorDirtyFlags::Mesh |
+                EditorDirtyFlags::Render |
+                EditorDirtyFlags::Picking,
+                "Test mesh operation committed.");
+        }
+
+        void clear_mesh_operation() override
+        {
+            ++clearCount_;
+
+            amount_ = 0.0f;
+            startPosition_ = glm::vec2{ 0.0f };
+            concreteStateActive_ = false;
         }
 
     private:
         [[nodiscard]]
-        OperationResult execute_impl(
-            OperationContext&) override
+        static ToolDescriptor make_descriptor()
         {
-            return OperationResult::no_change(
-                "Operation intentionally produced no changes.");
+            return ToolDescriptor{
+                ToolId{ "test.mesh_drag" },
+                "Test Mesh Drag",
+                "Tests the shared mesh drag operation lifecycle.",
+                ToolCategory::Mesh,
+                ToolCapabilities::MeshMode |
+                    ToolCapabilities::RequiresSelection |
+                    ToolCapabilities::UsesPointer |
+                    ToolCapabilities::UsesPreview |
+                    ToolCapabilities::Modal
+            };
         }
+
+        glm::vec2 startPosition_{ 0.0f };
+        float amount_ = 0.0f;
+
+        int beginCount_ = 0;
+        int updateCount_ = 0;
+
+        mutable int previewBuildCount_ = 0;
+
+        int commitCount_ = 0;
+        int clearCount_ = 0;
+
+        bool concreteStateActive_ = false;
+        bool failBegin_ = false;
+        bool failCommit_ = false;
+        bool nullPreviewOperation_ = false;
+        bool ignoreUpdates_ = false;
+
+        SceneNodeId committedNode_{};
+        float committedAmount_ = 0.0f;
     };
 
-    class CancelledOperation final : public IOperation {
-    public:
-        [[nodiscard]]
-        std::string_view name() const override
-        {
-            return "CancelledOperation";
-        }
-
-    private:
-        [[nodiscard]]
-        OperationResult execute_impl(
-            OperationContext&) override
-        {
-            return OperationResult::cancelled(
-                "Operation preview was cancelled.");
-        }
-    };
-
-    class FailedOperation final : public IOperation {
-    public:
-        [[nodiscard]]
-        std::string_view name() const override
-        {
-            return "FailedOperation";
-        }
-
-    private:
-        [[nodiscard]]
-        OperationResult execute_impl(
-            OperationContext&) override
-        {
-            return OperationResult::fail(
-                ErrorCode::InvalidState,
-                "Intentional preview failure.");
-        }
-    };
-
-    bool test_mesh_tool_target()
+    bool test_activation_contract()
     {
-        std::cout << "\n=== MeshToolTarget ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        const MeshToolTarget target =
-            make_face_target(editor, fixture);
-
-        ok &= expect(
-            target.has_node(),
-            "target captura SceneNodeId valido");
-
-        ok &= expect(
-            target.nodeId == fixture.nodeId,
-            "target preserva node id");
-
-        ok &= expect(
-            target.granularity ==
-            SelectionGranularity::Face,
-            "target preserva granularidade Face");
-
-        ok &= expect(
-            target.targets_faces(),
-            "target reconhece alvo de faces");
-
-        ok &= expect(
-            !target.targets_vertices() &&
-            !target.targets_edges() &&
-            !target.targets_loops(),
-            "target nao confunde tipos de componentes");
-
-        ok &= expect(
-            target.component_count() == 1,
-            "target captura uma face");
-
-        ok &= expect(
-            target.faces.size() == 1 &&
-            target.faces.front() == fixture.face,
-            "target preserva handle da face");
-
-        ok &= expect(
-            target.vertices.empty() &&
-            target.edges.empty() &&
-            target.loops.empty(),
-            "capture guarda apenas componentes da granularidade pedida");
-
-        ok &= expect(
-            target.is_valid(),
-            "target capturado e estruturalmente valido");
-
-        MeshToolTarget emptyTarget =
-            MeshToolTarget::none();
-
-        ok &= expect(
-            !emptyTarget.has_node(),
-            "none retorna target sem node");
-
-        ok &= expect(
-            emptyTarget.empty(),
-            "none retorna target vazio");
-
-        ok &= expect(
-            !emptyTarget.is_valid(),
-            "none retorna target invalido");
-
-        MeshToolTarget objectTarget{};
-
-        objectTarget.nodeId = fixture.nodeId;
-        objectTarget.granularity =
-            SelectionGranularity::Object;
-
-        ok &= expect(
-            !objectTarget.has_component_granularity(),
-            "granularidade Object nao e componente de malha");
-
-        ok &= expect(
-            !objectTarget.is_valid(),
-            "target Object nao e valido para ferramenta de malha");
-
-        MeshToolTarget clearTarget = target;
-        clearTarget.clear();
-
-        ok &= expect(
-            !clearTarget.has_node() &&
-            clearTarget.empty() &&
-            !clearTarget.is_valid(),
-            "clear remove todos os dados do target");
-
-        return ok;
-    }
-
-    bool test_session_begin()
-    {
-        std::cout << "\n=== MeshOperationSession begin ===\n";
+        std::cout << "\n=== Activation contract ===\n";
 
         bool ok = true;
 
         Editor editor{};
         ToolContext context{ editor };
 
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        MeshOperationSession session{};
+        TestMeshDragTool tool{};
 
         ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Inactive,
-            "sessao comeca Inactive");
+            tool.state() == ToolState::Inactive,
+            "tool comeca Inactive");
 
         ok &= expect(
-            !session.is_active(),
-            "sessao inicialmente nao esta ativa");
+            !tool.can_activate(context),
+            "tool nao ativa em Object mode");
+
+        const ToolResult invalidActivation =
+            tool.activate(context);
 
         ok &= expect(
-            !session.has_ready_preview(),
-            "sessao inicialmente nao possui preview");
+            invalidActivation.code ==
+            ToolResultCode::Failed,
+            "activate falha em Object mode");
+
+        ok &= expect(
+            tool.state() == ToolState::Inactive,
+            "falha de ativacao mantem Inactive");
+
+        editor.set_mode(EditorMode::Mesh);
+
+        ok &= expect(
+            tool.can_activate(context),
+            "tool pode ativar em Mesh mode");
+
+        const ToolResult activation =
+            tool.activate(context);
+
+        ok &= expect(
+            activation.code ==
+            ToolResultCode::Consumed,
+            "activate retorna Consumed");
+
+        ok &= expect(
+            tool.state() == ToolState::Ready,
+            "activate move tool para Ready");
+
+        ok &= expect(
+            tool.descriptor().is_valid(),
+            "descriptor da tool e valido");
+
+        ok &= expect(
+            tool.target_granularity() ==
+            SelectionGranularity::Face,
+            "tool preserva granularidade Face");
+
+        const ToolResult duplicateActivation =
+            tool.activate(context);
+
+        ok &= expect(
+            !duplicateActivation.failed(),
+            "activate repetido nao falha");
+
+        ok &= expect(
+            tool.state() == ToolState::Ready,
+            "activate repetido preserva estado Ready");
+
+        const ToolResult deactivation =
+            tool.deactivate(context);
+
+        ok &= expect(
+            deactivation.code ==
+            ToolResultCode::Consumed,
+            "deactivate retorna Consumed");
+
+        ok &= expect(
+            tool.state() == ToolState::Inactive,
+            "deactivate retorna tool para Inactive");
+
+        return ok;
+    }
+
+    bool test_press_without_target()
+    {
+        std::cout << "\n=== Press without target ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.activate(context);
 
         const ToolResult result =
-            session.begin(
+            tool.handle_event(
                 context,
-                make_face_target(editor, fixture));
+                make_pointer_press(
+                    glm::vec2{
+                        10.0f,
+                        20.0f
+                    }));
 
         ok &= expect(
-            result.code == ToolResultCode::Started,
-            "begin retorna Started");
+            result.code == ToolResultCode::Ignored,
+            "press sem selecao retorna Ignored");
 
         ok &= expect(
-            !result.failed(),
-            "begin valido nao falha");
+            tool.state() == ToolState::Ready,
+            "press sem selecao mantem Ready");
 
         ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Active,
-            "begin move sessao para Active");
+            !tool.capture().is_active(),
+            "press sem selecao nao captura pointer");
 
         ok &= expect(
-            session.is_active(),
-            "sessao fica ativa depois de begin");
+            !tool.mesh_session().is_active(),
+            "press sem selecao nao inicia mesh session");
 
         ok &= expect(
-            !session.has_ready_preview(),
-            "begin ainda nao gera preview pronto");
-
-        ok &= expect(
-            session.preview().is_invalidated(),
-            "preview inicial fica Invalidated");
-
-        ok &= expect(
-            session.target().nodeId == fixture.nodeId,
-            "sessao preserva node alvo");
-
-        ok &= expect(
-            session.target().targets_faces(),
-            "sessao preserva alvo de faces");
-
-        const ToolResult duplicateBegin =
-            session.begin(
-                context,
-                make_face_target(editor, fixture));
-
-        ok &= expect(
-            duplicateBegin.code == ToolResultCode::Failed,
-            "segundo begin falha enquanto sessao esta ativa");
+            tool.begin_count() == 0,
+            "press sem selecao nao chama begin concreto");
 
         return ok;
     }
 
-    bool test_ready_preview()
+    bool test_begin_and_preview()
     {
-        std::cout << "\n=== Ready non-destructive preview ===\n";
+        std::cout << "\n=== Begin and preview ===\n";
 
         bool ok = true;
 
         Editor editor{};
-        ToolContext context{ editor };
+        editor.set_mode(EditorMode::Mesh);
 
         const QuadFixture fixture =
             create_quad(editor);
 
-        MeshNode* node =
-            editor.scene().find_mesh(fixture.nodeId);
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.activate(context);
+
+        const MeshNode* node =
+            editor.scene().find_mesh(
+                fixture.nodeId);
 
         if (!node) {
             return expect(
@@ -447,492 +698,352 @@ namespace {
         }
 
         const glm::vec3 originalPosition =
-            static_cast<const MeshNode&>(*node)
-            .mesh()
+            node->mesh()
             .vertex(fixture.vertex0)
             .position;
 
-        MeshOperationSession session{};
-
-        const ToolResult beginResult =
-            session.begin(
+        const ToolResult pressResult =
+            tool.handle_event(
                 context,
-                make_face_target(editor, fixture));
+                make_pointer_press(
+                    glm::vec2{
+                        100.0f,
+                        50.0f
+                    }));
 
         ok &= expect(
-            beginResult.code == ToolResultCode::Started,
-            "sessao inicia antes do preview");
-
-        MoveVertexOperation operation{
-            fixture.vertex0,
-            glm::vec3{
-                0.0f,
-                0.0f,
-                2.0f
-            }
-        };
-
-        const ToolResult previewResult =
-            session.rebuild_preview(
-                context,
-                operation);
+            pressResult.code ==
+            ToolResultCode::Started,
+            "pointer press retorna Started");
 
         ok &= expect(
-            previewResult.code == ToolResultCode::Updated,
-            "rebuild_preview retorna Updated");
+            tool.state() ==
+            ToolState::Interacting,
+            "pointer press move tool para Interacting");
 
         ok &= expect(
-            previewResult.dirtyFlags ==
-            EditorDirtyFlags::Render,
-            "preview marca render como dirty");
+            tool.capture().has_pointer(),
+            "pointer press inicia captura");
 
         ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::PreviewReady,
-            "preview valido move sessao para PreviewReady");
+            tool.mesh_session().is_active(),
+            "pointer press inicia mesh session");
 
         ok &= expect(
-            session.has_ready_preview(),
-            "sessao informa preview pronto");
+            tool.has_operation_preview(),
+            "pointer press gera preview inicial");
 
         ok &= expect(
-            session.preview().is_ready(),
-            "OperationPreview possui status Ready");
+            tool.operation_preview().is_ready(),
+            "preview inicial possui status Ready");
 
         ok &= expect(
-            session.preview().mesh().valid(),
-            "preview contem payload valido");
+            tool.begin_count() == 1,
+            "begin concreto foi chamado uma vez");
 
         ok &= expect(
-            !session.preview().mesh().solid_mesh().empty(),
-            "preview contem geometria solida");
+            tool.preview_build_count() == 1,
+            "preview inicial foi construido uma vez");
 
         ok &= expect(
-            !session.preview().mesh().wire_mesh().empty(),
-            "preview contem geometria wire");
+            tool.concrete_state_active(),
+            "estado concreto fica ativo");
 
-        ok &= expect(
-            session.preview().mesh().diff().size() == 1,
-            "preview preserva diff da operacao");
-
-        const glm::vec3 authoritativePosition =
-            static_cast<const MeshNode&>(*node)
-            .mesh()
+        const glm::vec3 positionAfterPress =
+            node->mesh()
             .vertex(fixture.vertex0)
             .position;
 
         ok &= expect(
             nearly_equal(
-                authoritativePosition,
+                positionAfterPress,
                 originalPosition),
-            "preview nao altera a LEM autoritativa");
+            "preview inicial nao altera LEM autoritativa");
+
+        const ToolResult moveResult =
+            tool.handle_event(
+                context,
+                make_pointer_move(
+                    glm::vec2{
+                        125.0f,
+                        50.0f
+                    },
+                    glm::vec2{
+                        25.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            moveResult.code ==
+            ToolResultCode::Updated,
+            "pointer move retorna Updated");
+
+        ok &= expect(
+            has_dirty_flag(
+                moveResult,
+                EditorDirtyFlags::Render),
+            "pointer move marca render dirty");
+
+        ok &= expect(
+            tool.update_count() == 1,
+            "pointer move chama update concreto");
+
+        ok &= expect(
+            tool.preview_build_count() == 2,
+            "pointer move reconstrui preview");
+
+        ok &= expect(
+            tool.has_operation_preview(),
+            "preview continua pronto apos move");
+
+        ok &= expect(
+            tool.amount() == 2.5f,
+            "pointer move atualiza parametro concreto");
+
+        const glm::vec3 positionAfterMove =
+            node->mesh()
+            .vertex(fixture.vertex0)
+            .position;
+
+        ok &= expect(
+            nearly_equal(
+                positionAfterMove,
+                originalPosition),
+            "preview atualizado nao altera LEM autoritativa");
 
         return ok;
     }
 
-    bool test_no_change_and_cancelled_preview()
+    bool test_confirm_on_release()
+    {
+        std::cout << "\n=== Confirm on release ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.activate(context);
+
+        tool.handle_event(
+            context,
+            make_pointer_press(
+                glm::vec2{
+                    10.0f,
+                    10.0f
+                }));
+
+        tool.handle_event(
+            context,
+            make_pointer_move(
+                glm::vec2{
+                    40.0f,
+                    10.0f
+                }));
+
+        const ToolResult releaseResult =
+            tool.handle_event(
+                context,
+                make_pointer_release(
+                    glm::vec2{
+                        40.0f,
+                        10.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Confirmed,
+            "pointer release confirma interacao");
+
+        ok &= expect(
+            tool.state() == ToolState::Ready,
+            "confirmacao retorna tool para Ready");
+
+        ok &= expect(
+            !tool.capture().is_active(),
+            "confirmacao limpa captura");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "confirmacao limpa mesh session");
+
+        ok &= expect(
+            tool.commit_count() == 1,
+            "confirmacao chama commit uma vez");
+
+        ok &= expect(
+            tool.committed_node() ==
+            fixture.nodeId,
+            "commit recebe node capturado");
+
+        ok &= expect(
+            tool.committed_amount() == 3.0f,
+            "commit preserva parametro final");
+
+        ok &= expect(
+            !tool.concrete_state_active(),
+            "confirmacao limpa estado concreto");
+
+        ok &= expect(
+            has_dirty_flag(
+                releaseResult,
+                EditorDirtyFlags::Mesh) &&
+            has_dirty_flag(
+                releaseResult,
+                EditorDirtyFlags::Render) &&
+            has_dirty_flag(
+                releaseResult,
+                EditorDirtyFlags::Picking),
+            "confirmacao preserva dirty flags do commit");
+
+        return ok;
+    }
+
+    bool test_explicit_confirmation_policy()
     {
         std::cout
-            << "\n=== Empty and invalidated previews ===\n";
+            << "\n=== Explicit confirmation policy ===\n";
 
         bool ok = true;
 
         Editor editor{};
-        ToolContext context{ editor };
+        editor.set_mode(EditorMode::Mesh);
 
         const QuadFixture fixture =
             create_quad(editor);
 
-        MeshOperationSession session{};
+        select_fixture_face(
+            editor,
+            fixture);
 
-        session.begin(
-            context,
-            make_face_target(editor, fixture));
-
-        NoChangeOperation noChangeOperation{};
-
-        const ToolResult noChangeResult =
-            session.rebuild_preview(
-                context,
-                noChangeOperation);
-
-        ok &= expect(
-            noChangeResult.code == ToolResultCode::Updated,
-            "operacao NoChange retorna Updated");
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Active,
-            "NoChange mantem sessao Active");
-
-        ok &= expect(
-            session.preview().is_empty(),
-            "NoChange produz OperationPreview Empty");
-
-        ok &= expect(
-            !session.has_ready_preview(),
-            "NoChange nao produz preview pronto");
-
-        CancelledOperation cancelledOperation{};
-
-        const ToolResult cancelledResult =
-            session.rebuild_preview(
-                context,
-                cancelledOperation);
-
-        ok &= expect(
-            cancelledResult.code == ToolResultCode::Updated,
-            "preview cancelado retorna Updated");
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Active,
-            "preview cancelado mantem sessao Active");
-
-        ok &= expect(
-            session.preview().is_invalidated(),
-            "operacao Cancelled produz preview Invalidated");
-
-        return ok;
-    }
-
-    bool test_failed_preview()
-    {
-        std::cout << "\n=== Failed preview ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
         ToolContext context{ editor };
 
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        MeshOperationSession session{};
-
-        session.begin(
-            context,
-            make_face_target(editor, fixture));
-
-        FailedOperation operation{};
-
-        const ToolResult result =
-            session.rebuild_preview(
-                context,
-                operation);
-
-        ok &= expect(
-            result.code == ToolResultCode::Failed,
-            "falha da operacao retorna ToolResult Failed");
-
-        ok &= expect(
-            result.dirtyFlags ==
-            EditorDirtyFlags::Render,
-            "falha limpa ou atualiza preview renderizado");
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Failed,
-            "falha move sessao para Failed");
-
-        ok &= expect(
-            session.failed(),
-            "failed reconhece estado de falha");
-
-        ok &= expect(
-            session.preview().is_failure(),
-            "sessao preserva OperationPreview Failed");
-
-        ok &= expect(
-            result.message ==
-            "Intentional preview failure.",
-            "falha preserva diagnostico do kernel");
-
-        return ok;
-    }
-
-    bool test_preview_options_and_invalidation()
-    {
-        std::cout
-            << "\n=== Preview options and invalidation ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
-        ToolContext context{ editor };
-
-        const QuadFixture fixture =
-            create_quad(editor);
-
-        MeshOperationSession session{};
-
-        session.begin(
-            context,
-            make_face_target(editor, fixture));
-
-        MoveVertexOperation operation{
-            fixture.vertex0,
-            glm::vec3{
-                0.0f,
-                0.0f,
-                1.0f
-            }
+        TestMeshDragTool tool{
+            DragCompletionPolicy::
+                WaitForExplicitConfirmation
         };
 
-        session.rebuild_preview(
+        tool.activate(context);
+
+        tool.handle_event(
             context,
-            operation);
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
 
-        auto options =
-            session.preview_options();
+        tool.handle_event(
+            context,
+            make_pointer_move(
+                glm::vec2{
+                    20.0f,
+                    0.0f
+                }));
 
-        options.buildWireframe = false;
-        options.validateAfterPreview = true;
-
-        session.set_preview_options(options);
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Active,
-            "alterar opcoes invalida preview pronto");
-
-        ok &= expect(
-            session.preview().is_invalidated(),
-            "set_preview_options produz preview Invalidated");
-
-        ok &= expect(
-            !session.preview_options().buildWireframe,
-            "sessao preserva buildWireframe false");
-
-        ok &= expect(
-            session.preview_options().validateAfterPreview,
-            "sessao preserva validateAfterPreview true");
-
-        const ToolResult rebuildResult =
-            session.rebuild_preview(
+        const ToolResult releaseResult =
+            tool.handle_event(
                 context,
-                operation);
+                make_pointer_release(
+                    glm::vec2{
+                        20.0f,
+                        0.0f
+                    }));
 
         ok &= expect(
-            rebuildResult.code == ToolResultCode::Updated,
-            "preview pode ser reconstruido apos mudar opcoes");
+            releaseResult.code ==
+            ToolResultCode::Consumed,
+            "release explicito nao confirma automaticamente");
 
         ok &= expect(
-            session.has_ready_preview(),
-            "rebuild apos opcoes produz preview pronto");
+            tool.state() ==
+            ToolState::Interacting,
+            "release explicito mantem Interacting");
 
         ok &= expect(
-            session.preview().mesh().wire_mesh().empty(),
-            "buildWireframe false omite geometria wire");
-
-        const ToolResult invalidateResult =
-            session.invalidate_preview(
-                "Parameters changed.");
+            !tool.capture().is_active(),
+            "release explicito encerra captura");
 
         ok &= expect(
-            invalidateResult.code == ToolResultCode::Updated,
-            "invalidate_preview retorna Updated");
+            tool.mesh_session().is_active(),
+            "release explicito preserva mesh session");
 
         ok &= expect(
-            invalidateResult.dirtyFlags ==
-            EditorDirtyFlags::Render,
-            "invalidate_preview marca render dirty");
+            tool.commit_count() == 0,
+            "release explicito ainda nao chama commit");
+
+        const ToolResult confirmResult =
+            tool.confirm(context);
 
         ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Active,
-            "invalidate_preview retorna sessao para Active");
+            confirmResult.code ==
+            ToolResultCode::Confirmed,
+            "confirm semantico conclui interacao");
 
         ok &= expect(
-            session.preview().is_invalidated(),
-            "invalidate_preview altera status do preview");
+            tool.state() == ToolState::Ready,
+            "confirm semantico retorna Ready");
 
         ok &= expect(
-            session.preview().message() ==
-            "Parameters changed.",
-            "invalidate_preview preserva mensagem");
+            tool.commit_count() == 1,
+            "confirm semantico chama commit");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "confirm semantico limpa mesh session");
 
         return ok;
     }
 
-    bool test_invalid_targets()
+    bool test_cancel()
     {
-        std::cout << "\n=== Invalid targets ===\n";
-
-        bool ok = true;
-
-        {
-            Editor editor{};
-            ToolContext context{ editor };
-
-            MeshOperationSession session{};
-
-            const ToolResult result =
-                session.begin(
-                    context,
-                    MeshToolTarget::none());
-
-            ok &= expect(
-                result.code == ToolResultCode::Failed,
-                "begin rejeita target vazio");
-
-            ok &= expect(
-                !session.is_active(),
-                "target vazio nao ativa sessao");
-        }
-
-        {
-            Editor editor{};
-            ToolContext context{ editor };
-
-            const QuadFixture fixture =
-                create_quad(editor);
-
-            MeshToolTarget target =
-                make_face_target(editor, fixture);
-
-            editor.scene().remove_node(
-                fixture.nodeId);
-
-            MeshOperationSession session{};
-
-            const ToolResult result =
-                session.begin(
-                    context,
-                    std::move(target));
-
-            ok &= expect(
-                result.code == ToolResultCode::Failed,
-                "begin rejeita node removido");
-
-            ok &= expect(
-                !session.is_active(),
-                "node removido nao deixa sessao ativa");
-        }
-
-        {
-            Editor editor{};
-            ToolContext context{ editor };
-
-            const QuadFixture fixture =
-                create_quad(editor);
-
-            MeshToolTarget target =
-                make_face_target(editor, fixture);
-
-            MeshNode* node =
-                editor.scene().find_mesh(
-                    fixture.nodeId);
-
-            if (node) {
-                node->mesh().clear();
-            }
-
-            MeshOperationSession session{};
-
-            const ToolResult result =
-                session.begin(
-                    context,
-                    std::move(target));
-
-            ok &= expect(
-                result.code == ToolResultCode::Failed,
-                "begin rejeita handle que nao existe mais na LEM");
-
-            ok &= expect(
-                !session.is_active(),
-                "handle invalido nao deixa sessao ativa");
-        }
-
-        return ok;
-    }
-
-    bool test_target_invalidation_during_session()
-    {
-        std::cout
-            << "\n=== Target invalidation during session ===\n";
+        std::cout << "\n=== Cancellation ===\n";
 
         bool ok = true;
 
         Editor editor{};
-        ToolContext context{ editor };
+        editor.set_mode(EditorMode::Mesh);
 
         const QuadFixture fixture =
             create_quad(editor);
 
-        MeshOperationSession session{};
+        select_fixture_face(
+            editor,
+            fixture);
 
-        session.begin(
-            context,
-            make_face_target(editor, fixture));
-
-        editor.scene().remove_node(
-            fixture.nodeId);
-
-        MoveVertexOperation operation{
-            fixture.vertex0,
-            glm::vec3{
-                0.0f,
-                0.0f,
-                1.0f
-            }
-        };
-
-        const ToolResult result =
-            session.rebuild_preview(
-                context,
-                operation);
-
-        ok &= expect(
-            result.code == ToolResultCode::Failed,
-            "rebuild falha quando node e removido");
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Failed,
-            "node removido move sessao para Failed");
-
-        ok &= expect(
-            session.preview().is_failure(),
-            "node removido produz preview Failed");
-
-        return ok;
-    }
-
-    bool test_cancel_and_clear()
-    {
-        std::cout << "\n=== Cancel and clear ===\n";
-
-        bool ok = true;
-
-        Editor editor{};
         ToolContext context{ editor };
+        TestMeshDragTool tool{};
 
-        const QuadFixture fixture =
-            create_quad(editor);
+        tool.activate(context);
 
-        MeshOperationSession session{};
-
-        session.begin(
+        tool.handle_event(
             context,
-            make_face_target(editor, fixture));
+            make_pointer_press(
+                glm::vec2{
+                    5.0f,
+                    5.0f
+                }));
 
-        MoveVertexOperation operation{
-            fixture.vertex0,
-            glm::vec3{
-                0.0f,
-                0.0f,
-                1.0f
-            }
-        };
-
-        session.rebuild_preview(
+        tool.handle_event(
             context,
-            operation);
+            make_pointer_move(
+                glm::vec2{
+                    15.0f,
+                    5.0f
+                }));
 
         const ToolResult cancelResult =
-            session.cancel(
-                "User cancelled mesh operation.");
+            tool.cancel(context);
 
         ok &= expect(
             cancelResult.code ==
@@ -940,100 +1051,429 @@ namespace {
             "cancel retorna Cancelled");
 
         ok &= expect(
-            cancelResult.dirtyFlags ==
-            EditorDirtyFlags::Render,
+            tool.state() == ToolState::Ready,
+            "cancel retorna tool para Ready");
+
+        ok &= expect(
+            !tool.capture().is_active(),
+            "cancel limpa captura");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "cancel limpa mesh session");
+
+        ok &= expect(
+            tool.commit_count() == 0,
+            "cancel nao executa commit");
+
+        ok &= expect(
+            !tool.concrete_state_active(),
+            "cancel limpa estado concreto");
+
+        ok &= expect(
+            has_dirty_flag(
+                cancelResult,
+                EditorDirtyFlags::Render),
             "cancel marca render dirty");
-
-        ok &= expect(
-            cancelResult.message ==
-            "User cancelled mesh operation.",
-            "cancel preserva diagnostico");
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Inactive,
-            "cancel retorna sessao para Inactive");
-
-        ok &= expect(
-            !session.is_active(),
-            "cancel desativa sessao");
-
-        ok &= expect(
-            !session.target().has_node(),
-            "cancel limpa target");
-
-        ok &= expect(
-            !session.has_ready_preview(),
-            "cancel descarta preview pronto");
-
-        const ToolResult secondCancel =
-            session.cancel();
-
-        ok &= expect(
-            secondCancel.code ==
-            ToolResultCode::Ignored,
-            "cancel inativo retorna Ignored");
-
-        session.begin(
-            context,
-            make_face_target(editor, fixture));
-
-        session.clear();
-
-        ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Inactive &&
-            !session.target().has_node(),
-            "clear limpa sessao sem ToolResult");
 
         return ok;
     }
 
-    bool test_rebuild_without_session()
+    bool test_deactivate_while_interacting()
     {
         std::cout
-            << "\n=== Rebuild without active session ===\n";
+            << "\n=== Deactivate while interacting ===\n";
 
         bool ok = true;
 
         Editor editor{};
-        ToolContext context{ editor };
+        editor.set_mode(EditorMode::Mesh);
 
         const QuadFixture fixture =
             create_quad(editor);
 
-        MeshOperationSession session{};
+        select_fixture_face(
+            editor,
+            fixture);
 
-        MoveVertexOperation operation{
-            fixture.vertex0,
-            glm::vec3{
-                0.0f,
-                0.0f,
-                1.0f
-            }
-        };
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.activate(context);
+
+        tool.handle_event(
+            context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
 
         const ToolResult result =
-            session.rebuild_preview(
+            tool.deactivate(context);
+
+        ok &= expect(
+            result.code ==
+            ToolResultCode::Consumed,
+            "deactivate conclui com Consumed");
+
+        ok &= expect(
+            tool.state() == ToolState::Inactive,
+            "deactivate retorna Inactive");
+
+        ok &= expect(
+            !tool.capture().is_active(),
+            "deactivate limpa captura");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "deactivate limpa mesh session");
+
+        ok &= expect(
+            tool.commit_count() == 0,
+            "deactivate nao confirma operacao");
+
+        ok &= expect(
+            !tool.concrete_state_active(),
+            "deactivate limpa estado concreto");
+
+        return ok;
+    }
+
+    bool test_begin_failure()
+    {
+        std::cout << "\n=== Begin failure ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.set_fail_begin(true);
+        tool.activate(context);
+
+        const ToolResult result =
+            tool.handle_event(
                 context,
-                operation);
+                make_pointer_press(
+                    glm::vec2{
+                        10.0f,
+                        10.0f
+                    }));
 
         ok &= expect(
             result.code == ToolResultCode::Failed,
-            "rebuild sem begin retorna Failed");
+            "falha no begin retorna Failed");
 
         ok &= expect(
-            session.state() ==
-            MeshOperationSessionState::Inactive,
-            "rebuild sem begin mantem sessao Inactive");
-
-        const ToolResult invalidateResult =
-            session.invalidate_preview();
+            tool.state() == ToolState::Ready,
+            "falha no begin mantem Ready");
 
         ok &= expect(
-            invalidateResult.code ==
+            !tool.capture().is_active(),
+            "falha no begin nao mantem captura");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "falha no begin limpa mesh session");
+
+        ok &= expect(
+            !tool.concrete_state_active(),
+            "falha no begin limpa estado concreto");
+
+        ok &= expect(
+            tool.commit_count() == 0,
+            "falha no begin nao executa commit");
+
+        return ok;
+    }
+
+    bool test_preview_construction_failure()
+    {
+        std::cout
+            << "\n=== Preview construction failure ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.set_null_preview_operation(true);
+        tool.activate(context);
+
+        const ToolResult result =
+            tool.handle_event(
+                context,
+                make_pointer_press(
+                    glm::vec2{
+                        0.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            result.code == ToolResultCode::Failed,
+            "preview nulo retorna Failed");
+
+        ok &= expect(
+            tool.state() == ToolState::Ready,
+            "falha de preview mantem Ready");
+
+        ok &= expect(
+            !tool.capture().is_active(),
+            "falha de preview nao mantem captura");
+
+        ok &= expect(
+            !tool.mesh_session().is_active(),
+            "falha de preview limpa mesh session");
+
+        ok &= expect(
+            !tool.concrete_state_active(),
+            "falha de preview limpa estado concreto");
+
+        return ok;
+    }
+
+    bool test_ignored_update()
+    {
+        std::cout << "\n=== Ignored update ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.set_ignore_updates(true);
+        tool.activate(context);
+
+        tool.handle_event(
+            context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        const int previewCountBeforeMove =
+            tool.preview_build_count();
+
+        const ToolResult moveResult =
+            tool.handle_event(
+                context,
+                make_pointer_move(
+                    glm::vec2{
+                        30.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            moveResult.code ==
             ToolResultCode::Ignored,
-            "invalidate sem sessao retorna Ignored");
+            "update concreto Ignored permanece Ignored");
+
+        ok &= expect(
+            tool.preview_build_count() ==
+            previewCountBeforeMove,
+            "update Ignored nao reconstrui preview");
+
+        ok &= expect(
+            tool.state() ==
+            ToolState::Interacting,
+            "update Ignored mantem interacao ativa");
+
+        tool.cancel(context);
+
+        return ok;
+    }
+
+    bool test_commit_failure()
+    {
+        std::cout << "\n=== Commit failure ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        select_fixture_face(
+            editor,
+            fixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.set_fail_commit(true);
+        tool.activate(context);
+
+        tool.handle_event(
+            context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        tool.handle_event(
+            context,
+            make_pointer_move(
+                glm::vec2{
+                    20.0f,
+                    0.0f
+                }));
+
+        const ToolResult releaseResult =
+            tool.handle_event(
+                context,
+                make_pointer_release(
+                    glm::vec2{
+                        20.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Failed,
+            "falha no commit retorna Failed");
+
+        ok &= expect(
+            tool.state() ==
+            ToolState::Interacting,
+            "falha no commit preserva interacao");
+
+        ok &= expect(
+            tool.mesh_session().is_active(),
+            "falha no commit preserva mesh session");
+
+        ok &= expect(
+            tool.commit_count() == 0,
+            "commit com falha nao incrementa sucesso");
+
+        ok &= expect(
+            tool.concrete_state_active(),
+            "falha no commit preserva parametros para retry/cancel");
+
+        const ToolResult cancelResult =
+            tool.cancel(context);
+
+        ok &= expect(
+            cancelResult.code ==
+            ToolResultCode::Cancelled,
+            "interacao pode ser cancelada apos falha no commit");
+
+        ok &= expect(
+            tool.state() == ToolState::Ready,
+            "cancel apos falha retorna Ready");
+
+        return ok;
+    }
+
+    bool test_selection_is_captured()
+    {
+        std::cout << "\n=== Stable captured target ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        editor.set_mode(EditorMode::Mesh);
+
+        const QuadFixture firstFixture =
+            create_quad(
+                editor,
+                "First Mesh");
+
+        const QuadFixture secondFixture =
+            create_quad(
+                editor,
+                "Second Mesh");
+
+        select_fixture_face(
+            editor,
+            firstFixture);
+
+        ToolContext context{ editor };
+        TestMeshDragTool tool{};
+
+        tool.activate(context);
+
+        tool.handle_event(
+            context,
+            make_pointer_press(
+                glm::vec2{
+                    0.0f,
+                    0.0f
+                }));
+
+        /*
+         * Change the editor selection while the operation is active. The
+         * captured MeshToolTarget must remain bound to the first node.
+         */
+        select_fixture_face(
+            editor,
+            secondFixture);
+
+        tool.handle_event(
+            context,
+            make_pointer_move(
+                glm::vec2{
+                    10.0f,
+                    0.0f
+                }));
+
+        const ToolResult releaseResult =
+            tool.handle_event(
+                context,
+                make_pointer_release(
+                    glm::vec2{
+                        10.0f,
+                        0.0f
+                    }));
+
+        ok &= expect(
+            releaseResult.code ==
+            ToolResultCode::Confirmed,
+            "operacao confirma apos mudanca de selecao");
+
+        ok &= expect(
+            tool.committed_node() ==
+            firstFixture.nodeId,
+            "commit usa node capturado no inicio");
+
+        ok &= expect(
+            tool.committed_node() !=
+            secondFixture.nodeId,
+            "mudanca de selecao nao troca alvo ativo");
 
         return ok;
     }
@@ -1043,35 +1483,37 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor Mesh Operation Session "
+        << "=== Locus3D Editor MeshDragOperationTool "
         << "Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_mesh_tool_target();
-    ok &= test_session_begin();
-    ok &= test_ready_preview();
-    ok &= test_no_change_and_cancelled_preview();
-    ok &= test_failed_preview();
-    ok &= test_preview_options_and_invalidation();
-    ok &= test_invalid_targets();
-    ok &= test_target_invalidation_during_session();
-    ok &= test_cancel_and_clear();
-    ok &= test_rebuild_without_session();
+    ok &= test_activation_contract();
+    ok &= test_press_without_target();
+    ok &= test_begin_and_preview();
+    ok &= test_confirm_on_release();
+    ok &= test_explicit_confirmation_policy();
+    ok &= test_cancel();
+    ok &= test_deactivate_while_interacting();
+    ok &= test_begin_failure();
+    ok &= test_preview_construction_failure();
+    ok &= test_ignored_update();
+    ok &= test_commit_failure();
+    ok &= test_selection_is_captured();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (!ok) {
         std::cout
-            << "[FAIL] Um ou mais testes de "
-            << "MeshToolTarget/MeshOperationSession falharam.\n";
+            << "[FAIL] Um ou mais testes do "
+            << "MeshDragOperationTool falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
-        << "[OK] Todos os testes de "
-        << "MeshToolTarget/MeshOperationSession passaram.\n";
+        << "[OK] Todos os testes do "
+        << "MeshDragOperationTool passaram.\n";
 
     return EXIT_SUCCESS;
 }
