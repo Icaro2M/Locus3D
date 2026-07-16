@@ -250,9 +250,9 @@ source\editor
 |   |   |       MeshDragOperationTool.h
 |   |   |       MeshDragOperationTool.cpp
 |   |   |
-|   |   +---face [!]
-|   |   |       ExtrudeFaceTool.h [!]
-|   |   |       ExtrudeFaceTool.cpp [!]
+|   |   +---face
+|   |   |       ExtrudeFaceTool.h
+|   |   |       ExtrudeFaceTool.cpp
 |   |   |       InsetFaceTool.h [!]
 |   |   |       InsetFaceTool.cpp [!]
 |   |   |
@@ -412,8 +412,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/transform/MeshTransformToolSession.cpp`
 - [!] `tools/transform/PivotTool.h`
 - [!] `tools/transform/PivotTool.cpp`
-- [!] `tools/mesh/face/ExtrudeFaceTool.h`
-- [!] `tools/mesh/face/ExtrudeFaceTool.cpp`
 - [!] `tools/mesh/face/InsetFaceTool.h`
 - [!] `tools/mesh/face/InsetFaceTool.cpp`
 - [!] `tools/mesh/edge/EdgeSlideTool.h`

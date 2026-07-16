@@ -206,7 +206,9 @@ target_sources(locus3d_editor
          "tools/mesh/core/MeshOperationSession.h"
          "tools/mesh/core/MeshOperationSession.cpp"
          "tools/mesh/core/MeshDragOperationTool.h"
-         "tools/mesh/core/MeshDragOperationTool.cpp")
+         "tools/mesh/core/MeshDragOperationTool.cpp"
+         "tools/mesh/face/ExtrudeFaceTool.h"
+         "tools/mesh/face/ExtrudeFaceTool.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
