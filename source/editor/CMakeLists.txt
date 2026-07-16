@@ -201,7 +201,10 @@ target_sources(locus3d_editor
          "tools/transform/TransformTool.h"
          "tools/transform/TransformTool.cpp"
          "render/PreviewRenderAdapter.h"
-         "render/PreviewRenderAdapter.cpp")
+         "render/PreviewRenderAdapter.cpp"
+         "tools/mesh/core/MeshToolTarget.h"
+         "tools/mesh/core/MeshOperationSession.h"
+         "tools/mesh/core/MeshOperationSession.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

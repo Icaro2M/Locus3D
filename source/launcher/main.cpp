@@ -3,39 +3,61 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "editor/render/PreviewRenderAdapter.h"
+#include "editor/Editor.h"
 #include "editor/scene/MeshNode.h"
-#include "graphics/mesh/GpuMesh.h"
-#include "kernel/geometry/render/RenderMesh.h"
-#include "kernel/modeling/preview/OperationPreview.h"
-#include "kernel/modeling/preview/PreviewMesh.h"
+#include "editor/tools/core/ToolContext.h"
+#include "editor/tools/core/ToolResult.h"
+#include "editor/tools/mesh/core/MeshOperationSession.h"
+#include "editor/tools/mesh/core/MeshToolTarget.h"
+#include "kernel/common/Error.h"
+#include "kernel/geometry/mesh/LEMDiff.h"
+#include "kernel/modeling/core/IOperation.h"
+#include "kernel/modeling/core/OperationContext.h"
+#include "kernel/modeling/core/OperationResult.h"
 
 #include <glm/geometric.hpp>
-#include <glm/gtc/quaternion.hpp>
 
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
+    using locus::editor::Editor;
+    using locus::editor::EditorDirtyFlags;
     using locus::editor::MeshNode;
-    using locus::editor::PreviewRenderAdapter;
-    using locus::editor::PreviewRenderObjects;
-    using locus::editor::PreviewRenderOptions;
-    using locus::editor::PreviewRenderResult;
+    using locus::editor::MeshOperationSession;
+    using locus::editor::MeshOperationSessionState;
+    using locus::editor::MeshToolTarget;
     using locus::editor::SceneNodeId;
+    using locus::editor::SelectionGranularity;
+    using locus::editor::ToolContext;
+    using locus::editor::ToolResult;
+    using locus::editor::ToolResultCode;
 
-    using locus::graphics::BufferUsage;
-    using locus::graphics::GpuMesh;
-    using locus::graphics::MeshUploadData;
-    using locus::graphics::PrimitiveTopology;
-    using locus::graphics::RenderLayer;
+    using locus::kernel::ErrorCode;
 
-    using locus::kernel::geometry::RenderMesh;
-    using locus::kernel::modeling::OperationPreview;
-    using locus::kernel::modeling::OperationPreviewStatus;
-    using locus::kernel::modeling::PreviewMesh;
+    using locus::kernel::geometry::FaceHandle;
+    using locus::kernel::geometry::LEM;
+    using locus::kernel::geometry::LEMChangeType;
+    using locus::kernel::geometry::LEMDiff;
+    using locus::kernel::geometry::VertexHandle;
+
+    using locus::kernel::modeling::IOperation;
+    using locus::kernel::modeling::OperationContext;
+    using locus::kernel::modeling::OperationResult;
+
+    struct QuadFixture {
+        SceneNodeId nodeId{};
+        VertexHandle vertex0{};
+        VertexHandle vertex1{};
+        VertexHandle vertex2{};
+        VertexHandle vertex3{};
+        FaceHandle face{};
+    };
 
     bool expect(
         const bool condition,
@@ -51,14 +73,6 @@ namespace {
     }
 
     bool nearly_equal(
-        const float a,
-        const float b,
-        const float epsilon = 0.0001f)
-    {
-        return std::abs(a - b) <= epsilon;
-    }
-
-    bool nearly_equal(
         const glm::vec3& a,
         const glm::vec3& b,
         const float epsilon = 0.0001f)
@@ -66,874 +80,960 @@ namespace {
         return glm::length(a - b) <= epsilon;
     }
 
-    bool nearly_equal(
-        const glm::quat& a,
-        const glm::quat& b,
-        const float epsilon = 0.0001f)
+    QuadFixture create_quad(
+        Editor& editor,
+        const std::string& name = "Mesh Operation Fixture")
     {
-        const float directDistance =
-            glm::length(glm::vec4{
-                a.w - b.w,
-                a.x - b.x,
-                a.y - b.y,
-                a.z - b.z
+        QuadFixture fixture{};
+
+        fixture.nodeId =
+            editor.scene().create_mesh(name);
+
+        MeshNode* node =
+            editor.scene().find_mesh(fixture.nodeId);
+
+        if (!node) {
+            return fixture;
+        }
+
+        LEM& mesh = node->mesh();
+
+        fixture.vertex0 =
+            mesh.add_vertex(glm::vec3{
+                -1.0f,
+                -1.0f,
+                0.0f
                 });
 
-        const float inverseDistance =
-            glm::length(glm::vec4{
-                a.w + b.w,
-                a.x + b.x,
-                a.y + b.y,
-                a.z + b.z
+        fixture.vertex1 =
+            mesh.add_vertex(glm::vec3{
+                1.0f,
+                -1.0f,
+                0.0f
                 });
 
-        /*
-         * q and -q represent the same orientation, so either representation is
-         * accepted.
-         */
-        return directDistance <= epsilon ||
-            inverseDistance <= epsilon;
+        fixture.vertex2 =
+            mesh.add_vertex(glm::vec3{
+                1.0f,
+                1.0f,
+                0.0f
+                });
+
+        fixture.vertex3 =
+            mesh.add_vertex(glm::vec3{
+                -1.0f,
+                1.0f,
+                0.0f
+                });
+
+        fixture.face =
+            mesh.add_face({
+                fixture.vertex0,
+                fixture.vertex1,
+                fixture.vertex2,
+                fixture.vertex3
+                });
+
+        return fixture;
     }
 
-    RenderMesh make_solid_quad()
+    MeshToolTarget make_face_target(
+        Editor& editor,
+        const QuadFixture& fixture)
     {
-        RenderMesh mesh{};
+        auto& selection =
+            editor.selection().mesh();
 
-        const glm::vec3 normal{ 0.0f, 0.0f, 1.0f };
+        selection.set_active_mesh(fixture.nodeId);
+        selection.set_face(fixture.face);
 
-        const auto vertex0 = mesh.add_vertex(
-            glm::vec3{ -1.0f, -1.0f, 0.0f },
-            normal);
-
-        const auto vertex1 = mesh.add_vertex(
-            glm::vec3{ 1.0f, -1.0f, 0.0f },
-            normal);
-
-        const auto vertex2 = mesh.add_vertex(
-            glm::vec3{ 1.0f, 1.0f, 0.0f },
-            normal);
-
-        const auto vertex3 = mesh.add_vertex(
-            glm::vec3{ -1.0f, 1.0f, 0.0f },
-            normal);
-
-        mesh.add_triangle(vertex0, vertex1, vertex2);
-        mesh.add_triangle(vertex0, vertex2, vertex3);
-
-        return mesh;
+        return MeshToolTarget::capture(
+            selection,
+            SelectionGranularity::Face);
     }
 
-    RenderMesh make_wire_quad()
-    {
-        RenderMesh mesh{};
-
-        const auto vertex0 =
-            mesh.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
-
-        const auto vertex1 =
-            mesh.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
-
-        const auto vertex2 =
-            mesh.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const auto vertex3 =
-            mesh.add_vertex(glm::vec3{ -1.0f, 1.0f, 0.0f });
-
-        mesh.add_line(vertex0, vertex1);
-        mesh.add_line(vertex1, vertex2);
-        mesh.add_line(vertex2, vertex3);
-        mesh.add_line(vertex3, vertex0);
-
-        return mesh;
-    }
-
-    OperationPreview make_ready_preview()
-    {
-        PreviewMesh previewMesh{
-            make_solid_quad(),
-            make_wire_quad()
-        };
-
-        previewMesh.set_message("Quad preview fixture.");
-
-        return OperationPreview::ready(
-            std::move(previewMesh));
-    }
-
-    bool test_ready_preview_fixture()
-    {
-        std::cout << "\n=== Ready preview fixture ===\n";
-
-        bool ok = true;
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        ok &= expect(
-            preview.status() == OperationPreviewStatus::Ready,
-            "fixture produz preview Ready");
-
-        ok &= expect(
-            preview.is_ready(),
-            "preview pronto pode ser exibido");
-
-        ok &= expect(
-            preview.mesh().valid(),
-            "payload do preview e valido");
-
-        ok &= expect(
-            preview.mesh().solid_vertex_count() == 4,
-            "preview solido possui quatro vertices");
-
-        ok &= expect(
-            preview.mesh().solid_triangle_count() == 2,
-            "preview solido possui dois triangulos");
-
-        ok &= expect(
-            preview.mesh().wire_vertex_count() == 4,
-            "preview wire possui quatro vertices");
-
-        ok &= expect(
-            preview.mesh().wire_line_count() == 4,
-            "preview wire possui quatro linhas");
-
-        return ok;
-    }
-
-    bool test_solid_upload_data()
-    {
-        std::cout << "\n=== Solid preview upload ===\n";
-
-        bool ok = true;
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        PreviewRenderOptions options{};
-
-        options.solidUploadOptions.color = {
-            0.25f,
-            0.50f,
-            0.75f,
-            0.80f
-        };
-
-        options.solidUploadOptions.usage =
-            BufferUsage::Dynamic;
-
-        PreviewRenderResult result{};
-
-        const MeshUploadData uploadData =
-            PreviewRenderAdapter::build_solid_upload_data(
-                preview,
-                options,
-                &result);
-
-        ok &= expect(
-            !uploadData.is_empty(),
-            "adapter gera upload solido nao vazio");
-
-        ok &= expect(
-            uploadData.vertices.size() == 4,
-            "upload solido possui quatro vertices");
-
-        ok &= expect(
-            uploadData.indices.size() == 6,
-            "upload solido possui seis indices");
-
-        ok &= expect(
-            uploadData.topology == PrimitiveTopology::Triangles,
-            "upload solido usa topologia Triangles");
-
-        ok &= expect(
-            uploadData.usage == BufferUsage::Dynamic,
-            "upload solido preserva usage configurado");
-
-        ok &= expect(
-            result.previewReady,
-            "resultado informa preview pronto");
-
-        ok &= expect(
-            result.hasSolidUploadData,
-            "resultado informa upload solido disponivel");
-
-        ok &= expect(
-            result.solidUploadResult.vertexCount == 4,
-            "resultado informa quatro vertices solidos");
-
-        ok &= expect(
-            result.solidUploadResult.triangleCount == 2,
-            "resultado informa dois triangulos");
-
-        ok &= expect(
-            result.solidUploadResult.indexCount == 6,
-            "resultado informa seis indices solidos");
-
-        ok &= expect(
-            result.solidUploadResult.has_triangles(),
-            "resultado reconhece triangulos");
-
-        ok &= expect(
-            !result.message.empty(),
-            "conversao solida produz diagnostico");
-
-        if (!uploadData.vertices.empty()) {
-            const auto& vertex = uploadData.vertices.front();
-
-            ok &= expect(
-                nearly_equal(vertex.color[0], 0.25f) &&
-                nearly_equal(vertex.color[1], 0.50f) &&
-                nearly_equal(vertex.color[2], 0.75f) &&
-                nearly_equal(vertex.color[3], 0.80f),
-                "upload solido preserva a cor configurada");
-        }
-
-        return ok;
-    }
-
-    bool test_wire_upload_data()
-    {
-        std::cout << "\n=== Wire preview upload ===\n";
-
-        bool ok = true;
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        PreviewRenderOptions options{};
-
-        options.wireUploadOptions.color = {
-            1.0f,
-            0.6f,
-            0.1f,
-            1.0f
-        };
-
-        options.wireUploadOptions.usage =
-            BufferUsage::Dynamic;
-
-        PreviewRenderResult result{};
-
-        const MeshUploadData uploadData =
-            PreviewRenderAdapter::build_wire_upload_data(
-                preview,
-                options,
-                &result);
-
-        ok &= expect(
-            !uploadData.is_empty(),
-            "adapter gera upload wire nao vazio");
-
-        ok &= expect(
-            uploadData.vertices.size() == 4,
-            "upload wire possui quatro vertices");
-
-        ok &= expect(
-            uploadData.indices.size() == 8,
-            "upload wire possui oito indices");
-
-        ok &= expect(
-            uploadData.topology == PrimitiveTopology::Lines,
-            "upload wire usa topologia Lines");
-
-        ok &= expect(
-            uploadData.usage == BufferUsage::Dynamic,
-            "upload wire preserva usage configurado");
-
-        ok &= expect(
-            result.previewReady,
-            "resultado wire informa preview pronto");
-
-        ok &= expect(
-            result.hasWireUploadData,
-            "resultado informa upload wire disponivel");
-
-        ok &= expect(
-            result.wireUploadResult.vertexCount == 4,
-            "resultado informa quatro vertices wire");
-
-        ok &= expect(
-            result.wireUploadResult.lineCount == 4,
-            "resultado informa quatro linhas");
-
-        ok &= expect(
-            result.wireUploadResult.indexCount == 8,
-            "resultado informa oito indices wire");
-
-        ok &= expect(
-            result.wireUploadResult.has_lines(),
-            "resultado reconhece linhas");
-
-        ok &= expect(
-            !result.message.empty(),
-            "conversao wire produz diagnostico");
-
-        return ok;
-    }
-
-    bool test_disabled_parts()
-    {
-        std::cout << "\n=== Disabled preview parts ===\n";
-
-        bool ok = true;
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        PreviewRenderOptions solidOptions{};
-        solidOptions.includeSolid = false;
-
-        PreviewRenderResult solidResult{};
-
-        const MeshUploadData solidUpload =
-            PreviewRenderAdapter::build_solid_upload_data(
-                preview,
-                solidOptions,
-                &solidResult);
-
-        ok &= expect(
-            solidUpload.is_empty(),
-            "solido desabilitado nao gera upload");
-
-        ok &= expect(
-            solidResult.skipped,
-            "resultado marca solido desabilitado como skipped");
-
-        ok &= expect(
-            !solidResult.hasSolidUploadData,
-            "solido desabilitado nao informa upload disponivel");
-
-        PreviewRenderOptions wireOptions{};
-        wireOptions.includeWire = false;
-
-        PreviewRenderResult wireResult{};
-
-        const MeshUploadData wireUpload =
-            PreviewRenderAdapter::build_wire_upload_data(
-                preview,
-                wireOptions,
-                &wireResult);
-
-        ok &= expect(
-            wireUpload.is_empty(),
-            "wire desabilitado nao gera upload");
-
-        ok &= expect(
-            wireResult.skipped,
-            "resultado marca wire desabilitado como skipped");
-
-        ok &= expect(
-            !wireResult.hasWireUploadData,
-            "wire desabilitado nao informa upload disponivel");
-
-        return ok;
-    }
-
-    bool test_invalid_preview_states()
-    {
-        std::cout << "\n=== Invalid preview states ===\n";
-
-        bool ok = true;
-
+    class MoveVertexOperation final : public IOperation {
+    public:
+        MoveVertexOperation(
+            const VertexHandle vertex,
+            const glm::vec3 delta)
+            : vertex_(vertex),
+            delta_(delta)
         {
-            const OperationPreview preview =
-                OperationPreview::empty(
-                    "No preview geometry.");
-
-            PreviewRenderResult result{};
-
-            const MeshUploadData upload =
-                PreviewRenderAdapter::build_solid_upload_data(
-                    preview,
-                    {},
-                    &result);
-
-            ok &= expect(
-                upload.is_empty(),
-                "preview Empty nao gera upload");
-
-            ok &= expect(
-                result.status == OperationPreviewStatus::Empty,
-                "resultado preserva status Empty");
-
-            ok &= expect(
-                result.skipped,
-                "preview Empty e marcado como skipped");
-
-            ok &= expect(
-                !result.previewReady,
-                "preview Empty nao e marcado como pronto");
-
-            ok &= expect(
-                result.message == "No preview geometry.",
-                "preview Empty preserva diagnostico");
         }
 
+        [[nodiscard]]
+        std::string_view name() const override
         {
-            const OperationPreview preview =
-                OperationPreview::invalidated(
-                    "Preview became stale.");
-
-            PreviewRenderResult result{};
-
-            const MeshUploadData upload =
-                PreviewRenderAdapter::build_wire_upload_data(
-                    preview,
-                    {},
-                    &result);
-
-            ok &= expect(
-                upload.is_empty(),
-                "preview Invalidated nao gera upload");
-
-            ok &= expect(
-                result.status ==
-                OperationPreviewStatus::Invalidated,
-                "resultado preserva status Invalidated");
-
-            ok &= expect(
-                !result.previewReady,
-                "preview Invalidated nao e marcado como pronto");
-
-            ok &= expect(
-                result.message == "Preview became stale.",
-                "preview Invalidated preserva diagnostico");
+            return "MoveVertexOperation";
         }
 
+    private:
+        [[nodiscard]]
+        OperationResult execute_impl(
+            OperationContext& context) override
         {
-            const OperationPreview preview =
-                OperationPreview::failed(
-                    "Operation failed.");
+            LEM& mesh = context.editable_mesh();
 
-            PreviewRenderResult result{};
+            if (!mesh.is_valid(vertex_)) {
+                return OperationResult::fail(
+                    ErrorCode::InvalidArgument,
+                    "MoveVertexOperation received an invalid vertex.");
+            }
 
-            const MeshUploadData upload =
-                PreviewRenderAdapter::build_solid_upload_data(
-                    preview,
-                    {},
-                    &result);
+            mesh.vertex(vertex_).position += delta_;
 
-            ok &= expect(
-                upload.is_empty(),
-                "preview Failed nao gera upload");
+            LEMDiff diff{};
+            diff.record(
+                LEMChangeType::VertexModified,
+                vertex_);
 
-            ok &= expect(
-                result.status == OperationPreviewStatus::Failed,
-                "resultado preserva status Failed");
-
-            ok &= expect(
-                !result.previewReady,
-                "preview Failed nao e marcado como pronto");
-
-            ok &= expect(
-                result.message == "Operation failed.",
-                "preview Failed preserva diagnostico");
+            return OperationResult::success(
+                std::move(diff));
         }
 
+        VertexHandle vertex_{};
+        glm::vec3 delta_{ 0.0f };
+    };
+
+    class NoChangeOperation final : public IOperation {
+    public:
+        [[nodiscard]]
+        std::string_view name() const override
         {
-            PreviewMesh invalidMesh{
-                make_solid_quad(),
-                make_wire_quad()
-            };
-
-            invalidMesh.set_valid(false);
-            invalidMesh.set_message(
-                "Preview mesh payload is invalid.");
-
-            const OperationPreview preview =
-                OperationPreview::ready(
-                    std::move(invalidMesh));
-
-            PreviewRenderResult result{};
-
-            const MeshUploadData upload =
-                PreviewRenderAdapter::build_solid_upload_data(
-                    preview,
-                    {},
-                    &result);
-
-            ok &= expect(
-                upload.is_empty(),
-                "payload invalido nao gera upload");
-
-            ok &= expect(
-                result.status == OperationPreviewStatus::Ready,
-                "payload invalido ainda preserva status Ready");
-
-            ok &= expect(
-                !result.previewReady ||
-                !result.hasSolidUploadData,
-                "payload invalido nao produz dados utilizaveis");
-
-            ok &= expect(
-                result.message ==
-                "Preview mesh payload is invalid.",
-                "payload invalido preserva diagnostico");
+            return "NoChangeOperation";
         }
+
+    private:
+        [[nodiscard]]
+        OperationResult execute_impl(
+            OperationContext&) override
+        {
+            return OperationResult::no_change(
+                "Operation intentionally produced no changes.");
+        }
+    };
+
+    class CancelledOperation final : public IOperation {
+    public:
+        [[nodiscard]]
+        std::string_view name() const override
+        {
+            return "CancelledOperation";
+        }
+
+    private:
+        [[nodiscard]]
+        OperationResult execute_impl(
+            OperationContext&) override
+        {
+            return OperationResult::cancelled(
+                "Operation preview was cancelled.");
+        }
+    };
+
+    class FailedOperation final : public IOperation {
+    public:
+        [[nodiscard]]
+        std::string_view name() const override
+        {
+            return "FailedOperation";
+        }
+
+    private:
+        [[nodiscard]]
+        OperationResult execute_impl(
+            OperationContext&) override
+        {
+            return OperationResult::fail(
+                ErrorCode::InvalidState,
+                "Intentional preview failure.");
+        }
+    };
+
+    bool test_mesh_tool_target()
+    {
+        std::cout << "\n=== MeshToolTarget ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        const MeshToolTarget target =
+            make_face_target(editor, fixture);
+
+        ok &= expect(
+            target.has_node(),
+            "target captura SceneNodeId valido");
+
+        ok &= expect(
+            target.nodeId == fixture.nodeId,
+            "target preserva node id");
+
+        ok &= expect(
+            target.granularity ==
+            SelectionGranularity::Face,
+            "target preserva granularidade Face");
+
+        ok &= expect(
+            target.targets_faces(),
+            "target reconhece alvo de faces");
+
+        ok &= expect(
+            !target.targets_vertices() &&
+            !target.targets_edges() &&
+            !target.targets_loops(),
+            "target nao confunde tipos de componentes");
+
+        ok &= expect(
+            target.component_count() == 1,
+            "target captura uma face");
+
+        ok &= expect(
+            target.faces.size() == 1 &&
+            target.faces.front() == fixture.face,
+            "target preserva handle da face");
+
+        ok &= expect(
+            target.vertices.empty() &&
+            target.edges.empty() &&
+            target.loops.empty(),
+            "capture guarda apenas componentes da granularidade pedida");
+
+        ok &= expect(
+            target.is_valid(),
+            "target capturado e estruturalmente valido");
+
+        MeshToolTarget emptyTarget =
+            MeshToolTarget::none();
+
+        ok &= expect(
+            !emptyTarget.has_node(),
+            "none retorna target sem node");
+
+        ok &= expect(
+            emptyTarget.empty(),
+            "none retorna target vazio");
+
+        ok &= expect(
+            !emptyTarget.is_valid(),
+            "none retorna target invalido");
+
+        MeshToolTarget objectTarget{};
+
+        objectTarget.nodeId = fixture.nodeId;
+        objectTarget.granularity =
+            SelectionGranularity::Object;
+
+        ok &= expect(
+            !objectTarget.has_component_granularity(),
+            "granularidade Object nao e componente de malha");
+
+        ok &= expect(
+            !objectTarget.is_valid(),
+            "target Object nao e valido para ferramenta de malha");
+
+        MeshToolTarget clearTarget = target;
+        clearTarget.clear();
+
+        ok &= expect(
+            !clearTarget.has_node() &&
+            clearTarget.empty() &&
+            !clearTarget.is_valid(),
+            "clear remove todos os dados do target");
 
         return ok;
     }
 
-    bool test_render_objects()
+    bool test_session_begin()
     {
-        std::cout << "\n=== Preview render objects ===\n";
+        std::cout << "\n=== MeshOperationSession begin ===\n";
 
         bool ok = true;
 
-        MeshNode node{
-            SceneNodeId{ 42 },
-            "Extrude Face"
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Inactive,
+            "sessao comeca Inactive");
+
+        ok &= expect(
+            !session.is_active(),
+            "sessao inicialmente nao esta ativa");
+
+        ok &= expect(
+            !session.has_ready_preview(),
+            "sessao inicialmente nao possui preview");
+
+        const ToolResult result =
+            session.begin(
+                context,
+                make_face_target(editor, fixture));
+
+        ok &= expect(
+            result.code == ToolResultCode::Started,
+            "begin retorna Started");
+
+        ok &= expect(
+            !result.failed(),
+            "begin valido nao falha");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Active,
+            "begin move sessao para Active");
+
+        ok &= expect(
+            session.is_active(),
+            "sessao fica ativa depois de begin");
+
+        ok &= expect(
+            !session.has_ready_preview(),
+            "begin ainda nao gera preview pronto");
+
+        ok &= expect(
+            session.preview().is_invalidated(),
+            "preview inicial fica Invalidated");
+
+        ok &= expect(
+            session.target().nodeId == fixture.nodeId,
+            "sessao preserva node alvo");
+
+        ok &= expect(
+            session.target().targets_faces(),
+            "sessao preserva alvo de faces");
+
+        const ToolResult duplicateBegin =
+            session.begin(
+                context,
+                make_face_target(editor, fixture));
+
+        ok &= expect(
+            duplicateBegin.code == ToolResultCode::Failed,
+            "segundo begin falha enquanto sessao esta ativa");
+
+        return ok;
+    }
+
+    bool test_ready_preview()
+    {
+        std::cout << "\n=== Ready non-destructive preview ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshNode* node =
+            editor.scene().find_mesh(fixture.nodeId);
+
+        if (!node) {
+            return expect(
+                false,
+                "fixture possui MeshNode");
+        }
+
+        const glm::vec3 originalPosition =
+            static_cast<const MeshNode&>(*node)
+            .mesh()
+            .vertex(fixture.vertex0)
+            .position;
+
+        MeshOperationSession session{};
+
+        const ToolResult beginResult =
+            session.begin(
+                context,
+                make_face_target(editor, fixture));
+
+        ok &= expect(
+            beginResult.code == ToolResultCode::Started,
+            "sessao inicia antes do preview");
+
+        MoveVertexOperation operation{
+            fixture.vertex0,
+            glm::vec3{
+                0.0f,
+                0.0f,
+                2.0f
+            }
         };
 
-        const glm::vec3 expectedPosition{
-            3.0f,
-            -2.0f,
-            5.0f
-        };
-
-        const glm::quat expectedRotation =
-            glm::angleAxis(
-                glm::radians(35.0f),
-                glm::normalize(
-                    glm::vec3{
-                        0.0f,
-                        1.0f,
-                        1.0f
-                    }));
-
-        const glm::vec3 expectedScale{
-            2.0f,
-            0.5f,
-            1.5f
-        };
-
-        node.transform().set_position(expectedPosition);
-        node.transform().set_rotation(expectedRotation);
-        node.transform().set_scale(expectedScale);
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        /*
-         * The adapter only stores non-owning pointers. These GpuMesh objects do
-         * not need uploaded OpenGL resources for this CPU-side smoke test.
-         */
-        GpuMesh solidMesh{};
-        GpuMesh wireMesh{};
-
-        PreviewRenderOptions options{};
-        options.solidObjectId = 1001;
-        options.wireObjectId = 1002;
-        options.solidLayer = RenderLayer::Preview;
-        options.wireLayer = RenderLayer::Preview;
-
-        PreviewRenderResult result{};
-
-        const PreviewRenderObjects objects =
-            PreviewRenderAdapter::build_render_objects(
-                node,
-                preview,
-                &solidMesh,
-                &wireMesh,
-                options,
-                &result);
+        const ToolResult previewResult =
+            session.rebuild_preview(
+                context,
+                operation);
 
         ok &= expect(
-            !objects.empty(),
-            "adapter gera objetos de preview");
+            previewResult.code == ToolResultCode::Updated,
+            "rebuild_preview retorna Updated");
 
         ok &= expect(
-            objects.hasSolid,
-            "adapter gera objeto solido");
+            previewResult.dirtyFlags ==
+            EditorDirtyFlags::Render,
+            "preview marca render como dirty");
 
         ok &= expect(
-            objects.hasWire,
-            "adapter gera objeto wire");
+            session.state() ==
+            MeshOperationSessionState::PreviewReady,
+            "preview valido move sessao para PreviewReady");
 
         ok &= expect(
-            result.hasSolidObject,
-            "resultado informa objeto solido");
+            session.has_ready_preview(),
+            "sessao informa preview pronto");
 
         ok &= expect(
-            result.hasWireObject,
-            "resultado informa objeto wire");
+            session.preview().is_ready(),
+            "OperationPreview possui status Ready");
 
         ok &= expect(
-            result.nodeId.value == node.id().value,
-            "resultado preserva SceneNodeId");
+            session.preview().mesh().valid(),
+            "preview contem payload valido");
 
         ok &= expect(
-            objects.solid.id == 1001,
-            "objeto solido preserva id configurado");
+            !session.preview().mesh().solid_mesh().empty(),
+            "preview contem geometria solida");
 
         ok &= expect(
-            objects.wire.id == 1002,
-            "objeto wire preserva id configurado");
+            !session.preview().mesh().wire_mesh().empty(),
+            "preview contem geometria wire");
 
         ok &= expect(
-            objects.solid.name ==
-            "Extrude Face Preview Solid",
-            "objeto solido recebe nome semantico");
+            session.preview().mesh().diff().size() == 1,
+            "preview preserva diff da operacao");
 
-        ok &= expect(
-            objects.wire.name ==
-            "Extrude Face Preview Wire",
-            "objeto wire recebe nome semantico");
-
-        ok &= expect(
-            objects.solid.mesh == &solidMesh,
-            "objeto solido referencia GpuMesh fornecida");
-
-        ok &= expect(
-            objects.wire.mesh == &wireMesh,
-            "objeto wire referencia GpuMesh fornecida");
-
-        ok &= expect(
-            objects.solid.layer == RenderLayer::Preview &&
-            objects.wire.layer == RenderLayer::Preview,
-            "objetos usam camada Preview");
+        const glm::vec3 authoritativePosition =
+            static_cast<const MeshNode&>(*node)
+            .mesh()
+            .vertex(fixture.vertex0)
+            .position;
 
         ok &= expect(
             nearly_equal(
-                objects.solid.transform.position,
-                expectedPosition) &&
-            nearly_equal(
-                objects.wire.transform.position,
-                expectedPosition),
-            "objetos preservam posicao do MeshNode");
-
-        ok &= expect(
-            nearly_equal(
-                objects.solid.transform.rotation,
-                expectedRotation) &&
-            nearly_equal(
-                objects.wire.transform.rotation,
-                expectedRotation),
-            "objetos preservam rotacao do MeshNode");
-
-        ok &= expect(
-            nearly_equal(
-                objects.solid.transform.scale,
-                expectedScale) &&
-            nearly_equal(
-                objects.wire.transform.scale,
-                expectedScale),
-            "objetos preservam escala do MeshNode");
-
-        ok &= expect(
-            objects.solid.visibility.visible &&
-            objects.wire.visibility.visible,
-            "objetos preservam visibilidade do MeshNode");
-
-        ok &= expect(
-            !objects.solid.visibility.selectable &&
-            !objects.wire.visibility.selectable,
-            "preview nao participa da selecao");
-
-        ok &= expect(
-            !objects.solid.visibility.castsShadow &&
-            !objects.solid.visibility.receivesShadow &&
-            !objects.wire.visibility.castsShadow &&
-            !objects.wire.visibility.receivesShadow,
-            "preview nao participa de sombras");
-
-        ok &= expect(
-            !objects.solid.pickingId.is_valid() &&
-            !objects.wire.pickingId.is_valid(),
-            "preview nao possui PickingId valido");
-
-        ok &= expect(
-            !objects.solid.selected &&
-            !objects.solid.hovered &&
-            !objects.wire.selected &&
-            !objects.wire.hovered,
-            "preview nao herda estado de selecao ou hover");
-
-        ok &= expect(
-            !objects.solid.wireframe &&
-            !objects.wire.wireframe,
-            "objetos nao ativam rasterizacao wireframe");
-
-        ok &= expect(
-            !result.message.empty(),
-            "construcao de objetos produz diagnostico");
+                authoritativePosition,
+                originalPosition),
+            "preview nao altera a LEM autoritativa");
 
         return ok;
     }
 
-    bool test_partial_render_objects()
+    bool test_no_change_and_cancelled_preview()
     {
-        std::cout << "\n=== Partial preview render objects ===\n";
+        std::cout
+            << "\n=== Empty and invalidated previews ===\n";
 
         bool ok = true;
 
-        MeshNode node{
-            SceneNodeId{ 7 },
-            "Partial Preview"
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        NoChangeOperation noChangeOperation{};
+
+        const ToolResult noChangeResult =
+            session.rebuild_preview(
+                context,
+                noChangeOperation);
+
+        ok &= expect(
+            noChangeResult.code == ToolResultCode::Updated,
+            "operacao NoChange retorna Updated");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Active,
+            "NoChange mantem sessao Active");
+
+        ok &= expect(
+            session.preview().is_empty(),
+            "NoChange produz OperationPreview Empty");
+
+        ok &= expect(
+            !session.has_ready_preview(),
+            "NoChange nao produz preview pronto");
+
+        CancelledOperation cancelledOperation{};
+
+        const ToolResult cancelledResult =
+            session.rebuild_preview(
+                context,
+                cancelledOperation);
+
+        ok &= expect(
+            cancelledResult.code == ToolResultCode::Updated,
+            "preview cancelado retorna Updated");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Active,
+            "preview cancelado mantem sessao Active");
+
+        ok &= expect(
+            session.preview().is_invalidated(),
+            "operacao Cancelled produz preview Invalidated");
+
+        return ok;
+    }
+
+    bool test_failed_preview()
+    {
+        std::cout << "\n=== Failed preview ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        FailedOperation operation{};
+
+        const ToolResult result =
+            session.rebuild_preview(
+                context,
+                operation);
+
+        ok &= expect(
+            result.code == ToolResultCode::Failed,
+            "falha da operacao retorna ToolResult Failed");
+
+        ok &= expect(
+            result.dirtyFlags ==
+            EditorDirtyFlags::Render,
+            "falha limpa ou atualiza preview renderizado");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Failed,
+            "falha move sessao para Failed");
+
+        ok &= expect(
+            session.failed(),
+            "failed reconhece estado de falha");
+
+        ok &= expect(
+            session.preview().is_failure(),
+            "sessao preserva OperationPreview Failed");
+
+        ok &= expect(
+            result.message ==
+            "Intentional preview failure.",
+            "falha preserva diagnostico do kernel");
+
+        return ok;
+    }
+
+    bool test_preview_options_and_invalidation()
+    {
+        std::cout
+            << "\n=== Preview options and invalidation ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        MoveVertexOperation operation{
+            fixture.vertex0,
+            glm::vec3{
+                0.0f,
+                0.0f,
+                1.0f
+            }
         };
 
-        const OperationPreview preview =
-            make_ready_preview();
+        session.rebuild_preview(
+            context,
+            operation);
 
-        GpuMesh solidMesh{};
-        GpuMesh wireMesh{};
+        auto options =
+            session.preview_options();
+
+        options.buildWireframe = false;
+        options.validateAfterPreview = true;
+
+        session.set_preview_options(options);
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Active,
+            "alterar opcoes invalida preview pronto");
+
+        ok &= expect(
+            session.preview().is_invalidated(),
+            "set_preview_options produz preview Invalidated");
+
+        ok &= expect(
+            !session.preview_options().buildWireframe,
+            "sessao preserva buildWireframe false");
+
+        ok &= expect(
+            session.preview_options().validateAfterPreview,
+            "sessao preserva validateAfterPreview true");
+
+        const ToolResult rebuildResult =
+            session.rebuild_preview(
+                context,
+                operation);
+
+        ok &= expect(
+            rebuildResult.code == ToolResultCode::Updated,
+            "preview pode ser reconstruido apos mudar opcoes");
+
+        ok &= expect(
+            session.has_ready_preview(),
+            "rebuild apos opcoes produz preview pronto");
+
+        ok &= expect(
+            session.preview().mesh().wire_mesh().empty(),
+            "buildWireframe false omite geometria wire");
+
+        const ToolResult invalidateResult =
+            session.invalidate_preview(
+                "Parameters changed.");
+
+        ok &= expect(
+            invalidateResult.code == ToolResultCode::Updated,
+            "invalidate_preview retorna Updated");
+
+        ok &= expect(
+            invalidateResult.dirtyFlags ==
+            EditorDirtyFlags::Render,
+            "invalidate_preview marca render dirty");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Active,
+            "invalidate_preview retorna sessao para Active");
+
+        ok &= expect(
+            session.preview().is_invalidated(),
+            "invalidate_preview altera status do preview");
+
+        ok &= expect(
+            session.preview().message() ==
+            "Parameters changed.",
+            "invalidate_preview preserva mensagem");
+
+        return ok;
+    }
+
+    bool test_invalid_targets()
+    {
+        std::cout << "\n=== Invalid targets ===\n";
+
+        bool ok = true;
 
         {
-            PreviewRenderOptions options{};
+            Editor editor{};
+            ToolContext context{ editor };
 
-            PreviewRenderResult result{};
+            MeshOperationSession session{};
 
-            const PreviewRenderObjects objects =
-                PreviewRenderAdapter::build_render_objects(
-                    node,
-                    preview,
-                    &solidMesh,
-                    nullptr,
-                    options,
-                    &result);
+            const ToolResult result =
+                session.begin(
+                    context,
+                    MeshToolTarget::none());
 
             ok &= expect(
-                objects.hasSolid && !objects.hasWire,
-                "somente GpuMesh solida gera apenas objeto solido");
+                result.code == ToolResultCode::Failed,
+                "begin rejeita target vazio");
 
             ok &= expect(
-                result.hasSolidObject &&
-                !result.hasWireObject,
-                "resultado parcial informa apenas objeto solido");
+                !session.is_active(),
+                "target vazio nao ativa sessao");
         }
 
         {
-            PreviewRenderOptions options{};
+            Editor editor{};
+            ToolContext context{ editor };
 
-            PreviewRenderResult result{};
+            const QuadFixture fixture =
+                create_quad(editor);
 
-            const PreviewRenderObjects objects =
-                PreviewRenderAdapter::build_render_objects(
-                    node,
-                    preview,
-                    nullptr,
-                    &wireMesh,
-                    options,
-                    &result);
+            MeshToolTarget target =
+                make_face_target(editor, fixture);
+
+            editor.scene().remove_node(
+                fixture.nodeId);
+
+            MeshOperationSession session{};
+
+            const ToolResult result =
+                session.begin(
+                    context,
+                    std::move(target));
 
             ok &= expect(
-                !objects.hasSolid && objects.hasWire,
-                "somente GpuMesh wire gera apenas objeto wire");
+                result.code == ToolResultCode::Failed,
+                "begin rejeita node removido");
 
             ok &= expect(
-                !result.hasSolidObject &&
-                result.hasWireObject,
-                "resultado parcial informa apenas objeto wire");
+                !session.is_active(),
+                "node removido nao deixa sessao ativa");
         }
 
         {
-            PreviewRenderOptions options{};
+            Editor editor{};
+            ToolContext context{ editor };
 
-            PreviewRenderResult result{};
+            const QuadFixture fixture =
+                create_quad(editor);
 
-            const PreviewRenderObjects objects =
-                PreviewRenderAdapter::build_render_objects(
-                    node,
-                    preview,
-                    nullptr,
-                    nullptr,
-                    options,
-                    &result);
+            MeshToolTarget target =
+                make_face_target(editor, fixture);
+
+            MeshNode* node =
+                editor.scene().find_mesh(
+                    fixture.nodeId);
+
+            if (node) {
+                node->mesh().clear();
+            }
+
+            MeshOperationSession session{};
+
+            const ToolResult result =
+                session.begin(
+                    context,
+                    std::move(target));
 
             ok &= expect(
-                objects.empty(),
-                "ausencia de GpuMesh nao gera objetos");
+                result.code == ToolResultCode::Failed,
+                "begin rejeita handle que nao existe mais na LEM");
 
             ok &= expect(
-                result.skipped,
-                "ausencia de GpuMesh e marcada como skipped");
-
-            ok &= expect(
-                !result.message.empty(),
-                "ausencia de GpuMesh produz diagnostico");
+                !session.is_active(),
+                "handle invalido nao deixa sessao ativa");
         }
 
         return ok;
     }
 
-    bool test_hidden_source_node()
+    bool test_target_invalidation_during_session()
     {
-        std::cout << "\n=== Hidden source node ===\n";
+        std::cout
+            << "\n=== Target invalidation during session ===\n";
 
         bool ok = true;
 
-        MeshNode node{
-            SceneNodeId{ 88 },
-            "Hidden Preview"
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        editor.scene().remove_node(
+            fixture.nodeId);
+
+        MoveVertexOperation operation{
+            fixture.vertex0,
+            glm::vec3{
+                0.0f,
+                0.0f,
+                1.0f
+            }
         };
 
-        node.metadata().visible = false;
-
-        const OperationPreview preview =
-            make_ready_preview();
-
-        GpuMesh solidMesh{};
-        GpuMesh wireMesh{};
-
-        const PreviewRenderObjects objects =
-            PreviewRenderAdapter::build_render_objects(
-                node,
-                preview,
-                &solidMesh,
-                &wireMesh);
+        const ToolResult result =
+            session.rebuild_preview(
+                context,
+                operation);
 
         ok &= expect(
-            objects.hasSolid && objects.hasWire,
-            "node oculto ainda gera descritores de render");
+            result.code == ToolResultCode::Failed,
+            "rebuild falha quando node e removido");
 
         ok &= expect(
-            !objects.solid.visibility.visible &&
-            !objects.wire.visibility.visible,
-            "objetos de preview preservam node oculto");
+            session.state() ==
+            MeshOperationSessionState::Failed,
+            "node removido move sessao para Failed");
+
+        ok &= expect(
+            session.preview().is_failure(),
+            "node removido produz preview Failed");
 
         return ok;
     }
 
-    bool test_invalid_node()
+    bool test_cancel_and_clear()
     {
-        std::cout << "\n=== Invalid source node ===\n";
+        std::cout << "\n=== Cancel and clear ===\n";
 
         bool ok = true;
 
-        MeshNode node{
-            SceneNodeId{},
-            "Invalid Node"
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        MoveVertexOperation operation{
+            fixture.vertex0,
+            glm::vec3{
+                0.0f,
+                0.0f,
+                1.0f
+            }
         };
 
-        const OperationPreview preview =
-            make_ready_preview();
+        session.rebuild_preview(
+            context,
+            operation);
 
-        GpuMesh solidMesh{};
-        GpuMesh wireMesh{};
-
-        PreviewRenderResult result{};
-
-        const PreviewRenderObjects objects =
-            PreviewRenderAdapter::build_render_objects(
-                node,
-                preview,
-                &solidMesh,
-                &wireMesh,
-                {},
-                &result);
+        const ToolResult cancelResult =
+            session.cancel(
+                "User cancelled mesh operation.");
 
         ok &= expect(
-            objects.empty(),
-            "node com id invalido nao gera objetos");
+            cancelResult.code ==
+            ToolResultCode::Cancelled,
+            "cancel retorna Cancelled");
 
         ok &= expect(
-            !result.hasSolidObject &&
-            !result.hasWireObject,
-            "resultado de node invalido nao informa objetos");
+            cancelResult.dirtyFlags ==
+            EditorDirtyFlags::Render,
+            "cancel marca render dirty");
 
         ok &= expect(
-            !result.message.empty(),
-            "node invalido produz diagnostico");
+            cancelResult.message ==
+            "User cancelled mesh operation.",
+            "cancel preserva diagnostico");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Inactive,
+            "cancel retorna sessao para Inactive");
+
+        ok &= expect(
+            !session.is_active(),
+            "cancel desativa sessao");
+
+        ok &= expect(
+            !session.target().has_node(),
+            "cancel limpa target");
+
+        ok &= expect(
+            !session.has_ready_preview(),
+            "cancel descarta preview pronto");
+
+        const ToolResult secondCancel =
+            session.cancel();
+
+        ok &= expect(
+            secondCancel.code ==
+            ToolResultCode::Ignored,
+            "cancel inativo retorna Ignored");
+
+        session.begin(
+            context,
+            make_face_target(editor, fixture));
+
+        session.clear();
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Inactive &&
+            !session.target().has_node(),
+            "clear limpa sessao sem ToolResult");
+
+        return ok;
+    }
+
+    bool test_rebuild_without_session()
+    {
+        std::cout
+            << "\n=== Rebuild without active session ===\n";
+
+        bool ok = true;
+
+        Editor editor{};
+        ToolContext context{ editor };
+
+        const QuadFixture fixture =
+            create_quad(editor);
+
+        MeshOperationSession session{};
+
+        MoveVertexOperation operation{
+            fixture.vertex0,
+            glm::vec3{
+                0.0f,
+                0.0f,
+                1.0f
+            }
+        };
+
+        const ToolResult result =
+            session.rebuild_preview(
+                context,
+                operation);
+
+        ok &= expect(
+            result.code == ToolResultCode::Failed,
+            "rebuild sem begin retorna Failed");
+
+        ok &= expect(
+            session.state() ==
+            MeshOperationSessionState::Inactive,
+            "rebuild sem begin mantem sessao Inactive");
+
+        const ToolResult invalidateResult =
+            session.invalidate_preview();
+
+        ok &= expect(
+            invalidateResult.code ==
+            ToolResultCode::Ignored,
+            "invalidate sem sessao retorna Ignored");
 
         return ok;
     }
@@ -943,33 +1043,35 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D Editor PreviewRenderAdapter Smoke Test ===\n";
+        << "=== Locus3D Editor Mesh Operation Session "
+        << "Smoke Test ===\n";
 
     bool ok = true;
 
-    ok &= test_ready_preview_fixture();
-    ok &= test_solid_upload_data();
-    ok &= test_wire_upload_data();
-    ok &= test_disabled_parts();
-    ok &= test_invalid_preview_states();
-    ok &= test_render_objects();
-    ok &= test_partial_render_objects();
-    ok &= test_hidden_source_node();
-    ok &= test_invalid_node();
+    ok &= test_mesh_tool_target();
+    ok &= test_session_begin();
+    ok &= test_ready_preview();
+    ok &= test_no_change_and_cancelled_preview();
+    ok &= test_failed_preview();
+    ok &= test_preview_options_and_invalidation();
+    ok &= test_invalid_targets();
+    ok &= test_target_invalidation_during_session();
+    ok &= test_cancel_and_clear();
+    ok &= test_rebuild_without_session();
 
     std::cout << "\n=== Resultado final ===\n";
 
     if (!ok) {
         std::cout
-            << "[FAIL] Um ou mais testes do "
-            << "PreviewRenderAdapter falharam.\n";
+            << "[FAIL] Um ou mais testes de "
+            << "MeshToolTarget/MeshOperationSession falharam.\n";
 
         return EXIT_FAILURE;
     }
 
     std::cout
-        << "[OK] Todos os testes do "
-        << "PreviewRenderAdapter passaram.\n";
+        << "[OK] Todos os testes de "
+        << "MeshToolTarget/MeshOperationSession passaram.\n";
 
     return EXIT_SUCCESS;
 }
