@@ -7,11 +7,11 @@
 #include "editor/actions/ActionExecutor.h"
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionContext.h"
-#include "editor/actions/mesh/face/RegisterFaceActions.h"
+#include "editor/actions/mesh/vertex/RegisterVertexActions.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/MeshNode.h"
-#include "kernel/geometry/primitives/BoxBuilder.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
 
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
@@ -26,10 +26,10 @@ namespace {
 
     using namespace locus::editor;
 
-    using FaceHandle =
-        locus::kernel::geometry::FaceHandle;
+    using VertexHandle =
+        locus::kernel::geometry::VertexHandle;
 
-    constexpr float NormalEpsilon = 0.00001f;
+    constexpr float PositionEpsilon = 0.00001f;
 
     void print_result(
         bool condition,
@@ -90,18 +90,8 @@ namespace {
     bool approximately_equal(
         const glm::vec3& first,
         const glm::vec3& second,
-        float epsilon = NormalEpsilon) {
+        float epsilon = PositionEpsilon) {
         return glm::length(first - second) <= epsilon;
-    }
-
-    bool approximately_opposite(
-        const glm::vec3& first,
-        const glm::vec3& second,
-        float epsilon = NormalEpsilon) {
-        return approximately_equal(
-            first,
-            -second,
-            epsilon);
     }
 
     ActionId make_action_id(
@@ -111,14 +101,19 @@ namespace {
         };
     }
 
-    ActionId flip_face_action_id() {
+    ActionId merge_at_center_action_id() {
         return make_action_id(
-            face_actions::FlipFaceId);
+            vertex_actions::MergeAtCenterId);
     }
 
-    ActionId recalculate_normals_action_id() {
+    ActionId merge_at_first_action_id() {
         return make_action_id(
-            face_actions::RecalculateNormalsId);
+            vertex_actions::MergeAtFirstId);
+    }
+
+    ActionId merge_at_last_action_id() {
+        return make_action_id(
+            vertex_actions::MergeAtLastId);
     }
 
     struct MeshFixture {
@@ -139,12 +134,12 @@ namespace {
         SceneNodeId nodeId{};
         MeshNode* node = nullptr;
 
-        std::vector<FaceHandle> faces{};
+        std::vector<VertexHandle> vertices{};
 
-        bool build_box() {
+        bool build_vertices() {
             nodeId =
                 editor.scene().create_mesh(
-                    "Face Actions Test Box");
+                    "Vertex Actions Test Mesh");
 
             node =
                 editor.scene().find_mesh(nodeId);
@@ -153,32 +148,47 @@ namespace {
                 return false;
             }
 
-            locus::kernel::geometry::BoxParameters
-                parameters{};
-
-            parameters.size = {
-                2.0f,
-                2.0f,
-                2.0f
+            locus::kernel::geometry::LEMEditor meshEditor{
+                node->mesh()
             };
 
-            const auto buildResult =
-                locus::kernel::geometry::BoxBuilder::
-                build_into(
-                    node->mesh(),
-                    parameters);
+            const VertexHandle vertexA =
+                meshEditor.add_vertex({
+                    0.0f,
+                    0.0f,
+                    0.0f
+                    });
 
-            if (!buildResult.success
-                || buildResult.faces.size() != 6u) {
+            const VertexHandle vertexB =
+                meshEditor.add_vertex({
+                    3.0f,
+                    0.0f,
+                    0.0f
+                    });
+
+            const VertexHandle vertexC =
+                meshEditor.add_vertex({
+                    0.0f,
+                    6.0f,
+                    0.0f
+                    });
+
+            if (!node->mesh().is_valid(vertexA)
+                || !node->mesh().is_valid(vertexB)
+                || !node->mesh().is_valid(vertexC)) {
                 return false;
             }
 
-            faces = buildResult.faces;
+            vertices = {
+                vertexA,
+                vertexB,
+                vertexC
+            };
 
             editor.set_mode(EditorMode::Mesh);
 
             editor.selection().set_granularity(
-                SelectionGranularity::Face);
+                SelectionGranularity::Vertex);
 
             editor.selection()
                 .mesh()
@@ -189,16 +199,16 @@ namespace {
             return true;
         }
 
-        void select_faces(
-            const std::vector<FaceHandle>& selectedFaces) {
+        void select_vertices(
+            const std::vector<VertexHandle>& selectedVertices) {
             editor.selection().set_granularity(
-                SelectionGranularity::Face);
+                SelectionGranularity::Vertex);
 
             editor.selection()
                 .mesh()
                 .clear_components();
 
-            if (selectedFaces.empty()) {
+            if (selectedVertices.empty()) {
                 editor.selection().mark_dirty();
                 editor.clear_dirty();
                 return;
@@ -206,138 +216,170 @@ namespace {
 
             editor.selection()
                 .mesh()
-                .set_face(selectedFaces.front());
+                .set_vertex(selectedVertices.front());
 
             for (std::size_t index = 1u;
-                index < selectedFaces.size();
+                index < selectedVertices.size();
                 ++index) {
                 editor.selection()
                     .mesh()
-                    .add_face(selectedFaces[index]);
+                    .add_vertex(selectedVertices[index]);
             }
 
             editor.selection().mark_dirty();
             editor.clear_dirty();
         }
+
+        std::size_t active_original_vertices() const {
+            std::size_t count = 0u;
+
+            for (const VertexHandle vertex : vertices) {
+                if (node->mesh().is_valid(vertex)) {
+                    ++count;
+                }
+            }
+
+            return count;
+        }
     };
 
     bool test_registration() {
         std::cout
-            << "\n=== Face actions: registration ===\n";
+            << "\n=== Vertex actions: registration ===\n";
 
         ActionRegistry registry{};
 
         const bool registered =
-            register_face_actions(registry);
+            register_vertex_actions(registry);
 
         print_result(
             registered,
-            "face actions foram registradas");
+            "vertex actions foram registradas");
 
         print_result(
-            registry.size() == 2u,
-            "duas face actions foram registradas");
-
-        print_result(
-            registry.contains(
-                flip_face_action_id()),
-            "registry contem Flip Face");
+            registry.size() == 3u,
+            "tres vertex actions foram registradas");
 
         print_result(
             registry.contains(
-                recalculate_normals_action_id()),
-            "registry contem Recalculate Normals");
+                merge_at_center_action_id()),
+            "registry contem Merge at Center");
 
-        const ActionDescriptor* flipDescriptor =
+        print_result(
+            registry.contains(
+                merge_at_first_action_id()),
+            "registry contem Merge at First");
+
+        print_result(
+            registry.contains(
+                merge_at_last_action_id()),
+            "registry contem Merge at Last");
+
+        const ActionDescriptor* centerDescriptor =
             registry.descriptor(
-                flip_face_action_id());
+                merge_at_center_action_id());
 
-        const ActionDescriptor* normalsDescriptor =
+        const ActionDescriptor* firstDescriptor =
             registry.descriptor(
-                recalculate_normals_action_id());
+                merge_at_first_action_id());
+
+        const ActionDescriptor* lastDescriptor =
+            registry.descriptor(
+                merge_at_last_action_id());
 
         print_result(
-            flipDescriptor != nullptr
-            && flipDescriptor->is_valid(),
-            "descritor de Flip Face e valido");
+            centerDescriptor
+            && centerDescriptor->is_valid(),
+            "descritor de Merge at Center e valido");
 
         print_result(
-            normalsDescriptor != nullptr
-            && normalsDescriptor->is_valid(),
-            "descritor de Recalculate Normals e valido");
+            firstDescriptor
+            && firstDescriptor->is_valid(),
+            "descritor de Merge at First e valido");
 
         print_result(
-            flipDescriptor
-            && flipDescriptor->name == "Flip Face",
-            "Flip Face preserva nome");
+            lastDescriptor
+            && lastDescriptor->is_valid(),
+            "descritor de Merge at Last e valido");
 
         print_result(
-            normalsDescriptor
-            && normalsDescriptor->name
-            == "Recalculate Normals",
-            "Recalculate Normals preserva nome");
+            centerDescriptor
+            && centerDescriptor->name
+            == "Merge at Center",
+            "nome de Merge at Center foi preservado");
 
         print_result(
-            flipDescriptor
-            && flipDescriptor->category
+            firstDescriptor
+            && firstDescriptor->name
+            == "Merge at First",
+            "nome de Merge at First foi preservado");
+
+        print_result(
+            lastDescriptor
+            && lastDescriptor->name
+            == "Merge at Last",
+            "nome de Merge at Last foi preservado");
+
+        print_result(
+            centerDescriptor
+            && centerDescriptor->category
             == ActionCategory::Mesh,
-            "Flip Face pertence a Mesh");
-
-        print_result(
-            normalsDescriptor
-            && normalsDescriptor->category
-            == ActionCategory::Mesh,
-            "Recalculate Normals pertence a Mesh");
+            "Merge at Center pertence a Mesh");
 
         const bool registeredAgain =
-            register_face_actions(registry);
+            register_vertex_actions(registry);
 
         print_result(
             !registeredAgain,
             "registro duplicado e rejeitado");
 
         print_result(
-            registry.size() == 2u,
+            registry.size() == 3u,
             "registro duplicado preserva registry");
 
         return registered
             && !registeredAgain
-            && registry.size() == 2u
-            && flipDescriptor
-            && normalsDescriptor;
+            && registry.size() == 3u
+            && centerDescriptor
+            && firstDescriptor
+            && lastDescriptor;
     }
 
     bool test_transactional_registration() {
         std::cout
-            << "\n=== Face actions: transactional registration ===\n";
+            << "\n=== Vertex actions: transactional registration ===\n";
 
         ActionRegistry registry{};
 
         const bool firstRegistration =
-            register_face_actions(registry);
+            register_vertex_actions(registry);
 
         print_result(
             firstRegistration,
             "primeiro registro funcionou");
 
-        const bool removedNormals =
+        const bool removedFirst =
             registry.unregister_action(
-                recalculate_normals_action_id());
+                merge_at_first_action_id());
+
+        const bool removedLast =
+            registry.unregister_action(
+                merge_at_last_action_id());
 
         print_result(
-            removedNormals,
-            "Recalculate Normals foi removida");
+            removedFirst && removedLast,
+            "actions posteriores foram removidas");
 
         print_result(
             registry.size() == 1u,
-            "apenas Flip Face permaneceu");
+            "apenas Merge at Center permaneceu");
 
         const bool secondRegistration =
-            register_face_actions(registry);
+            register_vertex_actions(registry);
 
         print_result(
             !secondRegistration,
-            "novo registro falha no primeiro ID duplicado");
+            "registro falha no primeiro ID duplicado");
 
         print_result(
             registry.size() == 1u,
@@ -345,22 +387,25 @@ namespace {
 
         print_result(
             !registry.contains(
-                recalculate_normals_action_id()),
-            "action posterior nao foi registrada");
+                merge_at_first_action_id())
+            && !registry.contains(
+                merge_at_last_action_id()),
+            "actions posteriores nao foram registradas");
 
         return firstRegistration
-            && removedNormals
+            && removedFirst
+            && removedLast
             && !secondRegistration
             && registry.size() == 1u;
     }
 
     bool test_availability() {
         std::cout
-            << "\n=== Face actions: availability ===\n";
+            << "\n=== Vertex actions: availability ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_box()) {
+        if (!fixture.build_vertices()) {
             print_result(
                 false,
                 "fixture foi criada");
@@ -369,140 +414,136 @@ namespace {
 
         ActionRegistry registry{};
 
-        if (!register_face_actions(registry)) {
+        if (!register_vertex_actions(registry)) {
             print_result(
                 false,
-                "face actions foram registradas");
+                "vertex actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        fixture.select_faces({
-            fixture.faces.front()
+        fixture.select_vertices({
+            fixture.vertices[2],
+            fixture.vertices[0]
             });
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                flip_face_action_id()),
-            "Flip Face aceita face selecionada");
+                merge_at_center_action_id()),
+            "Merge at Center aceita dois vertices");
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                recalculate_normals_action_id()),
-            "Recalculate Normals aceita face selecionada");
-
-        fixture.editor.selection()
-            .mesh()
-            .clear_components();
+                merge_at_first_action_id()),
+            "Merge at First aceita dois vertices");
 
         print_result(
-            !executor.can_execute(
+            executor.can_execute(
                 fixture.context,
-                flip_face_action_id()),
-            "Flip Face rejeita selecao vazia");
+                merge_at_last_action_id()),
+            "Merge at Last aceita dois vertices");
 
-        print_result(
-            !executor.can_execute(
-                fixture.context,
-                recalculate_normals_action_id()),
-            "Recalculate Normals rejeita selecao vazia");
-
-        fixture.select_faces({
-            fixture.faces.front()
+        fixture.select_vertices({
+            fixture.vertices[0]
             });
 
-        fixture.editor.selection()
-            .set_granularity(
-                SelectionGranularity::Edge);
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                merge_at_center_action_id()),
+            "Merge at Center rejeita um vertice");
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                flip_face_action_id()),
-            "Flip Face rejeita granularidade Edge");
+                merge_at_first_action_id()),
+            "Merge at First rejeita um vertice");
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                recalculate_normals_action_id()),
-            "Recalculate Normals rejeita granularidade Edge");
+                merge_at_last_action_id()),
+            "Merge at Last rejeita um vertice");
 
-        fixture.editor.selection()
-            .set_granularity(
-                SelectionGranularity::Face);
+        fixture.select_vertices({
+            fixture.vertices[0],
+            fixture.vertices[1]
+            });
+
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Edge);
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                merge_at_center_action_id()),
+            "merge rejeita granularidade Edge");
+
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Vertex);
 
         fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                flip_face_action_id()),
-            "Flip Face rejeita Object mode");
+                merge_at_center_action_id()),
+            "merge rejeita Object mode");
+
+        fixture.editor.set_mode(EditorMode::Mesh);
 
         print_result(
-            !executor.can_execute(
+            executor.can_execute(
                 fixture.context,
-                recalculate_normals_action_id()),
-            "Recalculate Normals rejeita Object mode");
+                merge_at_center_action_id()),
+            "merge volta a ficar disponivel em Mesh mode");
 
         return true;
     }
 
-    bool test_flip_faces() {
+    bool test_merge_at_center() {
         std::cout
-            << "\n=== Flip Face: execution ===\n";
+            << "\n=== Merge at Center: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_box()) {
+        if (!fixture.build_vertices()) {
             print_result(
                 false,
                 "fixture foi criada");
             return false;
         }
 
-        const FaceHandle firstFace =
-            fixture.faces[0];
+        const VertexHandle firstSelected =
+            fixture.vertices[2];
 
-        const FaceHandle secondFace =
-            fixture.faces[1];
+        const VertexHandle secondSelected =
+            fixture.vertices[0];
 
-        fixture.select_faces({
-            firstFace,
-            secondFace
+        const VertexHandle lastSelected =
+            fixture.vertices[1];
+
+        fixture.select_vertices({
+            firstSelected,
+            secondSelected,
+            lastSelected
             });
 
-        const glm::vec3 firstNormalBefore =
-            fixture.node->mesh()
-            .face(firstFace)
-            .normal;
-
-        const glm::vec3 secondNormalBefore =
-            fixture.node->mesh()
-            .face(secondFace)
-            .normal;
-
-        const std::size_t verticesBefore =
-            fixture.node->mesh().vertex_count();
-
-        const std::size_t edgesBefore =
-            fixture.node->mesh().edge_count();
-
-        const std::size_t loopsBefore =
-            fixture.node->mesh().loop_count();
-
-        const std::size_t facesBefore =
-            fixture.node->mesh().face_count();
+        const glm::vec3 expectedCenter{
+            1.0f,
+            2.0f,
+            0.0f
+        };
 
         ActionRegistry registry{};
 
-        if (!register_face_actions(registry)) {
+        if (!register_vertex_actions(registry)) {
             print_result(
                 false,
-                "face actions foram registradas");
+                "vertex actions foram registradas");
             return false;
         }
 
@@ -511,301 +552,69 @@ namespace {
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                flip_face_action_id());
+                merge_at_center_action_id());
 
         print_action_result(
-            "Flip Face result",
+            "Merge at Center result",
             result);
-
-        const glm::vec3 firstNormalAfter =
-            fixture.node->mesh()
-            .face(firstFace)
-            .normal;
-
-        const glm::vec3 secondNormalAfter =
-            fixture.node->mesh()
-            .face(secondFace)
-            .normal;
 
         print_result(
             result.succeeded(),
-            "Flip Face foi executada");
+            "Merge at Center foi executada");
 
         print_result(
-            approximately_opposite(
-                firstNormalAfter,
-                firstNormalBefore),
-            "primeira normal foi invertida");
+            fixture.node->mesh().is_valid(
+                firstSelected),
+            "primeiro vertice selecionado sobreviveu");
 
         print_result(
-            approximately_opposite(
-                secondNormalAfter,
-                secondNormalBefore),
-            "segunda normal foi invertida");
+            !fixture.node->mesh().is_valid(
+                secondSelected),
+            "segundo vertice foi absorvido");
 
         print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesBefore,
-            "Flip Face preservou vertices");
+            !fixture.node->mesh().is_valid(
+                lastSelected),
+            "ultimo vertice foi absorvido");
 
         print_result(
-            fixture.node->mesh().edge_count()
-            == edgesBefore,
-            "Flip Face preservou edges");
+            fixture.active_original_vertices() == 1u,
+            "restou um vertice original ativo");
 
         print_result(
-            fixture.node->mesh().loop_count()
-            == loopsBefore,
-            "Flip Face preservou loops");
-
-        print_result(
-            fixture.node->mesh().face_count()
-            == facesBefore,
-            "Flip Face preservou faces");
+            approximately_equal(
+                fixture.node->mesh()
+                .vertex(firstSelected)
+                .position,
+                expectedCenter),
+            "vertice sobrevivente foi movido para o centro");
 
         print_result(
             fixture.history.undo_size() == 1u,
-            "Flip Face criou uma entrada no historico");
+            "merge criou uma entrada no historico");
 
         print_result(
             fixture.history.undo_name()
-            == "Flip Faces",
-            "historico usa label Flip Faces");
-
-        const CommandResult undoResult =
-            fixture.history.undo(
-                fixture.dispatcher);
-
-        print_result(
-            undoResult.success,
-            "undo de Flip Face funcionou");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(firstFace)
-                .normal,
-                firstNormalBefore),
-            "undo restaurou primeira normal");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(secondFace)
-                .normal,
-                secondNormalBefore),
-            "undo restaurou segunda normal");
-
-        print_result(
-            fixture.editor.selection()
-            .mesh()
-            .faces()
-            .contains(firstFace)
-            && fixture.editor.selection()
-            .mesh()
-            .faces()
-            .contains(secondFace),
-            "undo preservou selecao das faces");
-
-        const CommandResult redoResult =
-            fixture.history.redo(
-                fixture.dispatcher);
-
-        print_result(
-            redoResult.success,
-            "redo de Flip Face funcionou");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(firstFace)
-                .normal,
-                firstNormalAfter),
-            "redo restaurou primeira normal invertida");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(secondFace)
-                .normal,
-                secondNormalAfter),
-            "redo restaurou segunda normal invertida");
-
-        return result.succeeded()
-            && undoResult.success
-            && redoResult.success;
-    }
-
-    bool test_recalculate_normals() {
-        std::cout
-            << "\n=== Recalculate Normals: execution ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build_box()) {
-            print_result(
-                false,
-                "fixture foi criada");
-            return false;
-        }
-
-        const FaceHandle firstFace =
-            fixture.faces[0];
-
-        const FaceHandle secondFace =
-            fixture.faces[1];
-
-        const glm::vec3 expectedFirstNormal =
-            fixture.node->mesh()
-            .face(firstFace)
-            .normal;
-
-        const glm::vec3 expectedSecondNormal =
-            fixture.node->mesh()
-            .face(secondFace)
-            .normal;
-
-        const glm::vec3 corruptedFirstNormal{
-            0.25f,
-            0.5f,
-            0.75f
-        };
-
-        const glm::vec3 corruptedSecondNormal{
-            -0.4f,
-            0.3f,
-            0.2f
-        };
-
-        fixture.node->mesh()
-            .face(firstFace)
-            .normal = corruptedFirstNormal;
-
-        fixture.node->mesh()
-            .face(secondFace)
-            .normal = corruptedSecondNormal;
-
-        fixture.select_faces({
-            firstFace,
-            secondFace
-            });
-
-        const std::size_t verticesBefore =
-            fixture.node->mesh().vertex_count();
-
-        const std::size_t edgesBefore =
-            fixture.node->mesh().edge_count();
-
-        const std::size_t loopsBefore =
-            fixture.node->mesh().loop_count();
-
-        const std::size_t facesBefore =
-            fixture.node->mesh().face_count();
-
-        ActionRegistry registry{};
-
-        if (!register_face_actions(registry)) {
-            print_result(
-                false,
-                "face actions foram registradas");
-            return false;
-        }
-
-        ActionExecutor executor{ registry };
-
-        const ActionResult result =
-            executor.execute(
-                fixture.context,
-                recalculate_normals_action_id());
-
-        print_action_result(
-            "Recalculate Normals result",
-            result);
-
-        const glm::vec3 rebuiltFirstNormal =
-            fixture.node->mesh()
-            .face(firstFace)
-            .normal;
-
-        const glm::vec3 rebuiltSecondNormal =
-            fixture.node->mesh()
-            .face(secondFace)
-            .normal;
-
-        print_result(
-            result.succeeded(),
-            "Recalculate Normals foi executada");
-
-        print_result(
-            approximately_equal(
-                rebuiltFirstNormal,
-                expectedFirstNormal),
-            "primeira normal foi reconstruida");
-
-        print_result(
-            approximately_equal(
-                rebuiltSecondNormal,
-                expectedSecondNormal),
-            "segunda normal foi reconstruida");
-
-        print_result(
-            !approximately_equal(
-                rebuiltFirstNormal,
-                corruptedFirstNormal),
-            "primeira normal corrompida foi substituida");
-
-        print_result(
-            !approximately_equal(
-                rebuiltSecondNormal,
-                corruptedSecondNormal),
-            "segunda normal corrompida foi substituida");
-
-        print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesBefore,
-            "recalculo preservou vertices");
-
-        print_result(
-            fixture.node->mesh().edge_count()
-            == edgesBefore,
-            "recalculo preservou edges");
-
-        print_result(
-            fixture.node->mesh().loop_count()
-            == loopsBefore,
-            "recalculo preservou loops");
-
-        print_result(
-            fixture.node->mesh().face_count()
-            == facesBefore,
-            "recalculo preservou faces");
-
-        print_result(
-            fixture.history.undo_size() == 1u,
-            "recalculo criou uma entrada no historico");
-
-        print_result(
-            fixture.history.undo_name()
-            == "Recalculate Normals",
-            "historico usa label Recalculate Normals");
+            == "Merge Vertices at Center",
+            "historico usa label de center");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Mesh),
-            "recalculo marca Mesh como dirty");
+            "merge marca Mesh como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Render),
-            "recalculo marca Render como dirty");
+            "merge marca Render como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Picking),
-            "recalculo marca Picking como dirty");
+            "merge marca Picking como dirty");
 
         const CommandResult undoResult =
             fixture.history.undo(
@@ -813,34 +622,59 @@ namespace {
 
         print_result(
             undoResult.success,
-            "undo de Recalculate Normals funcionou");
+            "undo de Merge at Center funcionou");
+
+        print_result(
+            fixture.active_original_vertices() == 3u,
+            "undo restaurou os tres vertices");
 
         print_result(
             approximately_equal(
                 fixture.node->mesh()
-                .face(firstFace)
-                .normal,
-                corruptedFirstNormal),
-            "undo restaurou primeira normal corrompida");
+                .vertex(firstSelected)
+                .position,
+                glm::vec3{
+                    0.0f,
+                    6.0f,
+                    0.0f
+                }),
+            "undo restaurou posicao do primeiro selecionado");
 
         print_result(
             approximately_equal(
                 fixture.node->mesh()
-                .face(secondFace)
-                .normal,
-                corruptedSecondNormal),
-            "undo restaurou segunda normal corrompida");
+                .vertex(secondSelected)
+                .position,
+                glm::vec3{
+                    0.0f,
+                    0.0f,
+                    0.0f
+                }),
+            "undo restaurou posicao do segundo selecionado");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .vertex(lastSelected)
+                .position,
+                glm::vec3{
+                    3.0f,
+                    0.0f,
+                    0.0f
+                }),
+            "undo restaurou posicao do ultimo selecionado");
 
         print_result(
             fixture.editor.selection()
             .mesh()
-            .faces()
-            .contains(firstFace)
-            && fixture.editor.selection()
-            .mesh()
-            .faces()
-            .contains(secondFace),
-            "undo preservou selecao das faces");
+            .vertices()
+            .items()
+            == std::vector<VertexHandle>{
+            firstSelected,
+                secondSelected,
+                lastSelected
+        },
+            "undo restaurou ordem da selecao");
 
         const CommandResult redoResult =
             fixture.history.redo(
@@ -848,111 +682,319 @@ namespace {
 
         print_result(
             redoResult.success,
-            "redo de Recalculate Normals funcionou");
+            "redo de Merge at Center funcionou");
 
         print_result(
-            approximately_equal(
+            fixture.active_original_vertices() == 1u,
+            "redo restaurou um unico vertice");
+
+        print_result(
+            fixture.node->mesh().is_valid(
+                firstSelected)
+            && approximately_equal(
                 fixture.node->mesh()
-                .face(firstFace)
-                .normal,
-                rebuiltFirstNormal),
-            "redo restaurou primeira normal reconstruida");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(secondFace)
-                .normal,
-                rebuiltSecondNormal),
-            "redo restaurou segunda normal reconstruida");
-
-        print_result(
-            fixture.history.undo_size() == 1u
-            && fixture.history.redo_size() == 0u,
-            "redo restaurou estado do historico");
+                .vertex(firstSelected)
+                .position,
+                expectedCenter),
+            "redo restaurou o resultado centralizado");
 
         return result.succeeded()
             && undoResult.success
             && redoResult.success
-            && approximately_equal(
-                fixture.node->mesh()
-                .face(firstFace)
-                .normal,
-                expectedFirstNormal)
-            && approximately_equal(
-                fixture.node->mesh()
-                .face(secondFace)
-                .normal,
-                expectedSecondNormal);
+            && fixture.active_original_vertices() == 1u;
     }
 
-    bool test_unavailable_execution() {
+    bool test_merge_at_first() {
         std::cout
-            << "\n=== Face actions: unavailable execution ===\n";
+            << "\n=== Merge at First: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_box()) {
+        if (!fixture.build_vertices()) {
             print_result(
                 false,
                 "fixture foi criada");
             return false;
         }
 
-        fixture.editor.selection()
-            .mesh()
-            .clear_components();
+        const VertexHandle firstSelected =
+            fixture.vertices[2];
+
+        const VertexHandle secondSelected =
+            fixture.vertices[0];
+
+        const VertexHandle lastSelected =
+            fixture.vertices[1];
+
+        fixture.select_vertices({
+            firstSelected,
+            secondSelected,
+            lastSelected
+            });
+
+        const glm::vec3 expectedPosition =
+            fixture.node->mesh()
+            .vertex(firstSelected)
+            .position;
 
         ActionRegistry registry{};
 
-        if (!register_face_actions(registry)) {
+        if (!register_vertex_actions(registry)) {
             print_result(
                 false,
-                "face actions foram registradas");
+                "vertex actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        const glm::vec3 normalBefore =
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                merge_at_first_action_id());
+
+        print_action_result(
+            "Merge at First result",
+            result);
+
+        print_result(
+            result.succeeded(),
+            "Merge at First foi executada");
+
+        print_result(
+            fixture.node->mesh().is_valid(
+                firstSelected),
+            "primeiro selecionado sobreviveu");
+
+        print_result(
+            !fixture.node->mesh().is_valid(
+                secondSelected)
+            && !fixture.node->mesh().is_valid(
+                lastSelected),
+            "demais vertices foram absorvidos");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .vertex(firstSelected)
+                .position,
+                expectedPosition),
+            "posicao do primeiro selecionado foi preservada");
+
+        print_result(
+            fixture.history.undo_name()
+            == "Merge Vertices at First",
+            "historico usa label de first");
+
+        const CommandResult undoResult =
+            fixture.history.undo(
+                fixture.dispatcher);
+
+        print_result(
+            undoResult.success,
+            "undo de Merge at First funcionou");
+
+        print_result(
+            fixture.active_original_vertices() == 3u,
+            "undo restaurou os tres vertices");
+
+        const CommandResult redoResult =
+            fixture.history.redo(
+                fixture.dispatcher);
+
+        print_result(
+            redoResult.success,
+            "redo de Merge at First funcionou");
+
+        print_result(
+            fixture.node->mesh().is_valid(
+                firstSelected)
+            && fixture.active_original_vertices() == 1u,
+            "redo preservou o primeiro selecionado");
+
+        return result.succeeded()
+            && undoResult.success
+            && redoResult.success
+            && fixture.node->mesh().is_valid(
+                firstSelected)
+            && fixture.active_original_vertices() == 1u;
+    }
+
+    bool test_merge_at_last() {
+        std::cout
+            << "\n=== Merge at Last: execution ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build_vertices()) {
+            print_result(
+                false,
+                "fixture foi criada");
+            return false;
+        }
+
+        const VertexHandle firstSelected =
+            fixture.vertices[2];
+
+        const VertexHandle secondSelected =
+            fixture.vertices[0];
+
+        const VertexHandle lastSelected =
+            fixture.vertices[1];
+
+        fixture.select_vertices({
+            firstSelected,
+            secondSelected,
+            lastSelected
+            });
+
+        const glm::vec3 expectedPosition =
             fixture.node->mesh()
-            .face(fixture.faces.front())
-            .normal;
+            .vertex(lastSelected)
+            .position;
+
+        ActionRegistry registry{};
+
+        if (!register_vertex_actions(registry)) {
+            print_result(
+                false,
+                "vertex actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                recalculate_normals_action_id());
+                merge_at_last_action_id());
 
         print_action_result(
-            "Unavailable Recalculate Normals result",
+            "Merge at Last result",
+            result);
+
+        print_result(
+            result.succeeded(),
+            "Merge at Last foi executada");
+
+        print_result(
+            fixture.node->mesh().is_valid(
+                lastSelected),
+            "ultimo selecionado sobreviveu");
+
+        print_result(
+            !fixture.node->mesh().is_valid(
+                firstSelected)
+            && !fixture.node->mesh().is_valid(
+                secondSelected),
+            "vertices anteriores foram absorvidos");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .vertex(lastSelected)
+                .position,
+                expectedPosition),
+            "posicao do ultimo selecionado foi preservada");
+
+        print_result(
+            fixture.history.undo_name()
+            == "Merge Vertices at Last",
+            "historico usa label de last");
+
+        const CommandResult undoResult =
+            fixture.history.undo(
+                fixture.dispatcher);
+
+        print_result(
+            undoResult.success,
+            "undo de Merge at Last funcionou");
+
+        print_result(
+            fixture.active_original_vertices() == 3u,
+            "undo restaurou os tres vertices");
+
+        const CommandResult redoResult =
+            fixture.history.redo(
+                fixture.dispatcher);
+
+        print_result(
+            redoResult.success,
+            "redo de Merge at Last funcionou");
+
+        print_result(
+            fixture.node->mesh().is_valid(
+                lastSelected)
+            && fixture.active_original_vertices() == 1u,
+            "redo preservou o ultimo selecionado");
+
+        return result.succeeded()
+            && undoResult.success
+            && redoResult.success
+            && fixture.node->mesh().is_valid(
+                lastSelected)
+            && fixture.active_original_vertices() == 1u;
+    }
+
+    bool test_unavailable_execution() {
+        std::cout
+            << "\n=== Vertex actions: unavailable execution ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build_vertices()) {
+            print_result(
+                false,
+                "fixture foi criada");
+            return false;
+        }
+
+        fixture.select_vertices({
+            fixture.vertices.front()
+            });
+
+        ActionRegistry registry{};
+
+        if (!register_vertex_actions(registry)) {
+            print_result(
+                false,
+                "vertex actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                merge_at_center_action_id());
+
+        print_action_result(
+            "Unavailable Merge at Center result",
             result);
 
         print_result(
             result.is_unavailable(),
-            "selecao vazia retorna Unavailable");
+            "um vertice retorna Unavailable");
 
         print_result(
             fixture.history.empty(),
             "action indisponivel nao entra no historico");
 
         print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(fixture.faces.front())
-                .normal,
-                normalBefore),
-            "action indisponivel nao altera normal");
+            fixture.active_original_vertices() == 3u,
+            "action indisponivel nao altera a malha");
 
         return result.is_unavailable()
-            && fixture.history.empty();
+            && fixture.history.empty()
+            && fixture.active_original_vertices() == 3u;
     }
 
 } // namespace
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Final Face Actions "
+        << "=== Locus3D Editor Final Vertex Actions "
         "Smoke Test ===\n";
 
     bool passed = true;
@@ -960,20 +1002,21 @@ int main() {
     passed = test_registration() && passed;
     passed = test_transactional_registration() && passed;
     passed = test_availability() && passed;
-    passed = test_flip_faces() && passed;
-    passed = test_recalculate_normals() && passed;
+    passed = test_merge_at_center() && passed;
+    passed = test_merge_at_first() && passed;
+    passed = test_merge_at_last() && passed;
     passed = test_unavailable_execution() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All final face action smoke tests "
+            << "=== All final vertex action smoke tests "
             "passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Final face action smoke test failed ===\n";
+        << "=== Final vertex action smoke test failed ===\n";
     return 1;
 }

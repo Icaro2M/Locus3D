@@ -233,7 +233,9 @@ target_sources(locus3d_editor
          "actions/mesh/face/RegisterFaceActions.h"
          "actions/mesh/face/RegisterFaceActions.cpp"
          "actions/mesh/topology/RegisterTopologyActions.h"
-         "actions/mesh/topology/RegisterTopologyActions.cpp")
+         "actions/mesh/topology/RegisterTopologyActions.cpp"
+         "actions/mesh/vertex/RegisterVertexActions.h"
+         "actions/mesh/vertex/RegisterVertexActions.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
