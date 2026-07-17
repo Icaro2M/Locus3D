@@ -216,7 +216,14 @@ target_sources(locus3d_editor
          "tools/mesh/edge/BevelTool.h"
          "tools/mesh/edge/BevelTool.cpp"
          "tools/mesh/topology/LoopCutTool.h"
-         "tools/mesh/topology/LoopCutTool.cpp")
+         "tools/mesh/topology/LoopCutTool.cpp"
+         "actions/core/ActionId.h"
+         "actions/core/ActionCategory.h"
+         "actions/core/ActionResult.h"
+         "actions/core/ActionDescriptor.h"
+         "actions/core/ActionContext.h"
+         "actions/core/IEditorAction.h"
+         "actions/core/ActionContext.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
