@@ -278,20 +278,21 @@ source\editor
 |           SetOriginTool.h [!]
 |           SetOriginTool.cpp [!]
 |
-+---actions [!]
-|   |   ActionRegistry.h [!]
-|   |   ActionRegistry.cpp [!]
-|   |   ActionExecutor.h [!]
-|   |   ActionExecutor.cpp [!]
++---actions 
+|   |   ActionRegistry.h
+|   |   ActionRegistry.cpp
+|   |   ActionExecutor.h
+|   |   ActionExecutor.cpp
 |   |   Actions.h [!]
 |   |
-|   +---core [!]
-|   |       ActionId.h [!]
-|   |       ActionCategory.h [!]
-|   |       ActionDescriptor.h [!]
-|   |       ActionContext.h [!]
-|   |       ActionResult.h [!]
-|   |       IEditorAction.h [!]
+|   +---core
+|   |       ActionId.h
+|   |       ActionCategory.h
+|   |       ActionDescriptor.h
+|   |       ActionContext.h
+|   |       ActionContext.cpp
+|   |       ActionResult.h
+|   |       IEditorAction.h
 |   |
 |   \---mesh [!]
 |       |   MeshOperationAction.h [!]
@@ -420,16 +421,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/utility/InspectTool.cpp`
 - [!] `tools/utility/SetOriginTool.h`
 - [!] `tools/utility/SetOriginTool.cpp`
-- [!] `actions/core/ActionId.h`
-- [!] `actions/core/ActionCategory.h`
-- [!] `actions/core/ActionDescriptor.h`
-- [!] `actions/core/ActionContext.h`
-- [!] `actions/core/ActionResult.h`
-- [!] `actions/core/IEditorAction.h`
-- [!] `actions/ActionRegistry.h`
-- [!] `actions/ActionRegistry.cpp`
-- [!] `actions/ActionExecutor.h`
-- [!] `actions/ActionExecutor.cpp`
 - [!] `actions/mesh/MeshOperationAction.h`
 - [!] `actions/mesh/MeshOperationAction.cpp`
 - [!] `actions/mesh/vertex/register_vertex_actions.h`

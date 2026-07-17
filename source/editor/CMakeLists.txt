@@ -223,7 +223,11 @@ target_sources(locus3d_editor
          "actions/core/ActionDescriptor.h"
          "actions/core/ActionContext.h"
          "actions/core/IEditorAction.h"
-         "actions/core/ActionContext.cpp")
+         "actions/core/ActionContext.cpp"
+         "actions/ActionRegistry.h"
+         "actions/ActionRegistry.cpp"
+         "actions/ActionExecutor.h"
+         "actions/ActionExecutor.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC
