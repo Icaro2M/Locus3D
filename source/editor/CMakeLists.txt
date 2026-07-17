@@ -229,7 +229,9 @@ target_sources(locus3d_editor
          "actions/ActionExecutor.h"
          "actions/ActionExecutor.cpp"
          "actions/mesh/MeshOperationAction.h"
-         "actions/mesh/MeshOperationAction.cpp")
+         "actions/mesh/MeshOperationAction.cpp"
+         "actions/mesh/face/RegisterFaceActions.h"
+         "actions/mesh/face/RegisterFaceActions.cpp")
 
 target_include_directories(locus3d_editor
     PUBLIC

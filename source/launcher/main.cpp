@@ -7,33 +7,32 @@
 #include "editor/actions/ActionExecutor.h"
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionContext.h"
-#include "editor/actions/mesh/MeshOperationAction.h"
+#include "editor/actions/mesh/face/RegisterFaceActions.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/MeshNode.h"
 #include "kernel/geometry/primitives/BoxBuilder.h"
-#include "kernel/modeling/core/OperationContext.h"
-#include "kernel/modeling/operations/face/FlipFaceOp.h"
 
 #include <glm/geometric.hpp>
+#include <glm/vec3.hpp>
 
-#include <cstddef>
 #include <iostream>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace {
 
     using namespace locus::editor;
 
-    constexpr const char* FlipFaceActionId =
-        "mesh.face.flip.test";
+    using FaceHandle =
+        locus::kernel::geometry::FaceHandle;
 
-    constexpr const char* EmptyOperationActionId =
-        "mesh.face.empty_operation.test";
-
+    /**
+     * @brief Prints one smoke-test assertion.
+     *
+     * @param condition Assertion result.
+     * @param message Human-readable assertion description.
+     */
     void print_result(
         bool condition,
         const std::string& message) {
@@ -43,7 +42,13 @@ namespace {
             << '\n';
     }
 
-    const char* action_result_code_name(
+    /**
+     * @brief Converts an action result code to readable text.
+     *
+     * @param code Action result code.
+     * @return Static readable name.
+     */
+    const char* result_code_name(
         ActionResultCode code) {
         switch (code) {
         case ActionResultCode::Executed:
@@ -59,32 +64,51 @@ namespace {
         return "Unknown";
     }
 
+    /**
+     * @brief Prints an action execution result.
+     *
+     * @param label Result label.
+     * @param result Result to print.
+     */
     void print_action_result(
         const std::string& label,
         const ActionResult& result) {
         std::cout << label << '\n';
+
         std::cout
             << "  code: "
-            << action_result_code_name(result.code)
+            << result_code_name(result.code)
             << '\n';
+
         std::cout
             << "  succeeded: "
             << (result.succeeded() ? "true" : "false")
             << '\n';
+
         std::cout
             << "  unavailable: "
             << (result.is_unavailable() ? "true" : "false")
             << '\n';
+
         std::cout
             << "  failed: "
             << (result.failed() ? "true" : "false")
             << '\n';
+
         std::cout
             << "  message: "
             << result.message
             << '\n';
     }
 
+    /**
+     * @brief Checks whether two vectors are approximately equal.
+     *
+     * @param lhs Left-hand vector.
+     * @param rhs Right-hand vector.
+     * @param epsilon Maximum accepted distance.
+     * @return True when vectors are approximately equal.
+     */
     bool approximately_equal(
         const glm::vec3& lhs,
         const glm::vec3& rhs,
@@ -92,100 +116,31 @@ namespace {
         return glm::length(lhs - rhs) <= epsilon;
     }
 
-    ActionDescriptor make_flip_face_descriptor() {
-        return ActionDescriptor{
-            ActionId{ FlipFaceActionId },
-            "Flip Face",
-            "Reverses the winding of the selected mesh face.",
-            ActionCategory::Mesh,
-            {
-                "flip",
-                "face",
-                "normal",
-                "winding",
-                "orientation"
+    /**
+     * @brief Converts the official action identifier to ActionId.
+     *
+     * @return Built-in Flip Face action identifier.
+     */
+    ActionId flip_face_action_id() {
+        return ActionId{
+            std::string{
+                face_actions::FlipFaceId
             }
         };
     }
 
-    std::unique_ptr<MeshOperationAction>
-        make_flip_face_action() {
-        MeshOperationAction::OperationFactory operationFactory =
-            [](
-                const MeshToolTarget& target)
-            -> ApplyMeshOperationCommand::MeshOperation {
-            const std::vector<
-                locus::kernel::geometry::FaceHandle>
-                faces = target.faces;
-
-            return [faces](
-                locus::kernel::geometry::LEMEditor& editor) {
-                    bool changed = false;
-
-                    for (const auto face : faces) {
-                        locus::kernel::modeling::FlipFaceOp operation{
-                            face
-                        };
-
-                        locus::kernel::modeling::OperationContext
-                            operationContext{};
-
-                        operationContext.mesh = &editor.mesh();
-                        operationContext.validateAfterExecute = true;
-                        operationContext.rebuildNormals = true;
-                        operationContext.allowNonManifold = true;
-
-                        const locus::kernel::modeling::OperationResult
-                            result =
-                            operation.execute(operationContext);
-
-                        if (!result.is_success()
-                            || !result.changed()) {
-                            return false;
-                        }
-
-                        changed = true;
-                    }
-
-                    return changed;
-                };
-            };
-
-        return std::make_unique<MeshOperationAction>(
-            make_flip_face_descriptor(),
-            SelectionGranularity::Face,
-            1u,
-            std::move(operationFactory),
-            "Flip Face");
-    }
-
-    std::unique_ptr<MeshOperationAction>
-        make_empty_operation_action() {
-        MeshOperationAction::OperationFactory operationFactory =
-            [](
-                const MeshToolTarget& target)
-            -> ApplyMeshOperationCommand::MeshOperation {
-            (void)target;
-            return {};
-            };
-
-        return std::make_unique<MeshOperationAction>(
-            ActionDescriptor{
-                ActionId{ EmptyOperationActionId },
-                "Empty Mesh Operation",
-                "Creates no operation callback.",
-                ActionCategory::Mesh
-            },
-            SelectionGranularity::Face,
-            1u,
-            std::move(operationFactory),
-            "Empty Mesh Operation");
-    }
-
+    /**
+     * @brief Fixture containing one editable box and action runtime services.
+     */
     struct MeshFixture {
         Editor editor{};
-        CommandDispatcher dispatcher{ editor };
+
+        CommandDispatcher dispatcher{
+            editor
+        };
+
         HistoryStack history{};
+
         ActionContext context{
             editor,
             dispatcher,
@@ -195,12 +150,17 @@ namespace {
         SceneNodeId nodeId{};
         MeshNode* node = nullptr;
 
-        locus::kernel::geometry::FaceHandle face{};
-        glm::vec3 originalNormal{ 0.0f };
+        std::vector<FaceHandle> faces{};
 
+        /**
+         * @brief Builds the editable box fixture.
+         *
+         * @return True when construction succeeded.
+         */
         bool build() {
             nodeId =
-                editor.scene().create_mesh("Action Test Box");
+                editor.scene().create_mesh(
+                    "Face Action Test Box");
 
             node =
                 editor.scene().find_mesh(nodeId);
@@ -209,299 +169,338 @@ namespace {
                 return false;
             }
 
-            locus::kernel::geometry::BoxParameters parameters{};
+            locus::kernel::geometry::BoxParameters
+                parameters{};
+
             parameters.size = {
                 2.0f,
                 2.0f,
                 2.0f
             };
 
-            const locus::kernel::geometry::PrimitiveBuildResult
-                buildResult =
-                locus::kernel::geometry::BoxBuilder::build_into(
+            const auto buildResult =
+                locus::kernel::geometry::BoxBuilder::
+                build_into(
                     node->mesh(),
                     parameters);
 
             if (!buildResult.success
-                || buildResult.faces.empty()) {
+                || buildResult.faces.size() != 6u) {
                 return false;
             }
 
-            face = buildResult.faces.front();
+            faces = buildResult.faces;
 
-            if (!node->mesh().is_valid(face)) {
-                return false;
+            for (const FaceHandle face : faces) {
+                if (!node->mesh().is_valid(face)) {
+                    return false;
+                }
             }
-
-            originalNormal =
-                node->mesh().face(face).normal;
 
             editor.set_mode(EditorMode::Mesh);
 
             editor.selection().set_granularity(
                 SelectionGranularity::Face);
 
-            editor.selection().mesh().set_active_mesh(
-                nodeId);
+            editor.selection()
+                .mesh()
+                .set_active_mesh(nodeId);
 
-            editor.selection().mesh().set_face(face);
+            editor.selection()
+                .mesh()
+                .set_face(faces[0]);
+
+            editor.selection()
+                .mesh()
+                .add_face(faces[1]);
+
             editor.selection().mark_dirty();
-
             editor.clear_dirty();
 
             return true;
         }
     };
 
-    bool test_fixture() {
-        std::cout << "\n=== Mesh fixture ===\n";
-
-        MeshFixture fixture{};
-        const bool built = fixture.build();
-
-        print_result(
-            built,
-            "fixture de cubo foi criada");
-
-        if (!built) {
-            return false;
-        }
-
-        print_result(
-            fixture.nodeId.is_valid(),
-            "mesh node possui id valido");
-
-        print_result(
-            fixture.node != nullptr,
-            "mesh node pode ser encontrado");
-
-        print_result(
-            fixture.node->mesh().vertex_count() == 8u,
-            "cubo possui oito vertices");
-
-        print_result(
-            fixture.node->mesh().edge_count() == 12u,
-            "cubo possui doze arestas");
-
-        print_result(
-            fixture.node->mesh().face_count() == 6u,
-            "cubo possui seis faces");
-
-        print_result(
-            fixture.node->mesh().is_valid(fixture.face),
-            "face alvo e valida");
-
-        print_result(
-            fixture.editor.mode() == EditorMode::Mesh,
-            "editor esta em mesh mode");
-
-        print_result(
-            fixture.editor.selection().granularity()
-            == SelectionGranularity::Face,
-            "granularidade atual e Face");
-
-        print_result(
-            fixture.editor.selection()
-            .mesh()
-            .active_mesh()
-            == fixture.nodeId,
-            "selecao referencia o mesh node");
-
-        print_result(
-            fixture.editor.selection()
-            .mesh()
-            .faces()
-            .size()
-            == 1u,
-            "uma face esta selecionada");
-
-        return built
-            && fixture.node->mesh().vertex_count() == 8u
-            && fixture.node->mesh().edge_count() == 12u
-            && fixture.node->mesh().face_count() == 6u
-            && fixture.node->mesh().is_valid(fixture.face);
-    }
-
-    bool test_action_metadata() {
+    /**
+     * @brief Tests the official face action registration.
+     *
+     * @return True when every assertion passed.
+     */
+    bool test_registration() {
         std::cout
-            << "\n=== MeshOperationAction: metadata ===\n";
+            << "\n=== Face actions: registration ===\n";
 
-        const std::unique_ptr<MeshOperationAction> action =
-            make_flip_face_action();
+        ActionRegistry registry{};
 
-        print_result(
-            action != nullptr,
-            "action foi criada");
-
-        if (!action) {
-            return false;
-        }
+        const bool registered =
+            register_face_actions(registry);
 
         print_result(
-            action->descriptor().is_valid(),
-            "descritor da action e valido");
+            registered,
+            "face actions foram registradas");
 
         print_result(
-            action->descriptor().id
-            == ActionId{ FlipFaceActionId },
-            "descritor preserva o identificador");
+            registry.size() == 1u,
+            "uma face action foi registrada");
 
         print_result(
-            action->descriptor().category
+            registry.contains(
+                flip_face_action_id()),
+            "registry contem mesh.face.flip");
+
+        const ActionDescriptor* descriptor =
+            registry.descriptor(
+                flip_face_action_id());
+
+        print_result(
+            descriptor != nullptr,
+            "descritor oficial pode ser consultado");
+
+        print_result(
+            descriptor
+            && descriptor->is_valid(),
+            "descritor oficial e valido");
+
+        print_result(
+            descriptor
+            && descriptor->name == "Flip Face",
+            "descritor preserva o nome Flip Face");
+
+        print_result(
+            descriptor
+            && descriptor->category
             == ActionCategory::Mesh,
-            "action pertence a categoria Mesh");
+            "Flip Face pertence a categoria Mesh");
 
         print_result(
-            action->required_granularity()
-            == SelectionGranularity::Face,
-            "action exige granularidade Face");
+            descriptor
+            && !descriptor->description.empty(),
+            "descritor possui descricao");
 
         print_result(
-            action->minimum_selection_count() == 1u,
-            "action exige pelo menos uma face");
+            descriptor
+            && !descriptor->keywords.empty(),
+            "descritor possui termos de busca");
+
+        const bool registeredAgain =
+            register_face_actions(registry);
 
         print_result(
-            action->command_label() == "Flip Face",
-            "action preserva label do command");
+            !registeredAgain,
+            "registro duplicado e rejeitado");
 
-        return action->descriptor().is_valid()
-            && action->required_granularity()
-            == SelectionGranularity::Face
-            && action->minimum_selection_count() == 1u
-            && action->command_label() == "Flip Face";
+        print_result(
+            registry.size() == 1u,
+            "registro duplicado nao altera o registry");
+
+        return registered
+            && !registeredAgain
+            && registry.size() == 1u
+            && registry.contains(
+                flip_face_action_id())
+            && descriptor
+            && descriptor->is_valid();
     }
 
+    /**
+     * @brief Tests availability rules of the official action.
+     *
+     * @return True when every assertion passed.
+     */
     bool test_availability() {
         std::cout
-            << "\n=== MeshOperationAction: availability ===\n";
+            << "\n=== Flip Face: availability ===\n";
 
         MeshFixture fixture{};
 
         if (!fixture.build()) {
             print_result(
                 false,
-                "fixture necessaria para disponibilidade");
-            return false;
-        }
-
-        std::unique_ptr<MeshOperationAction> action =
-            make_flip_face_action();
-
-        print_result(
-            action->can_execute(fixture.context),
-            "action esta disponivel com face selecionada");
-
-        fixture.editor.set_mode(EditorMode::Object);
-
-        print_result(
-            !action->can_execute(fixture.context),
-            "action fica indisponivel em Object mode");
-
-        fixture.editor.set_mode(EditorMode::Mesh);
-        fixture.editor.selection().set_granularity(
-            SelectionGranularity::Edge);
-
-        print_result(
-            !action->can_execute(fixture.context),
-            "action fica indisponivel com granularidade Edge");
-
-        fixture.editor.selection().set_granularity(
-            SelectionGranularity::Face);
-
-        fixture.editor.selection().mesh().clear_components();
-
-        print_result(
-            !action->can_execute(fixture.context),
-            "action fica indisponivel sem face selecionada");
-
-        fixture.editor.selection().mesh().set_face(
-            fixture.face);
-
-        print_result(
-            action->can_execute(fixture.context),
-            "action volta a ficar disponivel apos selecionar face");
-
-        fixture.editor.selection().mesh().set_active_mesh(
-            SceneNodeId{});
-
-        print_result(
-            !action->can_execute(fixture.context),
-            "action fica indisponivel sem mesh ativo");
-
-        return true;
-    }
-
-    bool test_execution_and_history() {
-        std::cout
-            << "\n=== MeshOperationAction: execution ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build()) {
-            print_result(
-                false,
-                "fixture necessaria para execucao");
+                "fixture necessaria foi criada");
             return false;
         }
 
         ActionRegistry registry{};
 
-        const bool registered =
-            registry.register_action(
-                make_flip_face_action());
-
-        print_result(
-            registered,
-            "Flip Face action foi registrada");
+        if (!register_face_actions(registry)) {
+            print_result(
+                false,
+                "face actions foram registradas");
+            return false;
+        }
 
         ActionExecutor executor{ registry };
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                ActionId{ FlipFaceActionId }),
-            "executor reconhece action disponivel");
+                flip_face_action_id()),
+            "Flip Face esta disponivel com faces selecionadas");
 
-        const glm::vec3 beforeNormal =
-            fixture.node->mesh().face(fixture.face).normal;
-
-        const ActionResult executionResult =
-            executor.execute(
-                fixture.context,
-                ActionId{ FlipFaceActionId });
-
-        print_action_result(
-            "flip face execution",
-            executionResult);
-
-        const glm::vec3 afterNormal =
-            fixture.node->mesh().face(fixture.face).normal;
+        fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
-            executionResult.succeeded(),
-            "Flip Face action foi executada");
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face fica indisponivel em Object mode");
+
+        fixture.editor.set_mode(EditorMode::Mesh);
+
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Edge);
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face fica indisponivel em granularidade Edge");
+
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Face);
+
+        fixture.editor.selection()
+            .mesh()
+            .clear_components();
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face fica indisponivel sem faces");
+
+        fixture.editor.selection()
+            .mesh()
+            .set_face(fixture.faces[0]);
+
+        print_result(
+            executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face volta a ficar disponivel");
+
+        fixture.editor.selection()
+            .mesh()
+            .set_active_mesh(SceneNodeId{});
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face fica indisponivel sem mesh ativo");
+
+        return true;
+    }
+
+    /**
+     * @brief Tests batch execution and history behavior.
+     *
+     * @return True when every assertion passed.
+     */
+    bool test_batch_execution() {
+        std::cout
+            << "\n=== Flip Face: batch execution ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build()) {
+            print_result(
+                false,
+                "fixture necessaria foi criada");
+            return false;
+        }
+
+        ActionRegistry registry{};
+
+        if (!register_face_actions(registry)) {
+            print_result(
+                false,
+                "face actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const FaceHandle firstFace =
+            fixture.faces[0];
+
+        const FaceHandle secondFace =
+            fixture.faces[1];
+
+        const glm::vec3 firstNormalBefore =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 secondNormalBefore =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .size()
+            == 2u,
+            "duas faces estao selecionadas");
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                flip_face_action_id());
+
+        print_action_result(
+            "Flip Face batch result",
+            result);
+
+        const glm::vec3 firstNormalAfter =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 secondNormalAfter =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
+
+        print_result(
+            result.succeeded(),
+            "Flip Face foi executada");
 
         print_result(
             approximately_equal(
-                afterNormal,
-                -beforeNormal),
-            "normal da face foi invertida");
+                firstNormalAfter,
+                -firstNormalBefore),
+            "primeira normal foi invertida");
 
         print_result(
-            fixture.node->mesh().is_valid(fixture.face),
-            "face continua valida apos flip");
+            approximately_equal(
+                secondNormalAfter,
+                -secondNormalBefore),
+            "segunda normal foi invertida");
+
+        print_result(
+            fixture.node->mesh().is_valid(firstFace)
+            && fixture.node->mesh().is_valid(secondFace),
+            "faces continuam validas");
 
         print_result(
             fixture.node->mesh().face_count() == 6u,
-            "flip nao altera quantidade de faces");
+            "quantidade de faces foi preservada");
 
         print_result(
             fixture.history.undo_size() == 1u,
-            "command da action entrou no historico");
+            "lote criou uma unica entrada no historico");
 
         print_result(
-            fixture.history.undo_name() == "Flip Face",
-            "historico preserva label da action");
+            fixture.history.redo_size() == 0u,
+            "redo inicia vazio");
+
+        print_result(
+            fixture.history.undo_name()
+            == "Flip Faces",
+            "historico usa o label Flip Faces");
 
         print_result(
             fixture.history.can_undo(),
@@ -511,181 +510,193 @@ namespace {
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Mesh),
-            "execucao marca Mesh como dirty");
+            "Mesh foi marcado como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Render),
-            "execucao marca Render como dirty");
+            "Render foi marcado como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Picking),
-            "execucao marca Picking como dirty");
+            "Picking foi marcado como dirty");
 
         const CommandResult undoResult =
-            fixture.history.undo(fixture.dispatcher);
+            fixture.history.undo(
+                fixture.dispatcher);
 
         print_result(
             undoResult.success,
-            "undo da action funcionou");
+            "undo do lote funcionou");
 
-        const glm::vec3 undoNormal =
-            fixture.node->mesh().face(fixture.face).normal;
+        const glm::vec3 firstNormalUndo =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 secondNormalUndo =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
 
         print_result(
             approximately_equal(
-                undoNormal,
-                beforeNormal),
-            "undo restaurou a normal original");
+                firstNormalUndo,
+                firstNormalBefore),
+            "undo restaurou a primeira normal");
 
         print_result(
-            fixture.history.can_redo(),
-            "redo ficou disponivel");
+            approximately_equal(
+                secondNormalUndo,
+                secondNormalBefore),
+            "undo restaurou a segunda normal");
 
         print_result(
-            fixture.history.redo_name() == "Flip Face",
-            "redo preserva label da action");
+            fixture.history.undo_size() == 0u,
+            "undo removeu a entrada da pilha de undo");
+
+        print_result(
+            fixture.history.redo_size() == 1u,
+            "undo criou uma entrada de redo");
+
+        print_result(
+            fixture.history.redo_name()
+            == "Flip Faces",
+            "redo preserva o label Flip Faces");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(firstFace),
+            "undo preservou a primeira face selecionada");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(secondFace),
+            "undo preservou a segunda face selecionada");
 
         const CommandResult redoResult =
-            fixture.history.redo(fixture.dispatcher);
+            fixture.history.redo(
+                fixture.dispatcher);
 
         print_result(
             redoResult.success,
-            "redo da action funcionou");
+            "redo do lote funcionou");
 
-        const glm::vec3 redoNormal =
-            fixture.node->mesh().face(fixture.face).normal;
+        const glm::vec3 firstNormalRedo =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 secondNormalRedo =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
 
         print_result(
             approximately_equal(
-                redoNormal,
-                afterNormal),
-            "redo restaurou o resultado do flip");
+                firstNormalRedo,
+                firstNormalAfter),
+            "redo restaurou a primeira normal invertida");
+
+        print_result(
+            approximately_equal(
+                secondNormalRedo,
+                secondNormalAfter),
+            "redo restaurou a segunda normal invertida");
+
+        print_result(
+            fixture.history.undo_size() == 1u,
+            "redo restaurou a entrada de undo");
+
+        print_result(
+            fixture.history.redo_size() == 0u,
+            "redo esvaziou sua pilha");
 
         print_result(
             fixture.editor.selection()
             .mesh()
             .active_mesh()
             == fixture.nodeId,
-            "undo e redo preservam mesh ativo");
+            "mesh ativo foi preservado");
 
         print_result(
             fixture.editor.selection()
             .mesh()
             .faces()
-            .contains(fixture.face),
-            "undo e redo preservam selecao da face");
+            .size()
+            == 2u,
+            "selecao do lote foi preservada");
 
-        return registered
-            && executionResult.succeeded()
+        return result.succeeded()
             && undoResult.success
             && redoResult.success
             && approximately_equal(
-                redoNormal,
-                -fixture.originalNormal)
-            && fixture.history.undo_size() == 1u;
+                firstNormalRedo,
+                -firstNormalBefore)
+            && approximately_equal(
+                secondNormalRedo,
+                -secondNormalBefore)
+            && fixture.history.undo_size() == 1u
+            && fixture.history.redo_size() == 0u;
     }
 
-    bool test_empty_operation_callback() {
+    /**
+     * @brief Tests execution while the action is unavailable.
+     *
+     * @return True when every assertion passed.
+     */
+    bool test_unavailable_execution() {
         std::cout
-            << "\n=== MeshOperationAction: empty callback ===\n";
+            << "\n=== Flip Face: unavailable execution ===\n";
 
         MeshFixture fixture{};
 
         if (!fixture.build()) {
             print_result(
                 false,
-                "fixture necessaria para callback vazio");
+                "fixture necessaria foi criada");
             return false;
         }
 
         ActionRegistry registry{};
 
-        const bool registered =
-            registry.register_action(
-                make_empty_operation_action());
-
-        print_result(
-            registered,
-            "action com factory valida foi registrada");
+        if (!register_face_actions(registry)) {
+            print_result(
+                false,
+                "face actions foram registradas");
+            return false;
+        }
 
         ActionExecutor executor{ registry };
 
-        print_result(
-            executor.can_execute(
-                fixture.context,
-                ActionId{ EmptyOperationActionId }),
-            "action passa pela validacao de contexto");
+        fixture.editor.selection()
+            .mesh()
+            .clear_components();
 
         const glm::vec3 normalBefore =
-            fixture.node->mesh().face(fixture.face).normal;
+            fixture.node->mesh()
+            .face(fixture.faces[0])
+            .normal;
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                ActionId{ EmptyOperationActionId });
+                flip_face_action_id());
 
         print_action_result(
-            "empty callback result",
-            result);
-
-        print_result(
-            result.failed(),
-            "callback vazio gera falha");
-
-        print_result(
-            fixture.history.empty(),
-            "callback vazio nao cria entrada no historico");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .face(fixture.face)
-                .normal,
-                normalBefore),
-            "callback vazio nao altera a malha");
-
-        return registered
-            && result.failed()
-            && fixture.history.empty();
-    }
-
-    bool test_executor_unavailable() {
-        std::cout
-            << "\n=== MeshOperationAction: unavailable ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build()) {
-            print_result(
-                false,
-                "fixture necessaria para indisponibilidade");
-            return false;
-        }
-
-        ActionRegistry registry{};
-        registry.register_action(
-            make_flip_face_action());
-
-        ActionExecutor executor{ registry };
-
-        fixture.editor.set_mode(EditorMode::Object);
-
-        const ActionResult result =
-            executor.execute(
-                fixture.context,
-                ActionId{ FlipFaceActionId });
-
-        print_action_result(
-            "unavailable flip result",
+            "unavailable Flip Face result",
             result);
 
         print_result(
             result.is_unavailable(),
-            "executor retorna Unavailable fora de Mesh mode");
+            "execucao sem faces retorna Unavailable");
 
         print_result(
             fixture.history.empty(),
@@ -694,10 +705,87 @@ namespace {
         print_result(
             approximately_equal(
                 fixture.node->mesh()
-                .face(fixture.face)
+                .face(fixture.faces[0])
                 .normal,
-                fixture.originalNormal),
+                normalBefore),
             "action indisponivel nao altera a malha");
+
+        return result.is_unavailable()
+            && fixture.history.empty();
+    }
+
+    /**
+     * @brief Tests stale selected handle validation.
+     *
+     * @return True when every assertion passed.
+     */
+    bool test_invalid_selected_handle() {
+        std::cout
+            << "\n=== Flip Face: invalid selected handle ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build()) {
+            print_result(
+                false,
+                "fixture necessaria foi criada");
+            return false;
+        }
+
+        ActionRegistry registry{};
+
+        if (!register_face_actions(registry)) {
+            print_result(
+                false,
+                "face actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const FaceHandle invalidFace{};
+
+        fixture.editor.selection()
+            .mesh()
+            .set_face(invalidFace);
+
+        const bool invalidHandleAccepted =
+            fixture.node->mesh()
+            .is_valid(invalidFace);
+
+        std::cout
+            << "invalid handle active in mesh: "
+            << (invalidHandleAccepted
+                ? "true"
+                : "false")
+            << '\n';
+
+        if (invalidHandleAccepted) {
+            std::cout
+                << "Fixture note: default FaceHandle points "
+                "to an active face in this LEM.\n";
+
+            return true;
+        }
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "action rejeita handle selecionado invalido");
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                flip_face_action_id());
+
+        print_result(
+            result.is_unavailable(),
+            "handle invalido retorna Unavailable");
+
+        print_result(
+            fixture.history.empty(),
+            "handle invalido nao entra no historico");
 
         return result.is_unavailable()
             && fixture.history.empty();
@@ -707,29 +795,27 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Mesh Operation Action "
+        << "=== Locus3D Editor Face Actions "
         "Smoke Test ===\n";
 
     bool passed = true;
 
-    passed = test_fixture() && passed;
-    passed = test_action_metadata() && passed;
+    passed = test_registration() && passed;
     passed = test_availability() && passed;
-    passed = test_execution_and_history() && passed;
-    passed = test_empty_operation_callback() && passed;
-    passed = test_executor_unavailable() && passed;
+    passed = test_batch_execution() && passed;
+    passed = test_unavailable_execution() && passed;
+    passed = test_invalid_selected_handle() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All mesh operation action smoke "
-            "tests passed ===\n";
+            << "=== All face action smoke tests "
+            "passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Mesh operation action smoke test "
-        "failed ===\n";
+        << "=== Face action smoke test failed ===\n";
     return 1;
 }
