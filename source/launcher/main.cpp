@@ -7,15 +7,13 @@
 #include "editor/actions/ActionExecutor.h"
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionContext.h"
-#include "editor/actions/mesh/vertex/RegisterVertexActions.h"
+#include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/MeshNode.h"
-#include "kernel/geometry/mesh/LEMEditor.h"
+#include "kernel/geometry/primitives/BoxBuilder.h"
 
-#include <glm/geometric.hpp>
-#include <glm/vec3.hpp>
-
+#include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <string>
@@ -26,10 +24,10 @@ namespace {
 
     using namespace locus::editor;
 
-    using VertexHandle =
-        locus::kernel::geometry::VertexHandle;
+    using EdgeHandle =
+        locus::kernel::geometry::EdgeHandle;
 
-    constexpr float PositionEpsilon = 0.00001f;
+    constexpr float CreaseEpsilon = 0.00001f;
 
     void print_result(
         bool condition,
@@ -88,10 +86,10 @@ namespace {
     }
 
     bool approximately_equal(
-        const glm::vec3& first,
-        const glm::vec3& second,
-        float epsilon = PositionEpsilon) {
-        return glm::length(first - second) <= epsilon;
+        float first,
+        float second,
+        float epsilon = CreaseEpsilon) {
+        return std::abs(first - second) <= epsilon;
     }
 
     ActionId make_action_id(
@@ -101,19 +99,14 @@ namespace {
         };
     }
 
-    ActionId merge_at_center_action_id() {
+    ActionId mark_sharp_action_id() {
         return make_action_id(
-            vertex_actions::MergeAtCenterId);
+            edge_actions::MarkSharpId);
     }
 
-    ActionId merge_at_first_action_id() {
+    ActionId clear_sharp_action_id() {
         return make_action_id(
-            vertex_actions::MergeAtFirstId);
-    }
-
-    ActionId merge_at_last_action_id() {
-        return make_action_id(
-            vertex_actions::MergeAtLastId);
+            edge_actions::ClearSharpId);
     }
 
     struct MeshFixture {
@@ -134,12 +127,12 @@ namespace {
         SceneNodeId nodeId{};
         MeshNode* node = nullptr;
 
-        std::vector<VertexHandle> vertices{};
+        std::vector<EdgeHandle> edges{};
 
-        bool build_vertices() {
+        bool build_box() {
             nodeId =
                 editor.scene().create_mesh(
-                    "Vertex Actions Test Mesh");
+                    "Edge Actions Test Box");
 
             node =
                 editor.scene().find_mesh(nodeId);
@@ -148,47 +141,34 @@ namespace {
                 return false;
             }
 
-            locus::kernel::geometry::LEMEditor meshEditor{
-                node->mesh()
+            locus::kernel::geometry::BoxParameters
+                parameters{};
+
+            parameters.size = {
+                2.0f,
+                2.0f,
+                2.0f
             };
 
-            const VertexHandle vertexA =
-                meshEditor.add_vertex({
-                    0.0f,
-                    0.0f,
-                    0.0f
-                    });
+            const auto buildResult =
+                locus::kernel::geometry::BoxBuilder::
+                build_into(
+                    node->mesh(),
+                    parameters);
 
-            const VertexHandle vertexB =
-                meshEditor.add_vertex({
-                    3.0f,
-                    0.0f,
-                    0.0f
-                    });
-
-            const VertexHandle vertexC =
-                meshEditor.add_vertex({
-                    0.0f,
-                    6.0f,
-                    0.0f
-                    });
-
-            if (!node->mesh().is_valid(vertexA)
-                || !node->mesh().is_valid(vertexB)
-                || !node->mesh().is_valid(vertexC)) {
+            if (!buildResult.success
+                || buildResult.edges.size() != 12u
+                || buildResult.faces.size() != 6u
+                || buildResult.vertices.size() != 8u) {
                 return false;
             }
 
-            vertices = {
-                vertexA,
-                vertexB,
-                vertexC
-            };
+            edges = buildResult.edges;
 
             editor.set_mode(EditorMode::Mesh);
 
             editor.selection().set_granularity(
-                SelectionGranularity::Vertex);
+                SelectionGranularity::Edge);
 
             editor.selection()
                 .mesh()
@@ -199,16 +179,16 @@ namespace {
             return true;
         }
 
-        void select_vertices(
-            const std::vector<VertexHandle>& selectedVertices) {
+        void select_edges(
+            const std::vector<EdgeHandle>& selectedEdges) {
             editor.selection().set_granularity(
-                SelectionGranularity::Vertex);
+                SelectionGranularity::Edge);
 
             editor.selection()
                 .mesh()
                 .clear_components();
 
-            if (selectedVertices.empty()) {
+            if (selectedEdges.empty()) {
                 editor.selection().mark_dirty();
                 editor.clear_dirty();
                 return;
@@ -216,196 +196,189 @@ namespace {
 
             editor.selection()
                 .mesh()
-                .set_vertex(selectedVertices.front());
+                .set_edge(selectedEdges.front());
 
             for (std::size_t index = 1u;
-                index < selectedVertices.size();
+                index < selectedEdges.size();
                 ++index) {
                 editor.selection()
                     .mesh()
-                    .add_vertex(selectedVertices[index]);
+                    .add_edge(selectedEdges[index]);
             }
 
             editor.selection().mark_dirty();
             editor.clear_dirty();
         }
 
-        std::size_t active_original_vertices() const {
-            std::size_t count = 0u;
+        bool selected_edges_have_crease(
+            float expectedCrease) const {
+            const auto& selectedEdges =
+                editor.selection()
+                .mesh()
+                .edges()
+                .items();
 
-            for (const VertexHandle vertex : vertices) {
-                if (node->mesh().is_valid(vertex)) {
-                    ++count;
+            if (selectedEdges.empty()) {
+                return false;
+            }
+
+            for (const EdgeHandle edge : selectedEdges) {
+                if (!node->mesh().is_valid(edge)) {
+                    return false;
+                }
+
+                if (!approximately_equal(
+                    node->mesh().edge(edge).crease,
+                    expectedCrease)) {
+                    return false;
                 }
             }
 
-            return count;
+            return true;
         }
     };
 
     bool test_registration() {
         std::cout
-            << "\n=== Vertex actions: registration ===\n";
+            << "\n=== Edge actions: registration ===\n";
 
         ActionRegistry registry{};
 
         const bool registered =
-            register_vertex_actions(registry);
+            register_edge_actions(registry);
 
         print_result(
             registered,
-            "vertex actions foram registradas");
+            "edge actions foram registradas");
 
         print_result(
-            registry.size() == 3u,
-            "tres vertex actions foram registradas");
-
-        print_result(
-            registry.contains(
-                merge_at_center_action_id()),
-            "registry contem Merge at Center");
+            registry.size() == 2u,
+            "duas edge actions foram registradas");
 
         print_result(
             registry.contains(
-                merge_at_first_action_id()),
-            "registry contem Merge at First");
+                mark_sharp_action_id()),
+            "registry contem Mark Sharp");
 
         print_result(
             registry.contains(
-                merge_at_last_action_id()),
-            "registry contem Merge at Last");
+                clear_sharp_action_id()),
+            "registry contem Clear Sharp");
 
-        const ActionDescriptor* centerDescriptor =
+        const ActionDescriptor* markDescriptor =
             registry.descriptor(
-                merge_at_center_action_id());
+                mark_sharp_action_id());
 
-        const ActionDescriptor* firstDescriptor =
+        const ActionDescriptor* clearDescriptor =
             registry.descriptor(
-                merge_at_first_action_id());
-
-        const ActionDescriptor* lastDescriptor =
-            registry.descriptor(
-                merge_at_last_action_id());
+                clear_sharp_action_id());
 
         print_result(
-            centerDescriptor
-            && centerDescriptor->is_valid(),
-            "descritor de Merge at Center e valido");
+            markDescriptor
+            && markDescriptor->is_valid(),
+            "descritor de Mark Sharp e valido");
 
         print_result(
-            firstDescriptor
-            && firstDescriptor->is_valid(),
-            "descritor de Merge at First e valido");
+            clearDescriptor
+            && clearDescriptor->is_valid(),
+            "descritor de Clear Sharp e valido");
 
         print_result(
-            lastDescriptor
-            && lastDescriptor->is_valid(),
-            "descritor de Merge at Last e valido");
+            markDescriptor
+            && markDescriptor->name
+            == "Mark Sharp",
+            "Mark Sharp preserva nome");
 
         print_result(
-            centerDescriptor
-            && centerDescriptor->name
-            == "Merge at Center",
-            "nome de Merge at Center foi preservado");
+            clearDescriptor
+            && clearDescriptor->name
+            == "Clear Sharp",
+            "Clear Sharp preserva nome");
 
         print_result(
-            firstDescriptor
-            && firstDescriptor->name
-            == "Merge at First",
-            "nome de Merge at First foi preservado");
-
-        print_result(
-            lastDescriptor
-            && lastDescriptor->name
-            == "Merge at Last",
-            "nome de Merge at Last foi preservado");
-
-        print_result(
-            centerDescriptor
-            && centerDescriptor->category
+            markDescriptor
+            && markDescriptor->category
             == ActionCategory::Mesh,
-            "Merge at Center pertence a Mesh");
+            "Mark Sharp pertence a Mesh");
+
+        print_result(
+            clearDescriptor
+            && clearDescriptor->category
+            == ActionCategory::Mesh,
+            "Clear Sharp pertence a Mesh");
 
         const bool registeredAgain =
-            register_vertex_actions(registry);
+            register_edge_actions(registry);
 
         print_result(
             !registeredAgain,
             "registro duplicado e rejeitado");
 
         print_result(
-            registry.size() == 3u,
+            registry.size() == 2u,
             "registro duplicado preserva registry");
 
         return registered
             && !registeredAgain
-            && registry.size() == 3u
-            && centerDescriptor
-            && firstDescriptor
-            && lastDescriptor;
+            && registry.size() == 2u
+            && markDescriptor
+            && clearDescriptor;
     }
 
     bool test_transactional_registration() {
         std::cout
-            << "\n=== Vertex actions: transactional registration ===\n";
+            << "\n=== Edge actions: transactional registration ===\n";
 
         ActionRegistry registry{};
 
         const bool firstRegistration =
-            register_vertex_actions(registry);
+            register_edge_actions(registry);
 
         print_result(
             firstRegistration,
             "primeiro registro funcionou");
 
-        const bool removedFirst =
+        const bool removedClear =
             registry.unregister_action(
-                merge_at_first_action_id());
-
-        const bool removedLast =
-            registry.unregister_action(
-                merge_at_last_action_id());
+                clear_sharp_action_id());
 
         print_result(
-            removedFirst && removedLast,
-            "actions posteriores foram removidas");
+            removedClear,
+            "Clear Sharp foi removida");
 
         print_result(
             registry.size() == 1u,
-            "apenas Merge at Center permaneceu");
+            "apenas Mark Sharp permaneceu");
 
         const bool secondRegistration =
-            register_vertex_actions(registry);
+            register_edge_actions(registry);
 
         print_result(
             !secondRegistration,
-            "registro falha no primeiro ID duplicado");
+            "novo registro falha no primeiro ID duplicado");
 
         print_result(
             registry.size() == 1u,
-            "falha inicial nao altera registry");
+            "falha inicial preserva registry");
 
         print_result(
             !registry.contains(
-                merge_at_first_action_id())
-            && !registry.contains(
-                merge_at_last_action_id()),
-            "actions posteriores nao foram registradas");
+                clear_sharp_action_id()),
+            "action posterior nao foi registrada");
 
         return firstRegistration
-            && removedFirst
-            && removedLast
+            && removedClear
             && !secondRegistration
             && registry.size() == 1u;
     }
 
     bool test_availability() {
         std::cout
-            << "\n=== Vertex actions: availability ===\n";
+            << "\n=== Edge actions: availability ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_vertices()) {
+        if (!fixture.build_box()) {
             print_result(
                 false,
                 "fixture foi criada");
@@ -414,207 +387,209 @@ namespace {
 
         ActionRegistry registry{};
 
-        if (!register_vertex_actions(registry)) {
+        if (!register_edge_actions(registry)) {
             print_result(
                 false,
-                "vertex actions foram registradas");
+                "edge actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        fixture.select_vertices({
-            fixture.vertices[2],
-            fixture.vertices[0]
+        fixture.select_edges({
+            fixture.edges[3],
+            fixture.edges[0]
             });
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                merge_at_center_action_id()),
-            "Merge at Center aceita dois vertices");
+                mark_sharp_action_id()),
+            "Mark Sharp aceita edges selecionadas");
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                merge_at_first_action_id()),
-            "Merge at First aceita dois vertices");
+                clear_sharp_action_id()),
+            "Clear Sharp aceita edges selecionadas");
+
+        fixture.select_edges({});
 
         print_result(
-            executor.can_execute(
+            !executor.can_execute(
                 fixture.context,
-                merge_at_last_action_id()),
-            "Merge at Last aceita dois vertices");
+                mark_sharp_action_id()),
+            "Mark Sharp rejeita selecao vazia");
 
-        fixture.select_vertices({
-            fixture.vertices[0]
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                clear_sharp_action_id()),
+            "Clear Sharp rejeita selecao vazia");
+
+        fixture.select_edges({
+            fixture.edges[0]
             });
 
-        print_result(
-            !executor.can_execute(
-                fixture.context,
-                merge_at_center_action_id()),
-            "Merge at Center rejeita um vertice");
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Face);
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                merge_at_first_action_id()),
-            "Merge at First rejeita um vertice");
+                mark_sharp_action_id()),
+            "Mark Sharp rejeita granularidade Face");
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                merge_at_last_action_id()),
-            "Merge at Last rejeita um vertice");
-
-        fixture.select_vertices({
-            fixture.vertices[0],
-            fixture.vertices[1]
-            });
+                clear_sharp_action_id()),
+            "Clear Sharp rejeita granularidade Face");
 
         fixture.editor.selection().set_granularity(
             SelectionGranularity::Edge);
-
-        print_result(
-            !executor.can_execute(
-                fixture.context,
-                merge_at_center_action_id()),
-            "merge rejeita granularidade Edge");
-
-        fixture.editor.selection().set_granularity(
-            SelectionGranularity::Vertex);
 
         fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                merge_at_center_action_id()),
-            "merge rejeita Object mode");
+                mark_sharp_action_id()),
+            "Mark Sharp rejeita Object mode");
 
         fixture.editor.set_mode(EditorMode::Mesh);
 
         print_result(
             executor.can_execute(
                 fixture.context,
-                merge_at_center_action_id()),
-            "merge volta a ficar disponivel em Mesh mode");
+                mark_sharp_action_id()),
+            "Mark Sharp volta a ficar disponivel");
 
         return true;
     }
 
-    bool test_merge_at_center() {
+    bool test_mark_sharp() {
         std::cout
-            << "\n=== Merge at Center: execution ===\n";
+            << "\n=== Mark Sharp: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_vertices()) {
+        if (!fixture.build_box()) {
             print_result(
                 false,
                 "fixture foi criada");
             return false;
         }
 
-        const VertexHandle firstSelected =
-            fixture.vertices[2];
-
-        const VertexHandle secondSelected =
-            fixture.vertices[0];
-
-        const VertexHandle lastSelected =
-            fixture.vertices[1];
-
-        fixture.select_vertices({
-            firstSelected,
-            secondSelected,
-            lastSelected
-            });
-
-        const glm::vec3 expectedCenter{
-            1.0f,
-            2.0f,
-            0.0f
+        const std::vector<EdgeHandle> selectedEdges{
+            fixture.edges[5],
+            fixture.edges[1],
+            fixture.edges[9]
         };
+
+        fixture.select_edges(selectedEdges);
+
+        for (const EdgeHandle edge : selectedEdges) {
+            fixture.node->mesh()
+                .edge(edge)
+                .crease = 0.25f;
+        }
 
         ActionRegistry registry{};
 
-        if (!register_vertex_actions(registry)) {
+        if (!register_edge_actions(registry)) {
             print_result(
                 false,
-                "vertex actions foram registradas");
+                "edge actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
+        const std::size_t verticesBefore =
+            fixture.node->mesh().vertex_count();
+
+        const std::size_t edgesBefore =
+            fixture.node->mesh().edge_count();
+
+        const std::size_t loopsBefore =
+            fixture.node->mesh().loop_count();
+
+        const std::size_t facesBefore =
+            fixture.node->mesh().face_count();
+
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                merge_at_center_action_id());
+                mark_sharp_action_id());
 
         print_action_result(
-            "Merge at Center result",
+            "Mark Sharp result",
             result);
 
         print_result(
             result.succeeded(),
-            "Merge at Center foi executada");
+            "Mark Sharp foi executada");
 
         print_result(
-            fixture.node->mesh().is_valid(
-                firstSelected),
-            "primeiro vertice selecionado sobreviveu");
-
-        print_result(
-            !fixture.node->mesh().is_valid(
-                secondSelected),
-            "segundo vertice foi absorvido");
-
-        print_result(
-            !fixture.node->mesh().is_valid(
-                lastSelected),
-            "ultimo vertice foi absorvido");
-
-        print_result(
-            fixture.active_original_vertices() == 1u,
-            "restou um vertice original ativo");
+            fixture.selected_edges_have_crease(
+                1.0f),
+            "edges selecionadas receberam crease 1");
 
         print_result(
             approximately_equal(
                 fixture.node->mesh()
-                .vertex(firstSelected)
-                .position,
-                expectedCenter),
-            "vertice sobrevivente foi movido para o centro");
+                .edge(fixture.edges[0])
+                .crease,
+                0.0f),
+            "edge nao selecionada foi preservada");
+
+        print_result(
+            fixture.node->mesh().vertex_count()
+            == verticesBefore,
+            "Mark Sharp preservou vertices");
+
+        print_result(
+            fixture.node->mesh().edge_count()
+            == edgesBefore,
+            "Mark Sharp preservou edges");
+
+        print_result(
+            fixture.node->mesh().loop_count()
+            == loopsBefore,
+            "Mark Sharp preservou loops");
+
+        print_result(
+            fixture.node->mesh().face_count()
+            == facesBefore,
+            "Mark Sharp preservou faces");
 
         print_result(
             fixture.history.undo_size() == 1u,
-            "merge criou uma entrada no historico");
+            "Mark Sharp criou uma entrada no historico");
 
         print_result(
             fixture.history.undo_name()
-            == "Merge Vertices at Center",
-            "historico usa label de center");
+            == "Mark Edges Sharp",
+            "historico usa label Mark Edges Sharp");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Mesh),
-            "merge marca Mesh como dirty");
+            "Mark Sharp marca Mesh como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Render),
-            "merge marca Render como dirty");
+            "Mark Sharp marca Render como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Picking),
-            "merge marca Picking como dirty");
+            "Mark Sharp marca Picking como dirty");
 
         const CommandResult undoResult =
             fixture.history.undo(
@@ -622,127 +597,100 @@ namespace {
 
         print_result(
             undoResult.success,
-            "undo de Merge at Center funcionou");
+            "undo de Mark Sharp funcionou");
 
-        print_result(
-            fixture.active_original_vertices() == 3u,
-            "undo restaurou os tres vertices");
+        bool undoRestoredCrease = true;
 
-        print_result(
-            approximately_equal(
+        for (const EdgeHandle edge : selectedEdges) {
+            if (!approximately_equal(
                 fixture.node->mesh()
-                .vertex(firstSelected)
-                .position,
-                glm::vec3{
-                    0.0f,
-                    6.0f,
-                    0.0f
-                }),
-            "undo restaurou posicao do primeiro selecionado");
+                .edge(edge)
+                .crease,
+                0.25f)) {
+                undoRestoredCrease = false;
+                break;
+            }
+        }
 
         print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .vertex(secondSelected)
-                .position,
-                glm::vec3{
-                    0.0f,
-                    0.0f,
-                    0.0f
-                }),
-            "undo restaurou posicao do segundo selecionado");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .vertex(lastSelected)
-                .position,
-                glm::vec3{
-                    3.0f,
-                    0.0f,
-                    0.0f
-                }),
-            "undo restaurou posicao do ultimo selecionado");
+            undoRestoredCrease,
+            "undo restaurou crease anterior");
 
         print_result(
             fixture.editor.selection()
             .mesh()
-            .vertices()
+            .edges()
             .items()
-            == std::vector<VertexHandle>{
-            firstSelected,
-                secondSelected,
-                lastSelected
-        },
+            == selectedEdges,
             "undo restaurou ordem da selecao");
 
+        print_result(
+            fixture.history.can_redo(),
+            "redo ficou disponivel");
+
+        print_result(
+            fixture.history.redo_name()
+            == "Mark Edges Sharp",
+            "redo preserva label");
+
         const CommandResult redoResult =
             fixture.history.redo(
                 fixture.dispatcher);
 
         print_result(
             redoResult.success,
-            "redo de Merge at Center funcionou");
+            "redo de Mark Sharp funcionou");
 
         print_result(
-            fixture.active_original_vertices() == 1u,
-            "redo restaurou um unico vertice");
+            fixture.selected_edges_have_crease(
+                1.0f),
+            "redo restaurou crease 1");
 
         print_result(
-            fixture.node->mesh().is_valid(
-                firstSelected)
-            && approximately_equal(
-                fixture.node->mesh()
-                .vertex(firstSelected)
-                .position,
-                expectedCenter),
-            "redo restaurou o resultado centralizado");
+            fixture.history.undo_size() == 1u
+            && fixture.history.redo_size() == 0u,
+            "redo restaurou estado do historico");
 
         return result.succeeded()
             && undoResult.success
             && redoResult.success
-            && fixture.active_original_vertices() == 1u;
+            && fixture.selected_edges_have_crease(
+                1.0f);
     }
 
-    bool test_merge_at_first() {
+    bool test_clear_sharp() {
         std::cout
-            << "\n=== Merge at First: execution ===\n";
+            << "\n=== Clear Sharp: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_vertices()) {
+        if (!fixture.build_box()) {
             print_result(
                 false,
                 "fixture foi criada");
             return false;
         }
 
-        const VertexHandle firstSelected =
-            fixture.vertices[2];
+        const std::vector<EdgeHandle> selectedEdges{
+            fixture.edges[8],
+            fixture.edges[2],
+            fixture.edges[6]
+        };
 
-        const VertexHandle secondSelected =
-            fixture.vertices[0];
+        fixture.select_edges(selectedEdges);
 
-        const VertexHandle lastSelected =
-            fixture.vertices[1];
-
-        fixture.select_vertices({
-            firstSelected,
-            secondSelected,
-            lastSelected
-            });
-
-        const glm::vec3 expectedPosition =
+        for (const EdgeHandle edge : selectedEdges) {
             fixture.node->mesh()
-            .vertex(firstSelected)
-            .position;
+                .edge(edge)
+                .crease = 0.8f;
+        }
 
         ActionRegistry registry{};
 
-        if (!register_vertex_actions(registry)) {
+        if (!register_edge_actions(registry)) {
             print_result(
                 false,
-                "vertex actions foram registradas");
+                "edge actions foram registradas");
             return false;
         }
 
@@ -751,40 +699,29 @@ namespace {
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                merge_at_first_action_id());
+                clear_sharp_action_id());
 
         print_action_result(
-            "Merge at First result",
+            "Clear Sharp result",
             result);
 
         print_result(
             result.succeeded(),
-            "Merge at First foi executada");
+            "Clear Sharp foi executada");
 
         print_result(
-            fixture.node->mesh().is_valid(
-                firstSelected),
-            "primeiro selecionado sobreviveu");
+            fixture.selected_edges_have_crease(
+                0.0f),
+            "edges selecionadas receberam crease 0");
 
         print_result(
-            !fixture.node->mesh().is_valid(
-                secondSelected)
-            && !fixture.node->mesh().is_valid(
-                lastSelected),
-            "demais vertices foram absorvidos");
-
-        print_result(
-            approximately_equal(
-                fixture.node->mesh()
-                .vertex(firstSelected)
-                .position,
-                expectedPosition),
-            "posicao do primeiro selecionado foi preservada");
+            fixture.history.undo_size() == 1u,
+            "Clear Sharp criou uma entrada no historico");
 
         print_result(
             fixture.history.undo_name()
-            == "Merge Vertices at First",
-            "historico usa label de first");
+            == "Clear Edge Sharpness",
+            "historico usa label Clear Edge Sharpness");
 
         const CommandResult undoResult =
             fixture.history.undo(
@@ -792,127 +729,24 @@ namespace {
 
         print_result(
             undoResult.success,
-            "undo de Merge at First funcionou");
+            "undo de Clear Sharp funcionou");
 
-        print_result(
-            fixture.active_original_vertices() == 3u,
-            "undo restaurou os tres vertices");
+        bool undoRestoredCrease = true;
 
-        const CommandResult redoResult =
-            fixture.history.redo(
-                fixture.dispatcher);
-
-        print_result(
-            redoResult.success,
-            "redo de Merge at First funcionou");
-
-        print_result(
-            fixture.node->mesh().is_valid(
-                firstSelected)
-            && fixture.active_original_vertices() == 1u,
-            "redo preservou o primeiro selecionado");
-
-        return result.succeeded()
-            && undoResult.success
-            && redoResult.success
-            && fixture.node->mesh().is_valid(
-                firstSelected)
-            && fixture.active_original_vertices() == 1u;
-    }
-
-    bool test_merge_at_last() {
-        std::cout
-            << "\n=== Merge at Last: execution ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build_vertices()) {
-            print_result(
-                false,
-                "fixture foi criada");
-            return false;
-        }
-
-        const VertexHandle firstSelected =
-            fixture.vertices[2];
-
-        const VertexHandle secondSelected =
-            fixture.vertices[0];
-
-        const VertexHandle lastSelected =
-            fixture.vertices[1];
-
-        fixture.select_vertices({
-            firstSelected,
-            secondSelected,
-            lastSelected
-            });
-
-        const glm::vec3 expectedPosition =
-            fixture.node->mesh()
-            .vertex(lastSelected)
-            .position;
-
-        ActionRegistry registry{};
-
-        if (!register_vertex_actions(registry)) {
-            print_result(
-                false,
-                "vertex actions foram registradas");
-            return false;
-        }
-
-        ActionExecutor executor{ registry };
-
-        const ActionResult result =
-            executor.execute(
-                fixture.context,
-                merge_at_last_action_id());
-
-        print_action_result(
-            "Merge at Last result",
-            result);
-
-        print_result(
-            result.succeeded(),
-            "Merge at Last foi executada");
-
-        print_result(
-            fixture.node->mesh().is_valid(
-                lastSelected),
-            "ultimo selecionado sobreviveu");
-
-        print_result(
-            !fixture.node->mesh().is_valid(
-                firstSelected)
-            && !fixture.node->mesh().is_valid(
-                secondSelected),
-            "vertices anteriores foram absorvidos");
-
-        print_result(
-            approximately_equal(
+        for (const EdgeHandle edge : selectedEdges) {
+            if (!approximately_equal(
                 fixture.node->mesh()
-                .vertex(lastSelected)
-                .position,
-                expectedPosition),
-            "posicao do ultimo selecionado foi preservada");
+                .edge(edge)
+                .crease,
+                0.8f)) {
+                undoRestoredCrease = false;
+                break;
+            }
+        }
 
         print_result(
-            fixture.history.undo_name()
-            == "Merge Vertices at Last",
-            "historico usa label de last");
-
-        const CommandResult undoResult =
-            fixture.history.undo(
-                fixture.dispatcher);
-
-        print_result(
-            undoResult.success,
-            "undo de Merge at Last funcionou");
-
-        print_result(
-            fixture.active_original_vertices() == 3u,
-            "undo restaurou os tres vertices");
+            undoRestoredCrease,
+            "undo restaurou crease 0.8");
 
         const CommandResult redoResult =
             fixture.history.redo(
@@ -920,45 +754,41 @@ namespace {
 
         print_result(
             redoResult.success,
-            "redo de Merge at Last funcionou");
+            "redo de Clear Sharp funcionou");
 
         print_result(
-            fixture.node->mesh().is_valid(
-                lastSelected)
-            && fixture.active_original_vertices() == 1u,
-            "redo preservou o ultimo selecionado");
+            fixture.selected_edges_have_crease(
+                0.0f),
+            "redo restaurou crease 0");
 
         return result.succeeded()
             && undoResult.success
             && redoResult.success
-            && fixture.node->mesh().is_valid(
-                lastSelected)
-            && fixture.active_original_vertices() == 1u;
+            && fixture.selected_edges_have_crease(
+                0.0f);
     }
 
     bool test_unavailable_execution() {
         std::cout
-            << "\n=== Vertex actions: unavailable execution ===\n";
+            << "\n=== Edge actions: unavailable execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_vertices()) {
+        if (!fixture.build_box()) {
             print_result(
                 false,
                 "fixture foi criada");
             return false;
         }
 
-        fixture.select_vertices({
-            fixture.vertices.front()
-            });
+        fixture.select_edges({});
 
         ActionRegistry registry{};
 
-        if (!register_vertex_actions(registry)) {
+        if (!register_edge_actions(registry)) {
             print_result(
                 false,
-                "vertex actions foram registradas");
+                "edge actions foram registradas");
             return false;
         }
 
@@ -967,34 +797,102 @@ namespace {
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                merge_at_center_action_id());
+                mark_sharp_action_id());
 
         print_action_result(
-            "Unavailable Merge at Center result",
+            "Unavailable Mark Sharp result",
             result);
 
         print_result(
             result.is_unavailable(),
-            "um vertice retorna Unavailable");
+            "selecao vazia retorna Unavailable");
 
         print_result(
             fixture.history.empty(),
             "action indisponivel nao entra no historico");
 
         print_result(
-            fixture.active_original_vertices() == 3u,
+            approximately_equal(
+                fixture.node->mesh()
+                .edge(fixture.edges.front())
+                .crease,
+                0.0f),
             "action indisponivel nao altera a malha");
 
         return result.is_unavailable()
+            && fixture.history.empty();
+    }
+
+    bool test_already_marked_behavior() {
+        std::cout
+            << "\n=== Mark Sharp: already marked ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build_box()) {
+            print_result(
+                false,
+                "fixture foi criada");
+            return false;
+        }
+
+        const std::vector<EdgeHandle> selectedEdges{
+            fixture.edges[0],
+            fixture.edges[1]
+        };
+
+        fixture.select_edges(selectedEdges);
+
+        for (const EdgeHandle edge : selectedEdges) {
+            fixture.node->mesh()
+                .edge(edge)
+                .crease = 1.0f;
+        }
+
+        ActionRegistry registry{};
+
+        if (!register_edge_actions(registry)) {
+            print_result(
+                false,
+                "edge actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                mark_sharp_action_id());
+
+        print_action_result(
+            "Already marked result",
+            result);
+
+        print_result(
+            result.failed(),
+            "operacao sem mudanca retorna Failed");
+
+        print_result(
+            fixture.history.empty(),
+            "operacao sem mudanca nao entra no historico");
+
+        print_result(
+            fixture.selected_edges_have_crease(
+                1.0f),
+            "crease existente foi preservado");
+
+        return result.failed()
             && fixture.history.empty()
-            && fixture.active_original_vertices() == 3u;
+            && fixture.selected_edges_have_crease(
+                1.0f);
     }
 
 } // namespace
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Final Vertex Actions "
+        << "=== Locus3D Editor Final Edge Actions "
         "Smoke Test ===\n";
 
     bool passed = true;
@@ -1002,21 +900,21 @@ int main() {
     passed = test_registration() && passed;
     passed = test_transactional_registration() && passed;
     passed = test_availability() && passed;
-    passed = test_merge_at_center() && passed;
-    passed = test_merge_at_first() && passed;
-    passed = test_merge_at_last() && passed;
+    passed = test_mark_sharp() && passed;
+    passed = test_clear_sharp() && passed;
     passed = test_unavailable_execution() && passed;
+    passed = test_already_marked_behavior() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All final vertex action smoke tests "
+            << "=== All final edge action smoke tests "
             "passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Final vertex action smoke test failed ===\n";
+        << "=== Final edge action smoke test failed ===\n";
     return 1;
 }

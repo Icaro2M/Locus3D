@@ -302,9 +302,9 @@ source\editor
 |       |       RegisterVertexActions.h
 |       |       RegisterVertexActions.cpp
 |       |
-|       +---edge [!]
-|       |       register_edge_actions.h [!]
-|       |       register_edge_actions.cpp [!]
+|       +---edge
+|       |       RegisterEdgeActions.h
+|       |       RegisterEdgeActions.cpp
 |       |
 |       +---face
 |       |       RegisterFaceActions.h
@@ -421,8 +421,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/utility/InspectTool.cpp`
 - [!] `tools/utility/SetOriginTool.h`
 - [!] `tools/utility/SetOriginTool.cpp`
-- [!] `actions/mesh/edge/register_edge_actions.h`
-- [!] `actions/mesh/edge/register_edge_actions.cpp`
 - [!] `actions/Actions.h`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
