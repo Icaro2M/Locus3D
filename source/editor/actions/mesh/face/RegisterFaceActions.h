@@ -12,7 +12,7 @@ namespace locus::editor {
     class ActionRegistry;
 
     /**
-     * @brief Stable identifiers of built-in face actions.
+     * @brief Stable identifiers of built-in mesh face actions.
      */
     namespace face_actions {
 
@@ -22,17 +22,20 @@ namespace locus::editor {
         inline constexpr std::string_view FlipFaceId =
             "mesh.face.flip";
 
+        /**
+         * @brief Recalculates normals of the selected faces.
+         */
+        inline constexpr std::string_view RecalculateNormalsId =
+            "mesh.face.recalculate_normals";
+
     } // namespace face_actions
 
     /**
      * @brief Registers the built-in mesh face actions.
      *
-     * Registration fails when one of the action identifiers is already
-     * registered or when an action could not be constructed correctly.
-     *
-     * Actions successfully inserted before a later failure remain registered.
-     * Callers should normally register built-in actions only once during editor
-     * initialization.
+     * Registration is transactional for this action group. When one action
+     * cannot be registered, every action inserted by the current invocation
+     * is removed.
      *
      * @param registry Registry that will own the created actions.
      * @return True when every face action was registered.

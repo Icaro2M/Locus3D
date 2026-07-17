@@ -7,14 +7,16 @@
 #include "editor/actions/ActionExecutor.h"
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionContext.h"
-#include "editor/actions/mesh/topology/RegisterTopologyActions.h"
+#include "editor/actions/mesh/face/RegisterFaceActions.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/MeshNode.h"
-#include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/primitives/BoxBuilder.h"
-#include "kernel/geometry/topology/TopologyTraversal.h"
 
+#include <glm/geometric.hpp>
+#include <glm/vec3.hpp>
+
+#include <cstddef>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -24,17 +26,10 @@ namespace {
 
     using namespace locus::editor;
 
-    using EdgeHandle =
-        locus::kernel::geometry::EdgeHandle;
-
     using FaceHandle =
         locus::kernel::geometry::FaceHandle;
 
-    using LoopHandle =
-        locus::kernel::geometry::LoopHandle;
-
-    using TopologyTraversal =
-        locus::kernel::geometry::TopologyTraversal;
+    constexpr float NormalEpsilon = 0.00001f;
 
     void print_result(
         bool condition,
@@ -92,6 +87,23 @@ namespace {
             << '\n';
     }
 
+    bool approximately_equal(
+        const glm::vec3& first,
+        const glm::vec3& second,
+        float epsilon = NormalEpsilon) {
+        return glm::length(first - second) <= epsilon;
+    }
+
+    bool approximately_opposite(
+        const glm::vec3& first,
+        const glm::vec3& second,
+        float epsilon = NormalEpsilon) {
+        return approximately_equal(
+            first,
+            -second,
+            epsilon);
+    }
+
     ActionId make_action_id(
         std::string_view value) {
         return ActionId{
@@ -99,30 +111,14 @@ namespace {
         };
     }
 
-    ActionId fill_hole_action_id() {
+    ActionId flip_face_action_id() {
         return make_action_id(
-            topology_actions::FillHoleId);
+            face_actions::FlipFaceId);
     }
 
-    std::size_t active_face_count(
-        const locus::kernel::geometry::LEM& mesh) {
-        return TopologyTraversal::faces(mesh).size();
-    }
-
-    std::size_t boundary_edge_count(
-        const locus::kernel::geometry::LEM& mesh) {
-        std::size_t count = 0u;
-
-        for (const EdgeHandle edge
-            : TopologyTraversal::edges(mesh)) {
-            if (TopologyTraversal::is_boundary_edge(
-                mesh,
-                edge)) {
-                ++count;
-            }
-        }
-
-        return count;
+    ActionId recalculate_normals_action_id() {
+        return make_action_id(
+            face_actions::RecalculateNormalsId);
     }
 
     struct MeshFixture {
@@ -143,13 +139,12 @@ namespace {
         SceneNodeId nodeId{};
         MeshNode* node = nullptr;
 
-        std::vector<EdgeHandle> edges{};
         std::vector<FaceHandle> faces{};
 
         bool build_box() {
             nodeId =
                 editor.scene().create_mesh(
-                    "Fill Hole Test Box");
+                    "Face Actions Test Box");
 
             node =
                 editor.scene().find_mesh(nodeId);
@@ -174,18 +169,16 @@ namespace {
                     parameters);
 
             if (!buildResult.success
-                || buildResult.edges.size() != 12u
                 || buildResult.faces.size() != 6u) {
                 return false;
             }
 
-            edges = buildResult.edges;
             faces = buildResult.faces;
 
             editor.set_mode(EditorMode::Mesh);
 
             editor.selection().set_granularity(
-                SelectionGranularity::Edge);
+                SelectionGranularity::Face);
 
             editor.selection()
                 .mesh()
@@ -196,81 +189,31 @@ namespace {
             return true;
         }
 
-        bool remove_face_and_select_boundary(
-            FaceHandle face) {
-            if (!node
-                || !node->mesh().is_valid(face)) {
-                return false;
-            }
-
-            const std::vector<EdgeHandle> boundaryEdges =
-                TopologyTraversal::face_edges(
-                    node->mesh(),
-                    face);
-
-            if (boundaryEdges.size() < 3u) {
-                return false;
-            }
-
-            locus::kernel::geometry::LEMEditor meshEditor{
-                node->mesh()
-            };
-
-            if (!meshEditor.remove_face(face)) {
-                return false;
-            }
-
-            for (const EdgeHandle edge : boundaryEdges) {
-                if (!node->mesh().is_valid(edge)
-                    || !TopologyTraversal::is_boundary_edge(
-                        node->mesh(),
-                        edge)) {
-                    return false;
-                }
-            }
-
-            editor.selection()
-                .mesh()
-                .set_edge(boundaryEdges.front());
-
-            for (std::size_t index = 1u;
-                index < boundaryEdges.size();
-                ++index) {
-                editor.selection()
-                    .mesh()
-                    .add_edge(boundaryEdges[index]);
-            }
-
-            editor.selection().mark_dirty();
-            editor.clear_dirty();
-
-            edges = boundaryEdges;
-            return true;
-        }
-
-        void select_edges(
-            const std::vector<EdgeHandle>& selectedEdges) {
+        void select_faces(
+            const std::vector<FaceHandle>& selectedFaces) {
             editor.selection().set_granularity(
-                SelectionGranularity::Edge);
+                SelectionGranularity::Face);
 
             editor.selection()
                 .mesh()
                 .clear_components();
 
-            if (selectedEdges.empty()) {
+            if (selectedFaces.empty()) {
+                editor.selection().mark_dirty();
+                editor.clear_dirty();
                 return;
             }
 
             editor.selection()
                 .mesh()
-                .set_edge(selectedEdges.front());
+                .set_face(selectedFaces.front());
 
             for (std::size_t index = 1u;
-                index < selectedEdges.size();
+                index < selectedFaces.size();
                 ++index) {
                 editor.selection()
                     .mesh()
-                    .add_edge(selectedEdges[index]);
+                    .add_face(selectedFaces[index]);
             }
 
             editor.selection().mark_dirty();
@@ -280,360 +223,354 @@ namespace {
 
     bool test_registration() {
         std::cout
-            << "\n=== Fill Hole: registration ===\n";
+            << "\n=== Face actions: registration ===\n";
 
         ActionRegistry registry{};
 
         const bool registered =
-            register_topology_actions(registry);
+            register_face_actions(registry);
 
         print_result(
             registered,
-            "topology actions foram registradas");
+            "face actions foram registradas");
 
         print_result(
-            registry.size() == 3u,
-            "tres topology actions foram registradas");
+            registry.size() == 2u,
+            "duas face actions foram registradas");
 
         print_result(
             registry.contains(
-                fill_hole_action_id()),
-            "registry contem mesh.topology.fill_hole");
+                flip_face_action_id()),
+            "registry contem Flip Face");
 
-        const ActionDescriptor* descriptor =
+        print_result(
+            registry.contains(
+                recalculate_normals_action_id()),
+            "registry contem Recalculate Normals");
+
+        const ActionDescriptor* flipDescriptor =
             registry.descriptor(
-                fill_hole_action_id());
+                flip_face_action_id());
+
+        const ActionDescriptor* normalsDescriptor =
+            registry.descriptor(
+                recalculate_normals_action_id());
 
         print_result(
-            descriptor != nullptr,
-            "descritor de Fill Hole pode ser consultado");
+            flipDescriptor != nullptr
+            && flipDescriptor->is_valid(),
+            "descritor de Flip Face e valido");
 
         print_result(
-            descriptor
-            && descriptor->is_valid(),
-            "descritor de Fill Hole e valido");
+            normalsDescriptor != nullptr
+            && normalsDescriptor->is_valid(),
+            "descritor de Recalculate Normals e valido");
 
         print_result(
-            descriptor
-            && descriptor->name == "Fill Hole",
-            "descritor preserva o nome Fill Hole");
+            flipDescriptor
+            && flipDescriptor->name == "Flip Face",
+            "Flip Face preserva nome");
 
         print_result(
-            descriptor
-            && descriptor->category
+            normalsDescriptor
+            && normalsDescriptor->name
+            == "Recalculate Normals",
+            "Recalculate Normals preserva nome");
+
+        print_result(
+            flipDescriptor
+            && flipDescriptor->category
             == ActionCategory::Mesh,
-            "Fill Hole pertence a categoria Mesh");
+            "Flip Face pertence a Mesh");
 
         print_result(
-            descriptor
-            && !descriptor->keywords.empty(),
-            "Fill Hole possui termos de busca");
+            normalsDescriptor
+            && normalsDescriptor->category
+            == ActionCategory::Mesh,
+            "Recalculate Normals pertence a Mesh");
 
         const bool registeredAgain =
-            register_topology_actions(registry);
+            register_face_actions(registry);
 
         print_result(
             !registeredAgain,
             "registro duplicado e rejeitado");
 
         print_result(
-            registry.size() == 3u,
-            "registro duplicado preserva o registry");
+            registry.size() == 2u,
+            "registro duplicado preserva registry");
 
         return registered
             && !registeredAgain
-            && registry.size() == 3u
-            && descriptor
-            && descriptor->is_valid();
+            && registry.size() == 2u
+            && flipDescriptor
+            && normalsDescriptor;
     }
 
-    bool test_open_box_fixture() {
+    bool test_transactional_registration() {
         std::cout
-            << "\n=== Fill Hole: open box fixture ===\n";
+            << "\n=== Face actions: transactional registration ===\n";
+
+        ActionRegistry registry{};
+
+        const bool firstRegistration =
+            register_face_actions(registry);
+
+        print_result(
+            firstRegistration,
+            "primeiro registro funcionou");
+
+        const bool removedNormals =
+            registry.unregister_action(
+                recalculate_normals_action_id());
+
+        print_result(
+            removedNormals,
+            "Recalculate Normals foi removida");
+
+        print_result(
+            registry.size() == 1u,
+            "apenas Flip Face permaneceu");
+
+        const bool secondRegistration =
+            register_face_actions(registry);
+
+        print_result(
+            !secondRegistration,
+            "novo registro falha no primeiro ID duplicado");
+
+        print_result(
+            registry.size() == 1u,
+            "falha inicial nao altera registry");
+
+        print_result(
+            !registry.contains(
+                recalculate_normals_action_id()),
+            "action posterior nao foi registrada");
+
+        return firstRegistration
+            && removedNormals
+            && !secondRegistration
+            && registry.size() == 1u;
+    }
+
+    bool test_availability() {
+        std::cout
+            << "\n=== Face actions: availability ===\n";
 
         MeshFixture fixture{};
 
         if (!fixture.build_box()) {
             print_result(
                 false,
-                "caixa base foi criada");
-            return false;
-        }
-
-        const FaceHandle removedFace =
-            fixture.faces.front();
-
-        const std::vector<EdgeHandle> faceEdges =
-            TopologyTraversal::face_edges(
-                fixture.node->mesh(),
-                removedFace);
-
-        print_result(
-            faceEdges.size() == 4u,
-            "face da caixa possui quatro edges");
-
-        const bool removed =
-            fixture.remove_face_and_select_boundary(
-                removedFace);
-
-        print_result(
-            removed,
-            "face foi removida");
-
-        if (!removed) {
-            return false;
-        }
-
-        print_result(
-            !fixture.node->mesh().is_valid(
-                removedFace),
-            "face removida deixou de estar ativa");
-
-        print_result(
-            active_face_count(
-                fixture.node->mesh()) == 5u,
-            "caixa aberta possui cinco faces ativas");
-
-        print_result(
-            fixture.edges.size() == 4u,
-            "quatro edges de contorno foram capturadas");
-
-        print_result(
-            boundary_edge_count(
-                fixture.node->mesh()) == 4u,
-            "caixa aberta possui quatro boundary edges");
-
-        print_result(
-            fixture.editor.selection()
-            .mesh()
-            .edges()
-            .size()
-            == 4u,
-            "as quatro boundary edges estao selecionadas");
-
-        bool allBoundary = true;
-
-        for (const EdgeHandle edge : fixture.edges) {
-            if (!TopologyTraversal::is_boundary_edge(
-                fixture.node->mesh(),
-                edge)) {
-                allBoundary = false;
-                break;
-            }
-        }
-
-        print_result(
-            allBoundary,
-            "todas as edges selecionadas sao de fronteira");
-
-        return removed
-            && allBoundary
-            && active_face_count(
-                fixture.node->mesh()) == 5u
-            && fixture.editor.selection()
-            .mesh()
-            .edges()
-            .size()
-            == 4u;
-    }
-
-    bool test_availability() {
-        std::cout
-            << "\n=== Fill Hole: availability ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build_box()
-            || !fixture.remove_face_and_select_boundary(
-                fixture.faces.front())) {
-            print_result(
-                false,
-                "fixture aberta foi criada");
+                "fixture foi criada");
             return false;
         }
 
         ActionRegistry registry{};
 
-        if (!register_topology_actions(registry)) {
+        if (!register_face_actions(registry)) {
             print_result(
                 false,
-                "topology actions foram registradas");
+                "face actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
+        fixture.select_faces({
+            fixture.faces.front()
+            });
+
         print_result(
             executor.can_execute(
                 fixture.context,
-                fill_hole_action_id()),
-            "Fill Hole aceita quatro boundary edges");
+                flip_face_action_id()),
+            "Flip Face aceita face selecionada");
+
+        print_result(
+            executor.can_execute(
+                fixture.context,
+                recalculate_normals_action_id()),
+            "Recalculate Normals aceita face selecionada");
 
         fixture.editor.selection()
             .mesh()
-            .set_edge(fixture.edges.front());
+            .clear_components();
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                fill_hole_action_id()),
-            "Fill Hole rejeita menos de tres edges");
-
-        fixture.select_edges(fixture.edges);
-
-        fixture.editor.selection()
-            .set_granularity(
-                SelectionGranularity::Face);
+                flip_face_action_id()),
+            "Flip Face rejeita selecao vazia");
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                fill_hole_action_id()),
-            "Fill Hole rejeita granularidade Face");
+                recalculate_normals_action_id()),
+            "Recalculate Normals rejeita selecao vazia");
+
+        fixture.select_faces({
+            fixture.faces.front()
+            });
 
         fixture.editor.selection()
             .set_granularity(
                 SelectionGranularity::Edge);
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                flip_face_action_id()),
+            "Flip Face rejeita granularidade Edge");
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                recalculate_normals_action_id()),
+            "Recalculate Normals rejeita granularidade Edge");
+
+        fixture.editor.selection()
+            .set_granularity(
+                SelectionGranularity::Face);
 
         fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                fill_hole_action_id()),
-            "Fill Hole rejeita Object mode");
-
-        fixture.editor.set_mode(EditorMode::Mesh);
+                flip_face_action_id()),
+            "Flip Face rejeita Object mode");
 
         print_result(
-            executor.can_execute(
+            !executor.can_execute(
                 fixture.context,
-                fill_hole_action_id()),
-            "Fill Hole volta a ficar disponivel");
+                recalculate_normals_action_id()),
+            "Recalculate Normals rejeita Object mode");
 
         return true;
     }
 
-    bool test_fill_hole_execution() {
+    bool test_flip_faces() {
         std::cout
-            << "\n=== Fill Hole: execution ===\n";
+            << "\n=== Flip Face: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build_box()
-            || !fixture.remove_face_and_select_boundary(
-                fixture.faces.front())) {
+        if (!fixture.build_box()) {
             print_result(
                 false,
-                "fixture aberta foi criada");
+                "fixture foi criada");
             return false;
         }
 
+        const FaceHandle firstFace =
+            fixture.faces[0];
+
+        const FaceHandle secondFace =
+            fixture.faces[1];
+
+        fixture.select_faces({
+            firstFace,
+            secondFace
+            });
+
+        const glm::vec3 firstNormalBefore =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 secondNormalBefore =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
+
+        const std::size_t verticesBefore =
+            fixture.node->mesh().vertex_count();
+
+        const std::size_t edgesBefore =
+            fixture.node->mesh().edge_count();
+
+        const std::size_t loopsBefore =
+            fixture.node->mesh().loop_count();
+
+        const std::size_t facesBefore =
+            fixture.node->mesh().face_count();
+
         ActionRegistry registry{};
 
-        if (!register_topology_actions(registry)) {
+        if (!register_face_actions(registry)) {
             print_result(
                 false,
-                "topology actions foram registradas");
+                "face actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        const std::size_t faceSlotsBefore =
-            fixture.node->mesh().face_count();
-
-        const std::size_t activeFacesBefore =
-            active_face_count(
-                fixture.node->mesh());
-
-        const std::size_t boundaryEdgesBefore =
-            boundary_edge_count(
-                fixture.node->mesh());
-
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                fill_hole_action_id());
+                flip_face_action_id());
 
         print_action_result(
-            "Fill Hole result",
+            "Flip Face result",
             result);
 
-        const std::size_t faceSlotsAfter =
-            fixture.node->mesh().face_count();
+        const glm::vec3 firstNormalAfter =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
 
-        const std::size_t activeFacesAfter =
-            active_face_count(
-                fixture.node->mesh());
-
-        const std::size_t boundaryEdgesAfter =
-            boundary_edge_count(
-                fixture.node->mesh());
+        const glm::vec3 secondNormalAfter =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
 
         print_result(
             result.succeeded(),
-            "Fill Hole foi executada");
+            "Flip Face foi executada");
 
         print_result(
-            activeFacesBefore == 5u,
-            "fixture possuia cinco faces ativas");
+            approximately_opposite(
+                firstNormalAfter,
+                firstNormalBefore),
+            "primeira normal foi invertida");
 
         print_result(
-            activeFacesAfter == 6u,
-            "Fill Hole restaurou seis faces ativas");
+            approximately_opposite(
+                secondNormalAfter,
+                secondNormalBefore),
+            "segunda normal foi invertida");
 
         print_result(
-            faceSlotsAfter == faceSlotsBefore + 1u,
-            "nova face utilizou um novo slot");
+            fixture.node->mesh().vertex_count()
+            == verticesBefore,
+            "Flip Face preservou vertices");
 
         print_result(
-            boundaryEdgesBefore == 4u,
-            "quatro boundary edges existiam antes");
+            fixture.node->mesh().edge_count()
+            == edgesBefore,
+            "Flip Face preservou edges");
 
         print_result(
-            boundaryEdgesAfter == 0u,
-            "buraco foi completamente fechado");
-
-        bool edgesRemainValid = true;
-
-        for (const EdgeHandle edge : fixture.edges) {
-            if (!fixture.node->mesh().is_valid(edge)) {
-                edgesRemainValid = false;
-                break;
-            }
-        }
+            fixture.node->mesh().loop_count()
+            == loopsBefore,
+            "Flip Face preservou loops");
 
         print_result(
-            edgesRemainValid,
-            "edges originais continuam validas");
+            fixture.node->mesh().face_count()
+            == facesBefore,
+            "Flip Face preservou faces");
 
         print_result(
             fixture.history.undo_size() == 1u,
-            "Fill Hole criou uma entrada no historico");
+            "Flip Face criou uma entrada no historico");
 
         print_result(
             fixture.history.undo_name()
-            == "Fill Hole",
-            "historico usa label Fill Hole");
-
-        print_result(
-            has_flag(
-                fixture.editor.dirty_flags(),
-                EditorDirtyFlags::Mesh),
-            "Fill Hole marca Mesh como dirty");
-
-        print_result(
-            has_flag(
-                fixture.editor.dirty_flags(),
-                EditorDirtyFlags::Render),
-            "Fill Hole marca Render como dirty");
-
-        print_result(
-            has_flag(
-                fixture.editor.dirty_flags(),
-                EditorDirtyFlags::Picking),
-            "Fill Hole marca Picking como dirty");
+            == "Flip Faces",
+            "historico usa label Flip Faces");
 
         const CommandResult undoResult =
             fixture.history.undo(
@@ -641,57 +578,34 @@ namespace {
 
         print_result(
             undoResult.success,
-            "undo de Fill Hole funcionou");
+            "undo de Flip Face funcionou");
 
         print_result(
-            active_face_count(
-                fixture.node->mesh())
-            == activeFacesBefore,
-            "undo restaurou cinco faces ativas");
+            approximately_equal(
+                fixture.node->mesh()
+                .face(firstFace)
+                .normal,
+                firstNormalBefore),
+            "undo restaurou primeira normal");
 
         print_result(
-            fixture.node->mesh().face_count()
-            == faceSlotsBefore,
-            "undo restaurou os slots anteriores");
-
-        print_result(
-            boundary_edge_count(
-                fixture.node->mesh())
-            == boundaryEdgesBefore,
-            "undo reabriu o contorno");
+            approximately_equal(
+                fixture.node->mesh()
+                .face(secondFace)
+                .normal,
+                secondNormalBefore),
+            "undo restaurou segunda normal");
 
         print_result(
             fixture.editor.selection()
             .mesh()
-            .edges()
-            .size()
-            == fixture.edges.size(),
-            "undo restaurou a selecao de edges");
-
-        bool selectionRestored = true;
-
-        for (const EdgeHandle edge : fixture.edges) {
-            if (!fixture.editor.selection()
-                .mesh()
-                .edges()
-                .contains(edge)) {
-                selectionRestored = false;
-                break;
-            }
-        }
-
-        print_result(
-            selectionRestored,
-            "undo preservou todas as boundary edges selecionadas");
-
-        print_result(
-            fixture.history.can_redo(),
-            "redo ficou disponivel");
-
-        print_result(
-            fixture.history.redo_name()
-            == "Fill Hole",
-            "redo preserva label Fill Hole");
+            .faces()
+            .contains(firstFace)
+            && fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(secondFace),
+            "undo preservou selecao das faces");
 
         const CommandResult redoResult =
             fixture.history.redo(
@@ -699,24 +613,258 @@ namespace {
 
         print_result(
             redoResult.success,
-            "redo de Fill Hole funcionou");
+            "redo de Flip Face funcionou");
 
         print_result(
-            active_face_count(
-                fixture.node->mesh())
-            == activeFacesAfter,
-            "redo restaurou seis faces ativas");
+            approximately_equal(
+                fixture.node->mesh()
+                .face(firstFace)
+                .normal,
+                firstNormalAfter),
+            "redo restaurou primeira normal invertida");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(secondFace)
+                .normal,
+                secondNormalAfter),
+            "redo restaurou segunda normal invertida");
+
+        return result.succeeded()
+            && undoResult.success
+            && redoResult.success;
+    }
+
+    bool test_recalculate_normals() {
+        std::cout
+            << "\n=== Recalculate Normals: execution ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build_box()) {
+            print_result(
+                false,
+                "fixture foi criada");
+            return false;
+        }
+
+        const FaceHandle firstFace =
+            fixture.faces[0];
+
+        const FaceHandle secondFace =
+            fixture.faces[1];
+
+        const glm::vec3 expectedFirstNormal =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 expectedSecondNormal =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
+
+        const glm::vec3 corruptedFirstNormal{
+            0.25f,
+            0.5f,
+            0.75f
+        };
+
+        const glm::vec3 corruptedSecondNormal{
+            -0.4f,
+            0.3f,
+            0.2f
+        };
+
+        fixture.node->mesh()
+            .face(firstFace)
+            .normal = corruptedFirstNormal;
+
+        fixture.node->mesh()
+            .face(secondFace)
+            .normal = corruptedSecondNormal;
+
+        fixture.select_faces({
+            firstFace,
+            secondFace
+            });
+
+        const std::size_t verticesBefore =
+            fixture.node->mesh().vertex_count();
+
+        const std::size_t edgesBefore =
+            fixture.node->mesh().edge_count();
+
+        const std::size_t loopsBefore =
+            fixture.node->mesh().loop_count();
+
+        const std::size_t facesBefore =
+            fixture.node->mesh().face_count();
+
+        ActionRegistry registry{};
+
+        if (!register_face_actions(registry)) {
+            print_result(
+                false,
+                "face actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                recalculate_normals_action_id());
+
+        print_action_result(
+            "Recalculate Normals result",
+            result);
+
+        const glm::vec3 rebuiltFirstNormal =
+            fixture.node->mesh()
+            .face(firstFace)
+            .normal;
+
+        const glm::vec3 rebuiltSecondNormal =
+            fixture.node->mesh()
+            .face(secondFace)
+            .normal;
+
+        print_result(
+            result.succeeded(),
+            "Recalculate Normals foi executada");
+
+        print_result(
+            approximately_equal(
+                rebuiltFirstNormal,
+                expectedFirstNormal),
+            "primeira normal foi reconstruida");
+
+        print_result(
+            approximately_equal(
+                rebuiltSecondNormal,
+                expectedSecondNormal),
+            "segunda normal foi reconstruida");
+
+        print_result(
+            !approximately_equal(
+                rebuiltFirstNormal,
+                corruptedFirstNormal),
+            "primeira normal corrompida foi substituida");
+
+        print_result(
+            !approximately_equal(
+                rebuiltSecondNormal,
+                corruptedSecondNormal),
+            "segunda normal corrompida foi substituida");
+
+        print_result(
+            fixture.node->mesh().vertex_count()
+            == verticesBefore,
+            "recalculo preservou vertices");
+
+        print_result(
+            fixture.node->mesh().edge_count()
+            == edgesBefore,
+            "recalculo preservou edges");
+
+        print_result(
+            fixture.node->mesh().loop_count()
+            == loopsBefore,
+            "recalculo preservou loops");
 
         print_result(
             fixture.node->mesh().face_count()
-            == faceSlotsAfter,
-            "redo restaurou o novo slot de face");
+            == facesBefore,
+            "recalculo preservou faces");
 
         print_result(
-            boundary_edge_count(
-                fixture.node->mesh())
-            == 0u,
-            "redo fechou novamente o buraco");
+            fixture.history.undo_size() == 1u,
+            "recalculo criou uma entrada no historico");
+
+        print_result(
+            fixture.history.undo_name()
+            == "Recalculate Normals",
+            "historico usa label Recalculate Normals");
+
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Mesh),
+            "recalculo marca Mesh como dirty");
+
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Render),
+            "recalculo marca Render como dirty");
+
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Picking),
+            "recalculo marca Picking como dirty");
+
+        const CommandResult undoResult =
+            fixture.history.undo(
+                fixture.dispatcher);
+
+        print_result(
+            undoResult.success,
+            "undo de Recalculate Normals funcionou");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(firstFace)
+                .normal,
+                corruptedFirstNormal),
+            "undo restaurou primeira normal corrompida");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(secondFace)
+                .normal,
+                corruptedSecondNormal),
+            "undo restaurou segunda normal corrompida");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(firstFace)
+            && fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(secondFace),
+            "undo preservou selecao das faces");
+
+        const CommandResult redoResult =
+            fixture.history.redo(
+                fixture.dispatcher);
+
+        print_result(
+            redoResult.success,
+            "redo de Recalculate Normals funcionou");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(firstFace)
+                .normal,
+                rebuiltFirstNormal),
+            "redo restaurou primeira normal reconstruida");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(secondFace)
+                .normal,
+                rebuiltSecondNormal),
+            "redo restaurou segunda normal reconstruida");
 
         print_result(
             fixture.history.undo_size() == 1u
@@ -726,161 +874,75 @@ namespace {
         return result.succeeded()
             && undoResult.success
             && redoResult.success
-            && active_face_count(
-                fixture.node->mesh()) == 6u
-            && boundary_edge_count(
-                fixture.node->mesh()) == 0u
-            && fixture.history.undo_size() == 1u;
+            && approximately_equal(
+                fixture.node->mesh()
+                .face(firstFace)
+                .normal,
+                expectedFirstNormal)
+            && approximately_equal(
+                fixture.node->mesh()
+                .face(secondFace)
+                .normal,
+                expectedSecondNormal);
     }
 
-    bool test_non_boundary_edges_failure() {
+    bool test_unavailable_execution() {
         std::cout
-            << "\n=== Fill Hole: non-boundary edges ===\n";
+            << "\n=== Face actions: unavailable execution ===\n";
 
         MeshFixture fixture{};
 
         if (!fixture.build_box()) {
             print_result(
                 false,
-                "caixa fechada foi criada");
-            return false;
-        }
-
-        const std::vector<EdgeHandle> selectedEdges{
-            fixture.edges[0],
-            fixture.edges[1],
-            fixture.edges[2]
-        };
-
-        fixture.select_edges(selectedEdges);
-
-        ActionRegistry registry{};
-
-        if (!register_topology_actions(registry)) {
-            print_result(
-                false,
-                "topology actions foram registradas");
-            return false;
-        }
-
-        ActionExecutor executor{ registry };
-
-        print_result(
-            boundary_edge_count(
-                fixture.node->mesh()) == 0u,
-            "caixa fechada nao possui boundary edges");
-
-        print_result(
-            executor.can_execute(
-                fixture.context,
-                fill_hole_action_id()),
-            "validacao superficial aceita tres handles validos");
-
-        const std::size_t faceSlotsBefore =
-            fixture.node->mesh().face_count();
-
-        const std::size_t activeFacesBefore =
-            active_face_count(
-                fixture.node->mesh());
-
-        const ActionResult result =
-            executor.execute(
-                fixture.context,
-                fill_hole_action_id());
-
-        print_action_result(
-            "non-boundary Fill Hole result",
-            result);
-
-        print_result(
-            result.failed(),
-            "kernel rejeita edges que nao sao de fronteira");
-
-        print_result(
-            fixture.history.empty(),
-            "operacao rejeitada nao entra no historico");
-
-        print_result(
-            fixture.node->mesh().face_count()
-            == faceSlotsBefore,
-            "falha nao altera slots de faces");
-
-        print_result(
-            active_face_count(
-                fixture.node->mesh())
-            == activeFacesBefore,
-            "falha nao altera faces ativas");
-
-        print_result(
-            boundary_edge_count(
-                fixture.node->mesh()) == 0u,
-            "falha preserva a caixa fechada");
-
-        return result.failed()
-            && fixture.history.empty()
-            && fixture.node->mesh().face_count()
-            == faceSlotsBefore
-            && active_face_count(
-                fixture.node->mesh())
-            == activeFacesBefore;
-    }
-
-    bool test_too_few_edges_unavailable() {
-        std::cout
-            << "\n=== Fill Hole: too few edges ===\n";
-
-        MeshFixture fixture{};
-
-        if (!fixture.build_box()
-            || !fixture.remove_face_and_select_boundary(
-                fixture.faces.front())) {
-            print_result(
-                false,
-                "fixture aberta foi criada");
+                "fixture foi criada");
             return false;
         }
 
         fixture.editor.selection()
             .mesh()
-            .set_edge(fixture.edges.front());
+            .clear_components();
 
         ActionRegistry registry{};
 
-        if (!register_topology_actions(registry)) {
+        if (!register_face_actions(registry)) {
             print_result(
                 false,
-                "topology actions foram registradas");
+                "face actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        const std::size_t activeFacesBefore =
-            active_face_count(
-                fixture.node->mesh());
+        const glm::vec3 normalBefore =
+            fixture.node->mesh()
+            .face(fixture.faces.front())
+            .normal;
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                fill_hole_action_id());
+                recalculate_normals_action_id());
 
         print_action_result(
-            "too few edges result",
+            "Unavailable Recalculate Normals result",
             result);
 
         print_result(
             result.is_unavailable(),
-            "uma edge retorna Unavailable");
+            "selecao vazia retorna Unavailable");
 
         print_result(
             fixture.history.empty(),
             "action indisponivel nao entra no historico");
 
         print_result(
-            active_face_count(
-                fixture.node->mesh())
-            == activeFacesBefore,
-            "action indisponivel nao altera a malha");
+            approximately_equal(
+                fixture.node->mesh()
+                .face(fixture.faces.front())
+                .normal,
+                normalBefore),
+            "action indisponivel nao altera normal");
 
         return result.is_unavailable()
             && fixture.history.empty();
@@ -890,28 +952,28 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Fill Hole Action "
+        << "=== Locus3D Editor Final Face Actions "
         "Smoke Test ===\n";
 
     bool passed = true;
 
     passed = test_registration() && passed;
-    passed = test_open_box_fixture() && passed;
+    passed = test_transactional_registration() && passed;
     passed = test_availability() && passed;
-    passed = test_fill_hole_execution() && passed;
-    passed = test_non_boundary_edges_failure() && passed;
-    passed = test_too_few_edges_unavailable() && passed;
+    passed = test_flip_faces() && passed;
+    passed = test_recalculate_normals() && passed;
+    passed = test_unavailable_execution() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All Fill Hole action smoke tests "
+            << "=== All final face action smoke tests "
             "passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Fill Hole action smoke test failed ===\n";
+        << "=== Final face action smoke test failed ===\n";
     return 1;
 }
