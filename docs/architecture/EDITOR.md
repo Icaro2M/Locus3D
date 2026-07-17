@@ -294,7 +294,7 @@ source\editor
 |   |       ActionResult.h
 |   |       IEditorAction.h
 |   |
-|   \---mesh [!]
+|   \---mesh
 |       |   MeshOperationAction.h
 |       |   MeshOperationAction.cpp
 |       |
@@ -306,13 +306,13 @@ source\editor
 |       |       register_edge_actions.h [!]
 |       |       register_edge_actions.cpp [!]
 |       |
-|       +---face [!]
-|       |       register_face_actions.h [!]
-|       |       register_face_actions.cpp [!]
+|       +---face
+|       |       RegisterFaceActions.h
+|       |       RegisterFaceActions.cpp
 |       |
-|       \---topology [!]
-|               register_topology_actions.h [!]
-|               register_topology_actions.cpp [!]
+|       \---topology
+|               register_topology_actions.h
+|               register_topology_actions.cpp
 |
 +---gizmo
 |       GizmoMode.h
@@ -425,8 +425,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `actions/mesh/vertex/register_vertex_actions.cpp`
 - [!] `actions/mesh/edge/register_edge_actions.h`
 - [!] `actions/mesh/edge/register_edge_actions.cpp`
-- [!] `actions/mesh/topology/register_topology_actions.h`
-- [!] `actions/mesh/topology/register_topology_actions.cpp`
 - [!] `actions/Actions.h`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
