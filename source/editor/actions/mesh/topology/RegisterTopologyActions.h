@@ -28,13 +28,20 @@ namespace locus::editor {
         inline constexpr std::string_view SubdivideFacesId =
             "mesh.topology.subdivide_faces";
 
+        /**
+         * @brief Fills one hole defined by the selected boundary edges.
+         */
+        inline constexpr std::string_view FillHoleId =
+            "mesh.topology.fill_hole";
+
     } // namespace topology_actions
 
     /**
      * @brief Registers the built-in mesh topology actions.
      *
      * Registration is transactional for this action group. When one action
-     * cannot be registered, actions inserted by this invocation are removed.
+     * cannot be registered, every action inserted by the current invocation
+     * is removed.
      *
      * @param registry Registry that will own the created actions.
      * @return True when every topology action was registered.

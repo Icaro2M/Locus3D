@@ -11,7 +11,9 @@
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/scene/MeshNode.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/primitives/BoxBuilder.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <iostream>
 #include <string>
@@ -27,6 +29,12 @@ namespace {
 
     using FaceHandle =
         locus::kernel::geometry::FaceHandle;
+
+    using LoopHandle =
+        locus::kernel::geometry::LoopHandle;
+
+    using TopologyTraversal =
+        locus::kernel::geometry::TopologyTraversal;
 
     void print_result(
         bool condition,
@@ -91,14 +99,30 @@ namespace {
         };
     }
 
-    ActionId subdivide_edges_action_id() {
+    ActionId fill_hole_action_id() {
         return make_action_id(
-            topology_actions::SubdivideEdgesId);
+            topology_actions::FillHoleId);
     }
 
-    ActionId subdivide_faces_action_id() {
-        return make_action_id(
-            topology_actions::SubdivideFacesId);
+    std::size_t active_face_count(
+        const locus::kernel::geometry::LEM& mesh) {
+        return TopologyTraversal::faces(mesh).size();
+    }
+
+    std::size_t boundary_edge_count(
+        const locus::kernel::geometry::LEM& mesh) {
+        std::size_t count = 0u;
+
+        for (const EdgeHandle edge
+            : TopologyTraversal::edges(mesh)) {
+            if (TopologyTraversal::is_boundary_edge(
+                mesh,
+                edge)) {
+                ++count;
+            }
+        }
+
+        return count;
     }
 
     struct MeshFixture {
@@ -122,10 +146,10 @@ namespace {
         std::vector<EdgeHandle> edges{};
         std::vector<FaceHandle> faces{};
 
-        bool build() {
+        bool build_box() {
             nodeId =
                 editor.scene().create_mesh(
-                    "Topology Action Test Box");
+                    "Fill Hole Test Box");
 
             node =
                 editor.scene().find_mesh(nodeId);
@@ -160,6 +184,9 @@ namespace {
 
             editor.set_mode(EditorMode::Mesh);
 
+            editor.selection().set_granularity(
+                SelectionGranularity::Edge);
+
             editor.selection()
                 .mesh()
                 .set_active_mesh(nodeId);
@@ -169,25 +196,82 @@ namespace {
             return true;
         }
 
-        void select_edge(EdgeHandle edge) {
+        bool remove_face_and_select_boundary(
+            FaceHandle face) {
+            if (!node
+                || !node->mesh().is_valid(face)) {
+                return false;
+            }
+
+            const std::vector<EdgeHandle> boundaryEdges =
+                TopologyTraversal::face_edges(
+                    node->mesh(),
+                    face);
+
+            if (boundaryEdges.size() < 3u) {
+                return false;
+            }
+
+            locus::kernel::geometry::LEMEditor meshEditor{
+                node->mesh()
+            };
+
+            if (!meshEditor.remove_face(face)) {
+                return false;
+            }
+
+            for (const EdgeHandle edge : boundaryEdges) {
+                if (!node->mesh().is_valid(edge)
+                    || !TopologyTraversal::is_boundary_edge(
+                        node->mesh(),
+                        edge)) {
+                    return false;
+                }
+            }
+
+            editor.selection()
+                .mesh()
+                .set_edge(boundaryEdges.front());
+
+            for (std::size_t index = 1u;
+                index < boundaryEdges.size();
+                ++index) {
+                editor.selection()
+                    .mesh()
+                    .add_edge(boundaryEdges[index]);
+            }
+
+            editor.selection().mark_dirty();
+            editor.clear_dirty();
+
+            edges = boundaryEdges;
+            return true;
+        }
+
+        void select_edges(
+            const std::vector<EdgeHandle>& selectedEdges) {
             editor.selection().set_granularity(
                 SelectionGranularity::Edge);
 
             editor.selection()
                 .mesh()
-                .set_edge(edge);
+                .clear_components();
 
-            editor.selection().mark_dirty();
-            editor.clear_dirty();
-        }
-
-        void select_face(FaceHandle face) {
-            editor.selection().set_granularity(
-                SelectionGranularity::Face);
+            if (selectedEdges.empty()) {
+                return;
+            }
 
             editor.selection()
                 .mesh()
-                .set_face(face);
+                .set_edge(selectedEdges.front());
+
+            for (std::size_t index = 1u;
+                index < selectedEdges.size();
+                ++index) {
+                editor.selection()
+                    .mesh()
+                    .add_edge(selectedEdges[index]);
+            }
 
             editor.selection().mark_dirty();
             editor.clear_dirty();
@@ -196,7 +280,7 @@ namespace {
 
     bool test_registration() {
         std::cout
-            << "\n=== Topology actions: registration ===\n";
+            << "\n=== Fill Hole: registration ===\n";
 
         ActionRegistry registry{};
 
@@ -208,60 +292,42 @@ namespace {
             "topology actions foram registradas");
 
         print_result(
-            registry.size() == 2u,
-            "duas topology actions foram registradas");
+            registry.size() == 3u,
+            "tres topology actions foram registradas");
 
         print_result(
             registry.contains(
-                subdivide_edges_action_id()),
-            "registry contem Subdivide Edges");
+                fill_hole_action_id()),
+            "registry contem mesh.topology.fill_hole");
 
-        print_result(
-            registry.contains(
-                subdivide_faces_action_id()),
-            "registry contem Subdivide Faces");
-
-        const ActionDescriptor* edgeDescriptor =
+        const ActionDescriptor* descriptor =
             registry.descriptor(
-                subdivide_edges_action_id());
-
-        const ActionDescriptor* faceDescriptor =
-            registry.descriptor(
-                subdivide_faces_action_id());
+                fill_hole_action_id());
 
         print_result(
-            edgeDescriptor != nullptr
-            && edgeDescriptor->is_valid(),
-            "descritor de Subdivide Edges e valido");
+            descriptor != nullptr,
+            "descritor de Fill Hole pode ser consultado");
 
         print_result(
-            faceDescriptor != nullptr
-            && faceDescriptor->is_valid(),
-            "descritor de Subdivide Faces e valido");
+            descriptor
+            && descriptor->is_valid(),
+            "descritor de Fill Hole e valido");
 
         print_result(
-            edgeDescriptor
-            && edgeDescriptor->name
-            == "Subdivide Edges",
-            "descritor preserva nome de edges");
+            descriptor
+            && descriptor->name == "Fill Hole",
+            "descritor preserva o nome Fill Hole");
 
         print_result(
-            faceDescriptor
-            && faceDescriptor->name
-            == "Subdivide Faces",
-            "descritor preserva nome de faces");
-
-        print_result(
-            edgeDescriptor
-            && edgeDescriptor->category
+            descriptor
+            && descriptor->category
             == ActionCategory::Mesh,
-            "Subdivide Edges pertence a Mesh");
+            "Fill Hole pertence a categoria Mesh");
 
         print_result(
-            faceDescriptor
-            && faceDescriptor->category
-            == ActionCategory::Mesh,
-            "Subdivide Faces pertence a Mesh");
+            descriptor
+            && !descriptor->keywords.empty(),
+            "Fill Hole possui termos de busca");
 
         const bool registeredAgain =
             register_topology_actions(registry);
@@ -271,227 +337,303 @@ namespace {
             "registro duplicado e rejeitado");
 
         print_result(
-            registry.size() == 2u,
-            "registro duplicado preserva registry");
+            registry.size() == 3u,
+            "registro duplicado preserva o registry");
 
         return registered
             && !registeredAgain
-            && registry.size() == 2u
-            && edgeDescriptor
-            && faceDescriptor;
+            && registry.size() == 3u
+            && descriptor
+            && descriptor->is_valid();
     }
 
-    bool test_transactional_registration() {
+    bool test_open_box_fixture() {
         std::cout
-            << "\n=== Topology actions: transactional registration ===\n";
+            << "\n=== Fill Hole: open box fixture ===\n";
 
-        ActionRegistry registry{};
+        MeshFixture fixture{};
 
-        const bool firstRegistration =
-            register_topology_actions(registry);
+        if (!fixture.build_box()) {
+            print_result(
+                false,
+                "caixa base foi criada");
+            return false;
+        }
 
-        print_result(
-            firstRegistration,
-            "primeiro registro funcionou");
+        const FaceHandle removedFace =
+            fixture.faces.front();
 
-        const bool removedFace =
-            registry.unregister_action(
-                subdivide_faces_action_id());
-
-        print_result(
-            removedFace,
-            "Subdivide Faces foi removida para preparar conflito");
-
-        print_result(
-            registry.contains(
-                subdivide_edges_action_id()),
-            "Subdivide Edges continua registrada");
-
-        const std::size_t sizeBefore =
-            registry.size();
-
-        const bool secondRegistration =
-            register_topology_actions(registry);
+        const std::vector<EdgeHandle> faceEdges =
+            TopologyTraversal::face_edges(
+                fixture.node->mesh(),
+                removedFace);
 
         print_result(
-            !secondRegistration,
-            "registro falha quando primeiro id ja existe");
+            faceEdges.size() == 4u,
+            "face da caixa possui quatro edges");
+
+        const bool removed =
+            fixture.remove_face_and_select_boundary(
+                removedFace);
 
         print_result(
-            registry.size() == sizeBefore,
-            "falha inicial nao altera registry");
+            removed,
+            "face foi removida");
+
+        if (!removed) {
+            return false;
+        }
 
         print_result(
-            !registry.contains(
-                subdivide_faces_action_id()),
-            "falha nao registra action posterior");
+            !fixture.node->mesh().is_valid(
+                removedFace),
+            "face removida deixou de estar ativa");
 
-        return firstRegistration
-            && removedFace
-            && !secondRegistration
-            && registry.size() == sizeBefore;
+        print_result(
+            active_face_count(
+                fixture.node->mesh()) == 5u,
+            "caixa aberta possui cinco faces ativas");
+
+        print_result(
+            fixture.edges.size() == 4u,
+            "quatro edges de contorno foram capturadas");
+
+        print_result(
+            boundary_edge_count(
+                fixture.node->mesh()) == 4u,
+            "caixa aberta possui quatro boundary edges");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .edges()
+            .size()
+            == 4u,
+            "as quatro boundary edges estao selecionadas");
+
+        bool allBoundary = true;
+
+        for (const EdgeHandle edge : fixture.edges) {
+            if (!TopologyTraversal::is_boundary_edge(
+                fixture.node->mesh(),
+                edge)) {
+                allBoundary = false;
+                break;
+            }
+        }
+
+        print_result(
+            allBoundary,
+            "todas as edges selecionadas sao de fronteira");
+
+        return removed
+            && allBoundary
+            && active_face_count(
+                fixture.node->mesh()) == 5u
+            && fixture.editor.selection()
+            .mesh()
+            .edges()
+            .size()
+            == 4u;
     }
 
     bool test_availability() {
         std::cout
-            << "\n=== Topology actions: availability ===\n";
+            << "\n=== Fill Hole: availability ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build()) {
-            print_result(false, "fixture foi criada");
+        if (!fixture.build_box()
+            || !fixture.remove_face_and_select_boundary(
+                fixture.faces.front())) {
+            print_result(
+                false,
+                "fixture aberta foi criada");
             return false;
         }
 
         ActionRegistry registry{};
 
         if (!register_topology_actions(registry)) {
-            print_result(false, "actions foram registradas");
+            print_result(
+                false,
+                "topology actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        fixture.select_edge(fixture.edges.front());
-
         print_result(
             executor.can_execute(
                 fixture.context,
-                subdivide_edges_action_id()),
-            "Subdivide Edges aceita edge selecionada");
-
-        print_result(
-            !executor.can_execute(
-                fixture.context,
-                subdivide_faces_action_id()),
-            "Subdivide Faces rejeita granularidade Edge");
-
-        fixture.select_face(fixture.faces.front());
-
-        print_result(
-            executor.can_execute(
-                fixture.context,
-                subdivide_faces_action_id()),
-            "Subdivide Faces aceita face selecionada");
-
-        print_result(
-            !executor.can_execute(
-                fixture.context,
-                subdivide_edges_action_id()),
-            "Subdivide Edges rejeita granularidade Face");
+                fill_hole_action_id()),
+            "Fill Hole aceita quatro boundary edges");
 
         fixture.editor.selection()
             .mesh()
-            .clear_components();
+            .set_edge(fixture.edges.front());
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                subdivide_faces_action_id()),
-            "Subdivide Faces rejeita selecao vazia");
+                fill_hole_action_id()),
+            "Fill Hole rejeita menos de tres edges");
 
-        fixture.select_face(fixture.faces.front());
+        fixture.select_edges(fixture.edges);
+
+        fixture.editor.selection()
+            .set_granularity(
+                SelectionGranularity::Face);
+
+        print_result(
+            !executor.can_execute(
+                fixture.context,
+                fill_hole_action_id()),
+            "Fill Hole rejeita granularidade Face");
+
+        fixture.editor.selection()
+            .set_granularity(
+                SelectionGranularity::Edge);
+
         fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
             !executor.can_execute(
                 fixture.context,
-                subdivide_faces_action_id()),
-            "topology action rejeita Object mode");
+                fill_hole_action_id()),
+            "Fill Hole rejeita Object mode");
+
+        fixture.editor.set_mode(EditorMode::Mesh);
+
+        print_result(
+            executor.can_execute(
+                fixture.context,
+                fill_hole_action_id()),
+            "Fill Hole volta a ficar disponivel");
 
         return true;
     }
 
-    bool test_subdivide_edge() {
+    bool test_fill_hole_execution() {
         std::cout
-            << "\n=== Subdivide Edges: execution ===\n";
+            << "\n=== Fill Hole: execution ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build()) {
-            print_result(false, "fixture foi criada");
+        if (!fixture.build_box()
+            || !fixture.remove_face_and_select_boundary(
+                fixture.faces.front())) {
+            print_result(
+                false,
+                "fixture aberta foi criada");
             return false;
         }
-
-        const EdgeHandle targetEdge =
-            fixture.edges.front();
-
-        fixture.select_edge(targetEdge);
 
         ActionRegistry registry{};
 
         if (!register_topology_actions(registry)) {
-            print_result(false, "actions foram registradas");
+            print_result(
+                false,
+                "topology actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        const std::size_t verticesBefore =
-            fixture.node->mesh().vertex_count();
-
-        const std::size_t edgesBefore =
-            fixture.node->mesh().edge_count();
-
-        const std::size_t facesBefore =
+        const std::size_t faceSlotsBefore =
             fixture.node->mesh().face_count();
+
+        const std::size_t activeFacesBefore =
+            active_face_count(
+                fixture.node->mesh());
+
+        const std::size_t boundaryEdgesBefore =
+            boundary_edge_count(
+                fixture.node->mesh());
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                subdivide_edges_action_id());
+                fill_hole_action_id());
 
         print_action_result(
-            "Subdivide Edges result",
+            "Fill Hole result",
             result);
 
-        const std::size_t verticesAfter =
-            fixture.node->mesh().vertex_count();
+        const std::size_t faceSlotsAfter =
+            fixture.node->mesh().face_count();
+
+        const std::size_t activeFacesAfter =
+            active_face_count(
+                fixture.node->mesh());
+
+        const std::size_t boundaryEdgesAfter =
+            boundary_edge_count(
+                fixture.node->mesh());
 
         print_result(
             result.succeeded(),
-            "Subdivide Edges foi executada");
+            "Fill Hole foi executada");
 
         print_result(
-            verticesAfter == verticesBefore + 1u,
-            "subdivisao criou um vertice central na edge");
+            activeFacesBefore == 5u,
+            "fixture possuia cinco faces ativas");
 
         print_result(
-            fixture.node->mesh().edge_count()
-                > edgesBefore,
-            "subdivisao aumentou armazenamento de edges");
+            activeFacesAfter == 6u,
+            "Fill Hole restaurou seis faces ativas");
 
         print_result(
-            fixture.node->mesh().face_count()
-            == facesBefore,
-            "subdivisao de edge preservou slots de faces");
+            faceSlotsAfter == faceSlotsBefore + 1u,
+            "nova face utilizou um novo slot");
+
+        print_result(
+            boundaryEdgesBefore == 4u,
+            "quatro boundary edges existiam antes");
+
+        print_result(
+            boundaryEdgesAfter == 0u,
+            "buraco foi completamente fechado");
+
+        bool edgesRemainValid = true;
+
+        for (const EdgeHandle edge : fixture.edges) {
+            if (!fixture.node->mesh().is_valid(edge)) {
+                edgesRemainValid = false;
+                break;
+            }
+        }
+
+        print_result(
+            edgesRemainValid,
+            "edges originais continuam validas");
 
         print_result(
             fixture.history.undo_size() == 1u,
-            "subdivisao criou uma entrada no historico");
+            "Fill Hole criou uma entrada no historico");
 
         print_result(
             fixture.history.undo_name()
-            == "Subdivide Edges",
-            "historico usa label Subdivide Edges");
+            == "Fill Hole",
+            "historico usa label Fill Hole");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Mesh),
-            "subdivisao marca Mesh como dirty");
+            "Fill Hole marca Mesh como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Render),
-            "subdivisao marca Render como dirty");
+            "Fill Hole marca Render como dirty");
 
         print_result(
             has_flag(
                 fixture.editor.dirty_flags(),
                 EditorDirtyFlags::Picking),
-            "subdivisao marca Picking como dirty");
+            "Fill Hole marca Picking como dirty");
 
         const CommandResult undoResult =
             fixture.history.undo(
@@ -499,33 +641,57 @@ namespace {
 
         print_result(
             undoResult.success,
-            "undo da subdivisao de edge funcionou");
+            "undo de Fill Hole funcionou");
 
         print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesBefore,
-            "undo restaurou quantidade de vertices");
-
-        print_result(
-            fixture.node->mesh().edge_count()
-            == edgesBefore,
-            "undo restaurou quantidade de edges");
+            active_face_count(
+                fixture.node->mesh())
+            == activeFacesBefore,
+            "undo restaurou cinco faces ativas");
 
         print_result(
             fixture.node->mesh().face_count()
-            == facesBefore,
-            "undo restaurou quantidade de faces");
+            == faceSlotsBefore,
+            "undo restaurou os slots anteriores");
 
         print_result(
-            fixture.node->mesh().is_valid(targetEdge),
-            "undo restaurou a edge original");
+            boundary_edge_count(
+                fixture.node->mesh())
+            == boundaryEdgesBefore,
+            "undo reabriu o contorno");
 
         print_result(
             fixture.editor.selection()
             .mesh()
             .edges()
-            .contains(targetEdge),
-            "undo restaurou selecao da edge");
+            .size()
+            == fixture.edges.size(),
+            "undo restaurou a selecao de edges");
+
+        bool selectionRestored = true;
+
+        for (const EdgeHandle edge : fixture.edges) {
+            if (!fixture.editor.selection()
+                .mesh()
+                .edges()
+                .contains(edge)) {
+                selectionRestored = false;
+                break;
+            }
+        }
+
+        print_result(
+            selectionRestored,
+            "undo preservou todas as boundary edges selecionadas");
+
+        print_result(
+            fixture.history.can_redo(),
+            "redo ficou disponivel");
+
+        print_result(
+            fixture.history.redo_name()
+            == "Fill Hole",
+            "redo preserva label Fill Hole");
 
         const CommandResult redoResult =
             fixture.history.redo(
@@ -533,12 +699,24 @@ namespace {
 
         print_result(
             redoResult.success,
-            "redo da subdivisao de edge funcionou");
+            "redo de Fill Hole funcionou");
 
         print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesAfter,
-            "redo restaurou o novo vertice");
+            active_face_count(
+                fixture.node->mesh())
+            == activeFacesAfter,
+            "redo restaurou seis faces ativas");
+
+        print_result(
+            fixture.node->mesh().face_count()
+            == faceSlotsAfter,
+            "redo restaurou o novo slot de face");
+
+        print_result(
+            boundary_edge_count(
+                fixture.node->mesh())
+            == 0u,
+            "redo fechou novamente o buraco");
 
         print_result(
             fixture.history.undo_size() == 1u
@@ -548,209 +726,161 @@ namespace {
         return result.succeeded()
             && undoResult.success
             && redoResult.success
-            && fixture.node->mesh().vertex_count()
-            == verticesAfter;
+            && active_face_count(
+                fixture.node->mesh()) == 6u
+            && boundary_edge_count(
+                fixture.node->mesh()) == 0u
+            && fixture.history.undo_size() == 1u;
     }
 
-    bool test_subdivide_face() {
+    bool test_non_boundary_edges_failure() {
         std::cout
-            << "\n=== Subdivide Faces: execution ===\n";
+            << "\n=== Fill Hole: non-boundary edges ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build()) {
-            print_result(false, "fixture foi criada");
+        if (!fixture.build_box()) {
+            print_result(
+                false,
+                "caixa fechada foi criada");
             return false;
         }
 
-        const FaceHandle targetFace =
-            fixture.faces.front();
+        const std::vector<EdgeHandle> selectedEdges{
+            fixture.edges[0],
+            fixture.edges[1],
+            fixture.edges[2]
+        };
 
-        fixture.select_face(targetFace);
+        fixture.select_edges(selectedEdges);
 
         ActionRegistry registry{};
 
         if (!register_topology_actions(registry)) {
-            print_result(false, "actions foram registradas");
+            print_result(
+                false,
+                "topology actions foram registradas");
             return false;
         }
 
         ActionExecutor executor{ registry };
 
-        const std::size_t verticesBefore =
-            fixture.node->mesh().vertex_count();
+        print_result(
+            boundary_edge_count(
+                fixture.node->mesh()) == 0u,
+            "caixa fechada nao possui boundary edges");
 
-        const std::size_t edgesBefore =
-            fixture.node->mesh().edge_count();
+        print_result(
+            executor.can_execute(
+                fixture.context,
+                fill_hole_action_id()),
+            "validacao superficial aceita tres handles validos");
 
-        const std::size_t facesBefore =
+        const std::size_t faceSlotsBefore =
             fixture.node->mesh().face_count();
+
+        const std::size_t activeFacesBefore =
+            active_face_count(
+                fixture.node->mesh());
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                subdivide_faces_action_id());
+                fill_hole_action_id());
 
         print_action_result(
-            "Subdivide Faces result",
+            "non-boundary Fill Hole result",
             result);
 
-        const std::size_t verticesAfter =
-            fixture.node->mesh().vertex_count();
-
-        const std::size_t edgesAfter =
-            fixture.node->mesh().edge_count();
-
-        const std::size_t facesAfter =
-            fixture.node->mesh().face_count();
+        print_result(
+            result.failed(),
+            "kernel rejeita edges que nao sao de fronteira");
 
         print_result(
-            result.succeeded(),
-            "Subdivide Faces foi executada");
-
-        print_result(
-            verticesAfter == verticesBefore + 1u,
-            "subdivisao criou um vertice central");
-
-        print_result(
-            edgesAfter > edgesBefore,
-            "subdivisao criou novas edges");
-
-        print_result(
-            facesAfter > facesBefore,
-            "subdivisao criou novas faces");
-
-        print_result(
-            !fixture.node->mesh().is_valid(targetFace),
-            "face original deixou de estar ativa");
-
-        print_result(
-            fixture.history.undo_size() == 1u,
-            "subdivisao criou uma entrada no historico");
-
-        print_result(
-            fixture.history.undo_name()
-            == "Subdivide Faces",
-            "historico usa label Subdivide Faces");
-
-        const CommandResult undoResult =
-            fixture.history.undo(
-                fixture.dispatcher);
-
-        print_result(
-            undoResult.success,
-            "undo da subdivisao de face funcionou");
-
-        print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesBefore,
-            "undo restaurou quantidade de vertices");
-
-        print_result(
-            fixture.node->mesh().edge_count()
-            == edgesBefore,
-            "undo restaurou quantidade de edges");
+            fixture.history.empty(),
+            "operacao rejeitada nao entra no historico");
 
         print_result(
             fixture.node->mesh().face_count()
-            == facesBefore,
-            "undo restaurou quantidade de faces");
+            == faceSlotsBefore,
+            "falha nao altera slots de faces");
 
         print_result(
-            fixture.node->mesh().is_valid(targetFace),
-            "undo restaurou a face original");
+            active_face_count(
+                fixture.node->mesh())
+            == activeFacesBefore,
+            "falha nao altera faces ativas");
 
         print_result(
-            fixture.editor.selection()
-            .mesh()
-            .faces()
-            .contains(targetFace),
-            "undo restaurou selecao da face");
+            boundary_edge_count(
+                fixture.node->mesh()) == 0u,
+            "falha preserva a caixa fechada");
 
-        const CommandResult redoResult =
-            fixture.history.redo(
-                fixture.dispatcher);
-
-        print_result(
-            redoResult.success,
-            "redo da subdivisao de face funcionou");
-
-        print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesAfter,
-            "redo restaurou quantidade subdividida de vertices");
-
-        print_result(
-            fixture.node->mesh().edge_count()
-            == edgesAfter,
-            "redo restaurou quantidade subdividida de edges");
-
-        print_result(
-            fixture.node->mesh().face_count()
-            == facesAfter,
-            "redo restaurou quantidade subdividida de faces");
-
-        print_result(
-            !fixture.node->mesh().is_valid(targetFace),
-            "redo removeu novamente a face original");
-
-        return result.succeeded()
-            && undoResult.success
-            && redoResult.success
-            && !fixture.node->mesh().is_valid(targetFace);
+        return result.failed()
+            && fixture.history.empty()
+            && fixture.node->mesh().face_count()
+            == faceSlotsBefore
+            && active_face_count(
+                fixture.node->mesh())
+            == activeFacesBefore;
     }
 
-    bool test_unavailable_execution() {
+    bool test_too_few_edges_unavailable() {
         std::cout
-            << "\n=== Topology actions: unavailable execution ===\n";
+            << "\n=== Fill Hole: too few edges ===\n";
 
         MeshFixture fixture{};
 
-        if (!fixture.build()) {
-            print_result(false, "fixture foi criada");
+        if (!fixture.build_box()
+            || !fixture.remove_face_and_select_boundary(
+                fixture.faces.front())) {
+            print_result(
+                false,
+                "fixture aberta foi criada");
             return false;
         }
-
-        ActionRegistry registry{};
-
-        if (!register_topology_actions(registry)) {
-            print_result(false, "actions foram registradas");
-            return false;
-        }
-
-        ActionExecutor executor{ registry };
-
-        fixture.editor.selection().set_granularity(
-            SelectionGranularity::Face);
 
         fixture.editor.selection()
             .mesh()
-            .clear_components();
+            .set_edge(fixture.edges.front());
 
-        const std::size_t verticesBefore =
-            fixture.node->mesh().vertex_count();
+        ActionRegistry registry{};
+
+        if (!register_topology_actions(registry)) {
+            print_result(
+                false,
+                "topology actions foram registradas");
+            return false;
+        }
+
+        ActionExecutor executor{ registry };
+
+        const std::size_t activeFacesBefore =
+            active_face_count(
+                fixture.node->mesh());
 
         const ActionResult result =
             executor.execute(
                 fixture.context,
-                subdivide_faces_action_id());
+                fill_hole_action_id());
 
         print_action_result(
-            "Unavailable Subdivide Faces result",
+            "too few edges result",
             result);
 
         print_result(
             result.is_unavailable(),
-            "selecao vazia retorna Unavailable");
+            "uma edge retorna Unavailable");
 
         print_result(
             fixture.history.empty(),
             "action indisponivel nao entra no historico");
 
         print_result(
-            fixture.node->mesh().vertex_count()
-            == verticesBefore,
-            "action indisponivel nao altera malha");
+            active_face_count(
+                fixture.node->mesh())
+            == activeFacesBefore,
+            "action indisponivel nao altera a malha");
 
         return result.is_unavailable()
             && fixture.history.empty();
@@ -760,28 +890,28 @@ namespace {
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Topology Actions "
+        << "=== Locus3D Editor Fill Hole Action "
         "Smoke Test ===\n";
 
     bool passed = true;
 
     passed = test_registration() && passed;
-    passed = test_transactional_registration() && passed;
+    passed = test_open_box_fixture() && passed;
     passed = test_availability() && passed;
-    passed = test_subdivide_edge() && passed;
-    passed = test_subdivide_face() && passed;
-    passed = test_unavailable_execution() && passed;
+    passed = test_fill_hole_execution() && passed;
+    passed = test_non_boundary_edges_failure() && passed;
+    passed = test_too_few_edges_unavailable() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All topology action smoke tests "
+            << "=== All Fill Hole action smoke tests "
             "passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Topology action smoke test failed ===\n";
+        << "=== Fill Hole action smoke test failed ===\n";
     return 1;
 }
