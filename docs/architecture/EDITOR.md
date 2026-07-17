@@ -295,8 +295,8 @@ source\editor
 |   |       IEditorAction.h
 |   |
 |   \---mesh [!]
-|       |   MeshOperationAction.h [!]
-|       |   MeshOperationAction.cpp [!]
+|       |   MeshOperationAction.h
+|       |   MeshOperationAction.cpp
 |       |
 |       +---vertex [!]
 |       |       register_vertex_actions.h [!]
@@ -421,8 +421,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `tools/utility/InspectTool.cpp`
 - [!] `tools/utility/SetOriginTool.h`
 - [!] `tools/utility/SetOriginTool.cpp`
-- [!] `actions/mesh/MeshOperationAction.h`
-- [!] `actions/mesh/MeshOperationAction.cpp`
 - [!] `actions/mesh/vertex/register_vertex_actions.h`
 - [!] `actions/mesh/vertex/register_vertex_actions.cpp`
 - [!] `actions/mesh/edge/register_edge_actions.h`

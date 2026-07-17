@@ -7,38 +7,33 @@
 #include "editor/actions/ActionExecutor.h"
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionContext.h"
-#include "editor/actions/core/ActionDescriptor.h"
-#include "editor/actions/core/ActionResult.h"
-#include "editor/actions/core/IEditorAction.h"
+#include "editor/actions/mesh/MeshOperationAction.h"
 #include "editor/command/CommandDispatcher.h"
-#include "editor/command/scene/RenameNodeCommand.h"
 #include "editor/history/HistoryStack.h"
-#include "editor/scene/SceneNode.h"
+#include "editor/scene/MeshNode.h"
+#include "kernel/geometry/primitives/BoxBuilder.h"
+#include "kernel/modeling/core/OperationContext.h"
+#include "kernel/modeling/operations/face/FlipFaceOp.h"
 
+#include <glm/geometric.hpp>
+
+#include <cstddef>
 #include <iostream>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 
     using namespace locus::editor;
 
-    constexpr const char* ExecutableActionId =
-        "test.action.executable";
+    constexpr const char* FlipFaceActionId =
+        "mesh.face.flip.test";
 
-    constexpr const char* UnavailableActionId =
-        "test.action.unavailable";
+    constexpr const char* EmptyOperationActionId =
+        "mesh.face.empty_operation.test";
 
-    constexpr const char* CommandActionId =
-        "test.action.rename";
-
-    /**
-     * @brief Prints one smoke-test assertion.
-     *
-     * @param condition Assertion result.
-     * @param message Human-readable assertion description.
-     */
     void print_result(
         bool condition,
         const std::string& message) {
@@ -48,13 +43,8 @@ namespace {
             << '\n';
     }
 
-    /**
-     * @brief Converts an action result code to readable text.
-     *
-     * @param code Result code.
-     * @return Static readable name.
-     */
-    const char* result_code_name(ActionResultCode code) {
+    const char* action_result_code_name(
+        ActionResultCode code) {
         switch (code) {
         case ActionResultCode::Executed:
             return "Executed";
@@ -69,23 +59,13 @@ namespace {
         return "Unknown";
     }
 
-    /**
-     * @brief Prints an action result.
-     *
-     * @param label Result label.
-     * @param result Result to print.
-     */
     void print_action_result(
         const std::string& label,
         const ActionResult& result) {
         std::cout << label << '\n';
         std::cout
             << "  code: "
-            << result_code_name(result.code)
-            << '\n';
-        std::cout
-            << "  message: "
-            << result.message
+            << action_result_code_name(result.code)
             << '\n';
         std::cout
             << "  succeeded: "
@@ -99,602 +79,368 @@ namespace {
             << "  failed: "
             << (result.failed() ? "true" : "false")
             << '\n';
+        std::cout
+            << "  message: "
+            << result.message
+            << '\n';
     }
 
-    /**
-     * @brief Simple action with configurable availability and result.
-     */
-    class TestAction final : public IEditorAction {
-    public:
-        TestAction(
-            ActionDescriptor descriptor,
-            bool available,
-            ActionResult result)
-            : descriptor_(std::move(descriptor)),
-            available_(available),
-            result_(std::move(result)) {
-        }
+    bool approximately_equal(
+        const glm::vec3& lhs,
+        const glm::vec3& rhs,
+        float epsilon = 0.0001f) {
+        return glm::length(lhs - rhs) <= epsilon;
+    }
 
-        [[nodiscard]] const ActionDescriptor&
-            descriptor() const override {
-            return descriptor_;
-        }
+    ActionDescriptor make_flip_face_descriptor() {
+        return ActionDescriptor{
+            ActionId{ FlipFaceActionId },
+            "Flip Face",
+            "Reverses the winding of the selected mesh face.",
+            ActionCategory::Mesh,
+            {
+                "flip",
+                "face",
+                "normal",
+                "winding",
+                "orientation"
+            }
+        };
+    }
 
-        [[nodiscard]] bool can_execute(
-            const ActionContext& context) const override {
-            (void)context;
-            return available_;
-        }
+    std::unique_ptr<MeshOperationAction>
+        make_flip_face_action() {
+        MeshOperationAction::OperationFactory operationFactory =
+            [](
+                const MeshToolTarget& target)
+            -> ApplyMeshOperationCommand::MeshOperation {
+            const std::vector<
+                locus::kernel::geometry::FaceHandle>
+                faces = target.faces;
 
-        ActionResult execute(
-            ActionContext& context) override {
-            (void)context;
-            ++executionCount_;
-            return result_;
-        }
+            return [faces](
+                locus::kernel::geometry::LEMEditor& editor) {
+                    bool changed = false;
 
-        [[nodiscard]] std::size_t execution_count() const {
-            return executionCount_;
-        }
+                    for (const auto face : faces) {
+                        locus::kernel::modeling::FlipFaceOp operation{
+                            face
+                        };
 
-    private:
-        ActionDescriptor descriptor_{};
-        bool available_ = false;
-        ActionResult result_{};
-        std::size_t executionCount_ = 0u;
-    };
+                        locus::kernel::modeling::OperationContext
+                            operationContext{};
 
-    /**
-     * @brief Action that renames one scene node through a command.
-     */
-    class RenameNodeTestAction final : public IEditorAction {
-    public:
-        RenameNodeTestAction(
-            SceneNodeId nodeId,
-            std::string newName)
-            : nodeId_(nodeId),
-            newName_(std::move(newName)) {
-        }
+                        operationContext.mesh = &editor.mesh();
+                        operationContext.validateAfterExecute = true;
+                        operationContext.rebuildNormals = true;
+                        operationContext.allowNonManifold = true;
 
-        [[nodiscard]] const ActionDescriptor&
-            descriptor() const override {
-            static const ActionDescriptor descriptor{
-                ActionId{ CommandActionId },
-                "Rename Test Node",
-                "Renames the smoke-test node through a command.",
-                ActionCategory::Scene,
-                {
-                    "rename",
-                    "node",
-                    "test"
-                }
+                        const locus::kernel::modeling::OperationResult
+                            result =
+                            operation.execute(operationContext);
+
+                        if (!result.is_success()
+                            || !result.changed()) {
+                            return false;
+                        }
+
+                        changed = true;
+                    }
+
+                    return changed;
+                };
             };
 
-            return descriptor;
-        }
+        return std::make_unique<MeshOperationAction>(
+            make_flip_face_descriptor(),
+            SelectionGranularity::Face,
+            1u,
+            std::move(operationFactory),
+            "Flip Face");
+    }
 
-        [[nodiscard]] bool can_execute(
-            const ActionContext& context) const override {
-            return nodeId_.is_valid()
-                && context.scene().find_node(nodeId_) != nullptr
-                && !newName_.empty();
-        }
+    std::unique_ptr<MeshOperationAction>
+        make_empty_operation_action() {
+        MeshOperationAction::OperationFactory operationFactory =
+            [](
+                const MeshToolTarget& target)
+            -> ApplyMeshOperationCommand::MeshOperation {
+            (void)target;
+            return {};
+            };
 
-        ActionResult execute(
-            ActionContext& context) override {
-            if (!can_execute(context)) {
-                return ActionResult::unavailable(
-                    "The target node is not available.");
+        return std::make_unique<MeshOperationAction>(
+            ActionDescriptor{
+                ActionId{ EmptyOperationActionId },
+                "Empty Mesh Operation",
+                "Creates no operation callback.",
+                ActionCategory::Mesh
+            },
+            SelectionGranularity::Face,
+            1u,
+            std::move(operationFactory),
+            "Empty Mesh Operation");
+    }
+
+    struct MeshFixture {
+        Editor editor{};
+        CommandDispatcher dispatcher{ editor };
+        HistoryStack history{};
+        ActionContext context{
+            editor,
+            dispatcher,
+            history
+        };
+
+        SceneNodeId nodeId{};
+        MeshNode* node = nullptr;
+
+        locus::kernel::geometry::FaceHandle face{};
+        glm::vec3 originalNormal{ 0.0f };
+
+        bool build() {
+            nodeId =
+                editor.scene().create_mesh("Action Test Box");
+
+            node =
+                editor.scene().find_mesh(nodeId);
+
+            if (!node) {
+                return false;
             }
 
-            CommandResult result =
-                context.execute_command(
-                    std::make_unique<RenameNodeCommand>(
-                        nodeId_,
-                        newName_));
+            locus::kernel::geometry::BoxParameters parameters{};
+            parameters.size = {
+                2.0f,
+                2.0f,
+                2.0f
+            };
 
-            return ActionResult::from_command(
-                std::move(result));
+            const locus::kernel::geometry::PrimitiveBuildResult
+                buildResult =
+                locus::kernel::geometry::BoxBuilder::build_into(
+                    node->mesh(),
+                    parameters);
+
+            if (!buildResult.success
+                || buildResult.faces.empty()) {
+                return false;
+            }
+
+            face = buildResult.faces.front();
+
+            if (!node->mesh().is_valid(face)) {
+                return false;
+            }
+
+            originalNormal =
+                node->mesh().face(face).normal;
+
+            editor.set_mode(EditorMode::Mesh);
+
+            editor.selection().set_granularity(
+                SelectionGranularity::Face);
+
+            editor.selection().mesh().set_active_mesh(
+                nodeId);
+
+            editor.selection().mesh().set_face(face);
+            editor.selection().mark_dirty();
+
+            editor.clear_dirty();
+
+            return true;
         }
-
-    private:
-        SceneNodeId nodeId_{};
-        std::string newName_{};
     };
 
-    /**
-     * @brief Creates a valid descriptor for one test action.
-     *
-     * @param id Stable textual identifier.
-     * @param name Display name.
-     * @param category Action category.
-     * @return Complete action descriptor.
-     */
-    ActionDescriptor make_descriptor(
-        std::string id,
-        std::string name,
-        ActionCategory category) {
-        return ActionDescriptor{
-            ActionId{ std::move(id) },
-            std::move(name),
-            "Smoke-test action.",
-            category,
-            {
-                "smoke",
-                "test"
-            }
-        };
+    bool test_fixture() {
+        std::cout << "\n=== Mesh fixture ===\n";
+
+        MeshFixture fixture{};
+        const bool built = fixture.build();
+
+        print_result(
+            built,
+            "fixture de cubo foi criada");
+
+        if (!built) {
+            return false;
+        }
+
+        print_result(
+            fixture.nodeId.is_valid(),
+            "mesh node possui id valido");
+
+        print_result(
+            fixture.node != nullptr,
+            "mesh node pode ser encontrado");
+
+        print_result(
+            fixture.node->mesh().vertex_count() == 8u,
+            "cubo possui oito vertices");
+
+        print_result(
+            fixture.node->mesh().edge_count() == 12u,
+            "cubo possui doze arestas");
+
+        print_result(
+            fixture.node->mesh().face_count() == 6u,
+            "cubo possui seis faces");
+
+        print_result(
+            fixture.node->mesh().is_valid(fixture.face),
+            "face alvo e valida");
+
+        print_result(
+            fixture.editor.mode() == EditorMode::Mesh,
+            "editor esta em mesh mode");
+
+        print_result(
+            fixture.editor.selection().granularity()
+            == SelectionGranularity::Face,
+            "granularidade atual e Face");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .active_mesh()
+            == fixture.nodeId,
+            "selecao referencia o mesh node");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .size()
+            == 1u,
+            "uma face esta selecionada");
+
+        return built
+            && fixture.node->mesh().vertex_count() == 8u
+            && fixture.node->mesh().edge_count() == 12u
+            && fixture.node->mesh().face_count() == 6u
+            && fixture.node->mesh().is_valid(fixture.face);
     }
 
-    bool test_registration() {
-        std::cout << "\n=== ActionRegistry: registration ===\n";
-
-        ActionRegistry registry{};
-
-        print_result(
-            registry.empty(),
-            "registry inicia vazio");
-
-        print_result(
-            registry.size() == 0u,
-            "registry inicia com tamanho zero");
-
-        const bool nullRegistered =
-            registry.register_action(nullptr);
-
-        print_result(
-            !nullRegistered,
-            "registry rejeita action nula");
-
-        auto invalidAction =
-            std::make_unique<TestAction>(
-                ActionDescriptor{},
-                true,
-                ActionResult::executed());
-
-        const bool invalidRegistered =
-            registry.register_action(
-                std::move(invalidAction));
-
-        print_result(
-            !invalidRegistered,
-            "registry rejeita descritor invalido");
-
-        auto action =
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    ExecutableActionId,
-                    "Executable Action",
-                    ActionCategory::Utility),
-                true,
-                ActionResult::executed(
-                    EditorDirtyFlags::Selection,
-                    "Executable action completed."));
-
-        TestAction* actionPointer = action.get();
-
-        const bool registered =
-            registry.register_action(std::move(action));
-
-        print_result(
-            registered,
-            "registry aceita action valida");
-
-        print_result(
-            registry.size() == 1u,
-            "registry atualiza tamanho");
-
-        print_result(
-            !registry.empty(),
-            "registry deixa de estar vazio");
-
-        print_result(
-            registry.contains(
-                ActionId{ ExecutableActionId }),
-            "contains encontra action registrada");
-
-        print_result(
-            registry.find(
-                ActionId{ ExecutableActionId })
-            == actionPointer,
-            "find retorna a instancia registrada");
-
-        print_result(
-            registry.find(
-                ActionId{ "missing.action" })
-            == nullptr,
-            "find retorna null para action ausente");
-
-        const ActionDescriptor* descriptor =
-            registry.descriptor(
-                ActionId{ ExecutableActionId });
-
-        print_result(
-            descriptor != nullptr,
-            "descriptor encontra metadados registrados");
-
-        print_result(
-            descriptor
-            && descriptor->name == "Executable Action",
-            "descriptor preserva o nome da action");
-
-        auto duplicate =
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    ExecutableActionId,
-                    "Duplicate Action",
-                    ActionCategory::Utility),
-                true,
-                ActionResult::executed());
-
-        const bool duplicateRegistered =
-            registry.register_action(
-                std::move(duplicate));
-
-        print_result(
-            !duplicateRegistered,
-            "registry rejeita identificador duplicado");
-
-        print_result(
-            registry.size() == 1u,
-            "registro duplicado nao altera tamanho");
-
-        return registry.size() == 1u
-            && registry.contains(
-                ActionId{ ExecutableActionId })
-            && registry.find(
-                ActionId{ ExecutableActionId })
-            == actionPointer
-            && !duplicateRegistered;
-    }
-
-    bool test_queries_and_replacement() {
+    bool test_action_metadata() {
         std::cout
-            << "\n=== ActionRegistry: queries and replacement ===\n";
+            << "\n=== MeshOperationAction: metadata ===\n";
 
-        ActionRegistry registry{};
-
-        registry.register_action(
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    "mesh.action.first",
-                    "First Mesh Action",
-                    ActionCategory::Mesh),
-                true,
-                ActionResult::executed()));
-
-        registry.register_action(
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    "mesh.action.second",
-                    "Second Mesh Action",
-                    ActionCategory::Mesh),
-                true,
-                ActionResult::executed()));
-
-        registry.register_action(
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    "scene.action.first",
-                    "Scene Action",
-                    ActionCategory::Scene),
-                true,
-                ActionResult::executed()));
-
-        const std::vector<ActionId> ids =
-            registry.action_ids();
+        const std::unique_ptr<MeshOperationAction> action =
+            make_flip_face_action();
 
         print_result(
-            ids.size() == 3u,
-            "action_ids retorna todos os identificadores");
+            action != nullptr,
+            "action foi criada");
 
-        const std::vector<const ActionDescriptor*>
-            meshDescriptors =
-            registry.descriptors_by_category(
-                ActionCategory::Mesh);
-
-        print_result(
-            meshDescriptors.size() == 2u,
-            "consulta por categoria encontra actions de mesh");
-
-        const std::vector<const ActionDescriptor*>
-            transformDescriptors =
-            registry.descriptors_by_category(
-                ActionCategory::Transform);
+        if (!action) {
+            return false;
+        }
 
         print_result(
-            transformDescriptors.empty(),
-            "categoria sem actions retorna lista vazia");
+            action->descriptor().is_valid(),
+            "descritor da action e valido");
 
-        auto replacement =
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    "mesh.action.first",
-                    "Replaced Mesh Action",
-                    ActionCategory::Mesh),
+        print_result(
+            action->descriptor().id
+            == ActionId{ FlipFaceActionId },
+            "descritor preserva o identificador");
+
+        print_result(
+            action->descriptor().category
+            == ActionCategory::Mesh,
+            "action pertence a categoria Mesh");
+
+        print_result(
+            action->required_granularity()
+            == SelectionGranularity::Face,
+            "action exige granularidade Face");
+
+        print_result(
+            action->minimum_selection_count() == 1u,
+            "action exige pelo menos uma face");
+
+        print_result(
+            action->command_label() == "Flip Face",
+            "action preserva label do command");
+
+        return action->descriptor().is_valid()
+            && action->required_granularity()
+            == SelectionGranularity::Face
+            && action->minimum_selection_count() == 1u
+            && action->command_label() == "Flip Face";
+    }
+
+    bool test_availability() {
+        std::cout
+            << "\n=== MeshOperationAction: availability ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build()) {
+            print_result(
                 false,
-                ActionResult::unavailable(
-                    "Replacement is unavailable."));
+                "fixture necessaria para disponibilidade");
+            return false;
+        }
 
-        TestAction* replacementPointer =
-            replacement.get();
-
-        const bool replaced =
-            registry.replace_action(
-                std::move(replacement));
+        std::unique_ptr<MeshOperationAction> action =
+            make_flip_face_action();
 
         print_result(
-            replaced,
-            "replace_action substitui action existente");
+            action->can_execute(fixture.context),
+            "action esta disponivel com face selecionada");
+
+        fixture.editor.set_mode(EditorMode::Object);
 
         print_result(
-            registry.size() == 3u,
-            "substituicao preserva tamanho");
+            !action->can_execute(fixture.context),
+            "action fica indisponivel em Object mode");
+
+        fixture.editor.set_mode(EditorMode::Mesh);
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Edge);
 
         print_result(
-            registry.find(
-                ActionId{ "mesh.action.first" })
-            == replacementPointer,
-            "find retorna a nova instancia");
+            !action->can_execute(fixture.context),
+            "action fica indisponivel com granularidade Edge");
 
-        const ActionDescriptor* replacedDescriptor =
-            registry.descriptor(
-                ActionId{ "mesh.action.first" });
+        fixture.editor.selection().set_granularity(
+            SelectionGranularity::Face);
 
-        print_result(
-            replacedDescriptor
-            && replacedDescriptor->name
-            == "Replaced Mesh Action",
-            "substituicao atualiza descritor");
-
-        const bool invalidReplacement =
-            registry.replace_action(nullptr);
+        fixture.editor.selection().mesh().clear_components();
 
         print_result(
-            !invalidReplacement,
-            "replace_action rejeita action nula");
+            !action->can_execute(fixture.context),
+            "action fica indisponivel sem face selecionada");
 
-        const bool removed =
-            registry.unregister_action(
-                ActionId{ "scene.action.first" });
-
-        print_result(
-            removed,
-            "unregister_action remove action existente");
+        fixture.editor.selection().mesh().set_face(
+            fixture.face);
 
         print_result(
-            !registry.contains(
-                ActionId{ "scene.action.first" }),
-            "action removida deixa de ser encontrada");
+            action->can_execute(fixture.context),
+            "action volta a ficar disponivel apos selecionar face");
+
+        fixture.editor.selection().mesh().set_active_mesh(
+            SceneNodeId{});
 
         print_result(
-            registry.size() == 2u,
-            "remocao atualiza tamanho");
+            !action->can_execute(fixture.context),
+            "action fica indisponivel sem mesh ativo");
 
-        const bool removedAgain =
-            registry.unregister_action(
-                ActionId{ "scene.action.first" });
-
-        print_result(
-            !removedAgain,
-            "remocao de action ausente retorna false");
-
-        const bool removedInvalid =
-            registry.unregister_action(ActionId{});
-
-        print_result(
-            !removedInvalid,
-            "remocao rejeita identificador invalido");
-
-        registry.clear();
-
-        print_result(
-            registry.empty(),
-            "clear remove todas as actions");
-
-        return replaced
-            && registry.empty()
-            && !invalidReplacement
-            && !removedAgain
-            && !removedInvalid;
+        return true;
     }
 
-    bool test_executor_basic() {
+    bool test_execution_and_history() {
         std::cout
-            << "\n=== ActionExecutor: basic execution ===\n";
+            << "\n=== MeshOperationAction: execution ===\n";
 
-        Editor editor{};
-        editor.clear_dirty();
+        MeshFixture fixture{};
 
-        CommandDispatcher dispatcher{ editor };
-        HistoryStack history{};
-
-        ActionContext context{
-            editor,
-            dispatcher,
-            history
-        };
-
-        ActionRegistry registry{};
-
-        auto executableAction =
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    ExecutableActionId,
-                    "Executable Action",
-                    ActionCategory::Utility),
-                true,
-                ActionResult::executed(
-                    EditorDirtyFlags::Selection,
-                    "Executable action completed."));
-
-        TestAction* executablePointer =
-            executableAction.get();
-
-        registry.register_action(
-            std::move(executableAction));
-
-        auto unavailableAction =
-            std::make_unique<TestAction>(
-                make_descriptor(
-                    UnavailableActionId,
-                    "Unavailable Action",
-                    ActionCategory::Utility),
+        if (!fixture.build()) {
+            print_result(
                 false,
-                ActionResult::executed(
-                    EditorDirtyFlags::Scene,
-                    "This result must not be reached."));
-
-        TestAction* unavailablePointer =
-            unavailableAction.get();
-
-        registry.register_action(
-            std::move(unavailableAction));
-
-        ActionExecutor executor{ registry };
-
-        print_result(
-            &executor.registry() == &registry,
-            "executor preserva registry original");
-
-        const ActionExecutor& constExecutor = executor;
-
-        print_result(
-            &constExecutor.registry() == &registry,
-            "executor const retorna registry original");
-
-        print_result(
-            executor.can_execute(
-                context,
-                ActionId{ ExecutableActionId }),
-            "can_execute aceita action disponivel");
-
-        print_result(
-            !executor.can_execute(
-                context,
-                ActionId{ UnavailableActionId }),
-            "can_execute rejeita action indisponivel");
-
-        print_result(
-            !executor.can_execute(
-                context,
-                ActionId{ "missing.action" }),
-            "can_execute rejeita action ausente");
-
-        print_result(
-            !executor.can_execute(
-                context,
-                ActionId{}),
-            "can_execute rejeita identificador invalido");
-
-        const ActionResult executed =
-            executor.execute(
-                context,
-                ActionId{ ExecutableActionId });
-
-        print_action_result(
-            "executable action result",
-            executed);
-
-        print_result(
-            executed.succeeded(),
-            "executor executa action disponivel");
-
-        print_result(
-            executablePointer->execution_count() == 1u,
-            "action disponivel foi executada uma vez");
-
-        print_result(
-            has_flag(
-                editor.dirty_flags(),
-                EditorDirtyFlags::Selection),
-            "executor propaga dirty flags");
-
-        editor.clear_dirty();
-
-        const ActionResult unavailable =
-            executor.execute(
-                context,
-                ActionId{ UnavailableActionId });
-
-        print_action_result(
-            "unavailable action result",
-            unavailable);
-
-        print_result(
-            unavailable.is_unavailable(),
-            "executor retorna indisponivel");
-
-        print_result(
-            unavailablePointer->execution_count() == 0u,
-            "action indisponivel nao e executada");
-
-        print_result(
-            editor.dirty_flags()
-            == EditorDirtyFlags::None,
-            "action indisponivel nao marca dirty flags");
-
-        const ActionResult missing =
-            executor.execute(
-                context,
-                ActionId{ "missing.action" });
-
-        print_action_result(
-            "missing action result",
-            missing);
-
-        print_result(
-            missing.failed(),
-            "executor falha para action nao registrada");
-
-        const ActionResult invalid =
-            executor.execute(
-                context,
-                ActionId{});
-
-        print_action_result(
-            "invalid id result",
-            invalid);
-
-        print_result(
-            invalid.failed(),
-            "executor falha para identificador invalido");
-
-        return executed.succeeded()
-            && unavailable.is_unavailable()
-            && missing.failed()
-            && invalid.failed()
-            && executablePointer->execution_count() == 1u
-            && unavailablePointer->execution_count() == 0u;
-    }
-
-    bool test_command_action() {
-        std::cout
-            << "\n=== ActionExecutor: command and history ===\n";
-
-        Editor editor{};
-        editor.clear_dirty();
-
-        CommandDispatcher dispatcher{ editor };
-        HistoryStack history{};
-
-        ActionContext context{
-            editor,
-            dispatcher,
-            history
-        };
-
-        const SceneNodeId nodeId =
-            editor.scene().create_empty("Original Name");
-
-        SceneNode* node =
-            editor.scene().find_node(nodeId);
-
-        print_result(
-            node != nullptr,
-            "node de teste foi criado");
-
-        if (!node) {
+                "fixture necessaria para execucao");
             return false;
         }
 
@@ -702,109 +448,288 @@ namespace {
 
         const bool registered =
             registry.register_action(
-                std::make_unique<RenameNodeTestAction>(
-                    nodeId,
-                    "Renamed By Action"));
+                make_flip_face_action());
 
         print_result(
             registered,
-            "action baseada em command foi registrada");
+            "Flip Face action foi registrada");
 
         ActionExecutor executor{ registry };
 
         print_result(
             executor.can_execute(
-                context,
-                ActionId{ CommandActionId }),
-            "action baseada em command esta disponivel");
+                fixture.context,
+                ActionId{ FlipFaceActionId }),
+            "executor reconhece action disponivel");
 
-        const ActionResult result =
+        const glm::vec3 beforeNormal =
+            fixture.node->mesh().face(fixture.face).normal;
+
+        const ActionResult executionResult =
             executor.execute(
-                context,
-                ActionId{ CommandActionId });
+                fixture.context,
+                ActionId{ FlipFaceActionId });
 
         print_action_result(
-            "rename action result",
-            result);
+            "flip face execution",
+            executionResult);
+
+        const glm::vec3 afterNormal =
+            fixture.node->mesh().face(fixture.face).normal;
 
         print_result(
-            result.succeeded(),
-            "action baseada em command foi executada");
+            executionResult.succeeded(),
+            "Flip Face action foi executada");
 
         print_result(
-            node->metadata().name
-            == "Renamed By Action",
-            "action alterou o nome pelo command");
+            approximately_equal(
+                afterNormal,
+                -beforeNormal),
+            "normal da face foi invertida");
 
         print_result(
-            history.undo_size() == 1u,
+            fixture.node->mesh().is_valid(fixture.face),
+            "face continua valida apos flip");
+
+        print_result(
+            fixture.node->mesh().face_count() == 6u,
+            "flip nao altera quantidade de faces");
+
+        print_result(
+            fixture.history.undo_size() == 1u,
             "command da action entrou no historico");
 
         print_result(
-            history.can_undo(),
+            fixture.history.undo_name() == "Flip Face",
+            "historico preserva label da action");
+
+        print_result(
+            fixture.history.can_undo(),
             "undo ficou disponivel");
 
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Mesh),
+            "execucao marca Mesh como dirty");
+
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Render),
+            "execucao marca Render como dirty");
+
+        print_result(
+            has_flag(
+                fixture.editor.dirty_flags(),
+                EditorDirtyFlags::Picking),
+            "execucao marca Picking como dirty");
+
         const CommandResult undoResult =
-            history.undo(dispatcher);
+            fixture.history.undo(fixture.dispatcher);
 
         print_result(
             undoResult.success,
             "undo da action funcionou");
 
-        print_result(
-            node->metadata().name == "Original Name",
-            "undo restaurou o nome original");
+        const glm::vec3 undoNormal =
+            fixture.node->mesh().face(fixture.face).normal;
 
         print_result(
-            history.can_redo(),
+            approximately_equal(
+                undoNormal,
+                beforeNormal),
+            "undo restaurou a normal original");
+
+        print_result(
+            fixture.history.can_redo(),
             "redo ficou disponivel");
 
+        print_result(
+            fixture.history.redo_name() == "Flip Face",
+            "redo preserva label da action");
+
         const CommandResult redoResult =
-            history.redo(dispatcher);
+            fixture.history.redo(fixture.dispatcher);
 
         print_result(
             redoResult.success,
             "redo da action funcionou");
 
+        const glm::vec3 redoNormal =
+            fixture.node->mesh().face(fixture.face).normal;
+
         print_result(
-            node->metadata().name
-            == "Renamed By Action",
-            "redo reaplicou a action");
+            approximately_equal(
+                redoNormal,
+                afterNormal),
+            "redo restaurou o resultado do flip");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .active_mesh()
+            == fixture.nodeId,
+            "undo e redo preservam mesh ativo");
+
+        print_result(
+            fixture.editor.selection()
+            .mesh()
+            .faces()
+            .contains(fixture.face),
+            "undo e redo preservam selecao da face");
 
         return registered
-            && result.succeeded()
+            && executionResult.succeeded()
             && undoResult.success
             && redoResult.success
-            && node->metadata().name
-            == "Renamed By Action"
-            && history.undo_size() == 1u;
+            && approximately_equal(
+                redoNormal,
+                -fixture.originalNormal)
+            && fixture.history.undo_size() == 1u;
+    }
+
+    bool test_empty_operation_callback() {
+        std::cout
+            << "\n=== MeshOperationAction: empty callback ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build()) {
+            print_result(
+                false,
+                "fixture necessaria para callback vazio");
+            return false;
+        }
+
+        ActionRegistry registry{};
+
+        const bool registered =
+            registry.register_action(
+                make_empty_operation_action());
+
+        print_result(
+            registered,
+            "action com factory valida foi registrada");
+
+        ActionExecutor executor{ registry };
+
+        print_result(
+            executor.can_execute(
+                fixture.context,
+                ActionId{ EmptyOperationActionId }),
+            "action passa pela validacao de contexto");
+
+        const glm::vec3 normalBefore =
+            fixture.node->mesh().face(fixture.face).normal;
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                ActionId{ EmptyOperationActionId });
+
+        print_action_result(
+            "empty callback result",
+            result);
+
+        print_result(
+            result.failed(),
+            "callback vazio gera falha");
+
+        print_result(
+            fixture.history.empty(),
+            "callback vazio nao cria entrada no historico");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(fixture.face)
+                .normal,
+                normalBefore),
+            "callback vazio nao altera a malha");
+
+        return registered
+            && result.failed()
+            && fixture.history.empty();
+    }
+
+    bool test_executor_unavailable() {
+        std::cout
+            << "\n=== MeshOperationAction: unavailable ===\n";
+
+        MeshFixture fixture{};
+
+        if (!fixture.build()) {
+            print_result(
+                false,
+                "fixture necessaria para indisponibilidade");
+            return false;
+        }
+
+        ActionRegistry registry{};
+        registry.register_action(
+            make_flip_face_action());
+
+        ActionExecutor executor{ registry };
+
+        fixture.editor.set_mode(EditorMode::Object);
+
+        const ActionResult result =
+            executor.execute(
+                fixture.context,
+                ActionId{ FlipFaceActionId });
+
+        print_action_result(
+            "unavailable flip result",
+            result);
+
+        print_result(
+            result.is_unavailable(),
+            "executor retorna Unavailable fora de Mesh mode");
+
+        print_result(
+            fixture.history.empty(),
+            "action indisponivel nao entra no historico");
+
+        print_result(
+            approximately_equal(
+                fixture.node->mesh()
+                .face(fixture.face)
+                .normal,
+                fixture.originalNormal),
+            "action indisponivel nao altera a malha");
+
+        return result.is_unavailable()
+            && fixture.history.empty();
     }
 
 } // namespace
 
 int main() {
     std::cout
-        << "=== Locus3D Editor Action Registry and "
-        "Executor Smoke Test ===\n";
+        << "=== Locus3D Editor Mesh Operation Action "
+        "Smoke Test ===\n";
 
     bool passed = true;
 
-    passed = test_registration() && passed;
-    passed = test_queries_and_replacement() && passed;
-    passed = test_executor_basic() && passed;
-    passed = test_command_action() && passed;
+    passed = test_fixture() && passed;
+    passed = test_action_metadata() && passed;
+    passed = test_availability() && passed;
+    passed = test_execution_and_history() && passed;
+    passed = test_empty_operation_callback() && passed;
+    passed = test_executor_unavailable() && passed;
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All action registry and executor "
-            "smoke tests passed ===\n";
+            << "=== All mesh operation action smoke "
+            "tests passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== Action registry and executor "
-        "smoke test failed ===\n";
+        << "=== Mesh operation action smoke test "
+        "failed ===\n";
     return 1;
 }
