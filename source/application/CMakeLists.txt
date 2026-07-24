@@ -6,19 +6,24 @@ add_library(Locus3D::Application ALIAS locus3d_application)
 
 target_sources(locus3d_application
     PRIVATE
-        
+        "Application.h"
+        "ApplicationConfig.h"
+        "ApplicationError.h"
+        "ApplicationResult.h"
+        "runtime/ApplicationState.h"
+        "runtime/FrameContext.h"
+        "runtime/FrameClock.h"
+        "runtime/FrameClock.cpp"
 )
 
 target_include_directories(locus3d_application
     PUBLIC
         ${LOCUS3D_SOURCE_DIR}
-        ${GLM_DIR}/include
 )
 
-target_link_libraries(locus3d_application
+target_compile_features(locus3d_application
     PUBLIC
-        Locus3D::Editor
-        Locus3D::Graphics
+        cxx_std_17
 )
 
 target_compile_definitions(locus3d_application

@@ -59,19 +59,19 @@ Legend:
 
 ```txt
 source\application
-|   CMakeLists.txt [!]
-|   Application.h [!]
-|   ApplicationConfig.h [!]
-|   ApplicationError.h [!]
-|   ApplicationResult.h [!]
+|   CMakeLists.txt
+|   Application.h
+|   ApplicationConfig.h
+|   ApplicationError.h
+|   ApplicationResult.h
 |
 +---runtime [!]
 |       ApplicationRuntime.h [!]
 |       ApplicationRuntime.cpp [!]
-|       ApplicationState.h [!]
-|       FrameContext.h [!]
-|       FrameClock.h [!]
-|       FrameClock.cpp [!]
+|       ApplicationState.h
+|       FrameContext.h
+|       FrameClock.h
+|       FrameClock.cpp
 |
 +---window [!]
 |       ApplicationWindow.h [!]
@@ -104,17 +104,8 @@ source\application
 
 ## Planned Or Incomplete Application Files
 
-- [!] `CMakeLists.txt`
-- [!] `Application.h`
-- [!] `ApplicationConfig.h`
-- [!] `ApplicationError.h`
-- [!] `ApplicationResult.h`
 - [!] `runtime/ApplicationRuntime.h`
 - [!] `runtime/ApplicationRuntime.cpp`
-- [!] `runtime/ApplicationState.h`
-- [!] `runtime/FrameContext.h`
-- [!] `runtime/FrameClock.h`
-- [!] `runtime/FrameClock.cpp`
 - [!] `window/ApplicationWindow.h`
 - [!] `window/ApplicationWindow.cpp`
 - [!] `window/WindowState.h`

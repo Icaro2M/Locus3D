@@ -6,6 +6,7 @@ add_executable(Locus3D)
 add_subdirectory(kernel)
 add_subdirectory(graphics)
 add_subdirectory(editor)
+add_subdirectory(application)
 
 target_sources(Locus3D
     PRIVATE
@@ -32,6 +33,7 @@ target_include_directories(Locus3D
 
 target_link_libraries(Locus3D
     PRIVATE
+        Locus3D::Application
         Locus3D::Graphics
         Locus3D::Geometry
         Locus3D::Editor

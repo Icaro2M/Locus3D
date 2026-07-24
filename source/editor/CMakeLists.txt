@@ -248,6 +248,7 @@ target_include_directories(locus3d_editor
 target_link_libraries(locus3d_editor
     PUBLIC
         Locus3D::Geometry
+        Locus3D::Graphics
 )
 
 target_compile_definitions(locus3d_editor
