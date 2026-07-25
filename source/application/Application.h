@@ -13,6 +13,8 @@
 #include "application/ApplicationConfig.h"
 #include "application/ApplicationError.h"
 #include "application/ApplicationResult.h"
+#include "application/runtime/ApplicationRuntime.h"
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
+#include "application/window/ApplicationWindow.h"

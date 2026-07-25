@@ -1,0 +1,121 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Icaro2M
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#pragma once
+
+#include "application/ApplicationConfig.h"
+#include "application/ApplicationResult.h"
+#include "application/runtime/ApplicationState.h"
+#include "application/runtime/FrameClock.h"
+#include "application/runtime/FrameContext.h"
+#include "application/window/ApplicationWindow.h"
+
+namespace locus::application {
+
+    /**
+     * @brief Coordinates application initialization, frames, and shutdown.
+     */
+    class ApplicationRuntime {
+    public:
+        /**
+         * @brief Creates an uninitialized application runtime.
+         */
+        ApplicationRuntime() = default;
+
+        /**
+         * @brief Shuts down runtime-owned resources.
+         */
+        ~ApplicationRuntime();
+
+        ApplicationRuntime(const ApplicationRuntime&) = delete;
+        ApplicationRuntime& operator=(const ApplicationRuntime&) = delete;
+        ApplicationRuntime(ApplicationRuntime&&) = delete;
+        ApplicationRuntime& operator=(ApplicationRuntime&&) = delete;
+
+        /**
+         * @brief Initializes the application window and frame clock.
+         *
+         * @param config Product-level runtime configuration.
+         * @return Success or an initialization error.
+         */
+        [[nodiscard]] ApplicationResult<void> initialize(
+            const ApplicationConfig& config = {});
+
+        /**
+         * @brief Runs frames until closure or quit is requested.
+         *
+         * The runtime shuts down its owned resources before returning.
+         *
+         * @return Process exit code or a runtime-state error.
+         */
+        [[nodiscard]] ApplicationResult<int> run();
+
+        /**
+         * @brief Executes one main-loop iteration.
+         *
+         * This method processes events, advances the frame clock, updates the
+         * global frame index, and presents the window.
+         *
+         * @return Context for the completed frame or a runtime-state error.
+         */
+        [[nodiscard]] ApplicationResult<FrameContext> run_frame();
+
+        /**
+         * @brief Requests an orderly exit from the main loop.
+         *
+         * @param exitCode Process exit code returned by run().
+         */
+        void request_quit(int exitCode = 0) noexcept;
+
+        /**
+         * @brief Releases runtime-owned resources.
+         *
+         * Calling this method more than once is safe.
+         */
+        void shutdown();
+
+        /**
+         * @brief Checks whether the runtime is ready to process frames.
+         *
+         * @return True after successful initialization and before shutdown.
+         */
+        [[nodiscard]] bool initialized() const noexcept;
+
+        /**
+         * @brief Returns the active product configuration.
+         *
+         * @return Read-only configuration reference.
+         */
+        [[nodiscard]] const ApplicationConfig& configuration() const noexcept;
+
+        /**
+         * @brief Returns process-level runtime state.
+         *
+         * @return Read-only runtime state reference.
+         */
+        [[nodiscard]] const ApplicationState& state() const noexcept;
+
+        /**
+         * @brief Returns the runtime-owned application window.
+         *
+         * @return Mutable application window reference.
+         */
+        [[nodiscard]] ApplicationWindow& window() noexcept;
+
+        /**
+         * @brief Returns the runtime-owned application window.
+         *
+         * @return Read-only application window reference.
+         */
+        [[nodiscard]] const ApplicationWindow& window() const noexcept;
+
+    private:
+        ApplicationConfig configuration_{};
+        ApplicationState state_{};
+        FrameClock frameClock_{};
+        ApplicationWindow window_{};
+    };
+
+} // namespace locus::application

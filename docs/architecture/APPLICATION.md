@@ -65,17 +65,17 @@ source\application
 |   ApplicationError.h
 |   ApplicationResult.h
 |
-+---runtime [!]
-|       ApplicationRuntime.h [!]
-|       ApplicationRuntime.cpp [!]
++---runtime
+|       ApplicationRuntime.h
+|       ApplicationRuntime.cpp
 |       ApplicationState.h
 |       FrameContext.h
 |       FrameClock.h
 |       FrameClock.cpp
 |
 +---window [!]
-|       ApplicationWindow.h [!]
-|       ApplicationWindow.cpp [!]
+|       ApplicationWindow.h
+|       ApplicationWindow.cpp
 |       WindowState.h [!]
 |       WindowAction.h [!]
 |       WindowPlacement.h [!]
@@ -104,10 +104,6 @@ source\application
 
 ## Planned Or Incomplete Application Files
 
-- [!] `runtime/ApplicationRuntime.h`
-- [!] `runtime/ApplicationRuntime.cpp`
-- [!] `window/ApplicationWindow.h`
-- [!] `window/ApplicationWindow.cpp`
 - [!] `window/WindowState.h`
 - [!] `window/WindowAction.h`
 - [!] `window/WindowPlacement.h`

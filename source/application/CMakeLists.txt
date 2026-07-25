@@ -10,10 +10,14 @@ target_sources(locus3d_application
         "ApplicationConfig.h"
         "ApplicationError.h"
         "ApplicationResult.h"
+        "runtime/ApplicationRuntime.h"
+        "runtime/ApplicationRuntime.cpp"
         "runtime/ApplicationState.h"
         "runtime/FrameContext.h"
         "runtime/FrameClock.h"
         "runtime/FrameClock.cpp"
+        "window/ApplicationWindow.h"
+        "window/ApplicationWindow.cpp"
 )
 
 target_include_directories(locus3d_application
@@ -24,6 +28,11 @@ target_include_directories(locus3d_application
 target_compile_features(locus3d_application
     PUBLIC
         cxx_std_17
+)
+
+target_link_libraries(locus3d_application
+    PUBLIC
+        Locus3D::Graphics
 )
 
 target_compile_definitions(locus3d_application
