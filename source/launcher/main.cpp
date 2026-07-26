@@ -25,148 +25,145 @@ namespace {
 int main()
 {
     std::cout
-        << "=== Locus3D ApplicationRuntime Smoke Test ===\n";
+        << "=== Locus3D DocumentManager Headless Smoke Test ===\n";
 
     bool passed = true;
-    ApplicationRuntime runtime{};
+    DocumentManager manager{};
 
-    const bool startsUninitialized =
-        !runtime.initialized()
-        && runtime.state().phase
-            == ApplicationPhase::Uninitialized
-        && !runtime.window().initialized();
+    const bool startsEmpty =
+        manager.empty()
+        && manager.document_count() == 0
+        && manager.active_document() == nullptr
+        && manager.find(DocumentId{}) == nullptr;
     print_result(
-        startsUninitialized,
-        "runtime and window start uninitialized");
-    passed = startsUninitialized && passed;
+        startsEmpty,
+        "manager starts empty without an active document");
+    passed = startsEmpty && passed;
 
-    ApplicationConfig config{};
-    config.title = "Locus3D ApplicationRuntime Smoke Test";
-    config.initialWidth = 960;
-    config.initialHeight = 540;
-    config.decorated = true;
-    config.startMaximized = false;
-    config.enableVSync = true;
-    config.maximumFrameDeltaSeconds = 0.1;
+    DocumentSession& first = manager.create_document();
+    const DocumentId firstId = first.id();
+    const bool firstCreationIsValid =
+        firstId.is_valid()
+        && manager.document_count() == 1
+        && manager.find(firstId) == &first
+        && manager.active_document() == &first;
+    print_result(
+        firstCreationIsValid,
+        "first document receives an ID and becomes active");
+    passed = firstCreationIsValid && passed;
 
-    const ApplicationResult<void> initializeResult =
-        runtime.initialize(config);
-    const bool initialized =
-        initializeResult.ok()
-        && runtime.initialized()
-        && runtime.window().initialized()
-        && runtime.state().phase == ApplicationPhase::Running;
-    print_result(
-        initialized,
-        "initialize creates the application window and starts the runtime");
-    passed = initialized && passed;
+    DocumentSession& second = manager.create_document();
+    const DocumentId secondId = second.id();
+    DocumentSession& third = manager.create_document();
+    const DocumentId thirdId = third.id();
 
-    if (!initializeResult) {
-        std::cerr
-            << "Initialization error: "
-            << initializeResult.error().message
-            << '\n';
-        runtime.shutdown();
-        return 1;
-    }
+    const bool multipleDocumentsAreOwned =
+        manager.document_count() == 3
+        && firstId != secondId
+        && firstId != thirdId
+        && secondId != thirdId
+        && manager.find(firstId) == &first
+        && manager.find(secondId) == &second
+        && manager.find(thirdId) == &third
+        && manager.active_document() == &third;
+    print_result(
+        multipleDocumentsAreOwned,
+        "multiple sessions receive unique IDs and stable ownership");
+    passed = multipleDocumentsAreOwned && passed;
 
-    const bool configurationIsPreserved =
-        runtime.configuration().title == config.title
-        && runtime.configuration().initialWidth
-            == config.initialWidth
-        && runtime.configuration().initialHeight
-            == config.initialHeight
-        && runtime.window().configuration().enableVSync
-            == config.enableVSync;
+    first.editor().scene().create_empty("First document node");
+    const bool editorsRemainIsolated =
+        first.editor().scene().tree().size() == 1
+        && second.editor().scene().tree().size() == 0
+        && third.editor().scene().tree().size() == 0;
     print_result(
-        configurationIsPreserved,
-        "runtime forwards and preserves application configuration");
-    passed = configurationIsPreserved && passed;
+        editorsRemainIsolated,
+        "manager-owned sessions retain isolated editor state");
+    passed = editorsRemainIsolated && passed;
 
-    ApplicationResult<FrameContext> firstFrame =
-        runtime.run_frame();
-    ApplicationResult<FrameContext> secondFrame =
-        runtime.run_frame();
-    ApplicationResult<FrameContext> thirdFrame =
-        runtime.run_frame();
+    const DocumentManager& constManager = manager;
+    const bool constLookupWorks =
+        constManager.find(firstId) == &first
+        && constManager.active_document() == &third;
+    print_result(
+        constLookupWorks,
+        "const lookup and active-document access work");
+    passed = constLookupWorks && passed;
 
-    const bool framesExecuted =
-        firstFrame.ok()
-        && secondFrame.ok()
-        && thirdFrame.ok();
-    const bool frameClockAdvanced =
-        framesExecuted
-        && firstFrame.value().frameIndex == 0
-        && firstFrame.value().firstFrame
-        && secondFrame.value().frameIndex == 1
-        && !secondFrame.value().firstFrame
-        && thirdFrame.value().frameIndex == 2
-        && runtime.state().frameIndex == 3;
-    const bool deltasAreBounded =
-        framesExecuted
-        && firstFrame.value().deltaSeconds <= 0.1
-        && secondFrame.value().deltaSeconds <= 0.1
-        && thirdFrame.value().deltaSeconds <= 0.1;
+    const bool activationWorks =
+        manager.set_active_document(firstId)
+        && manager.active_document() == &first
+        && !manager.set_active_document(DocumentId{ 9999 })
+        && !manager.set_active_document(DocumentId{})
+        && manager.active_document() == &first;
     print_result(
-        framesExecuted,
-        "main-loop iterations process events and present frames");
-    print_result(
-        frameClockAdvanced,
-        "FrameClock advances frame contexts and runtime state");
-    print_result(
-        deltasAreBounded,
-        "runtime applies the configured maximum frame delta");
-    passed =
-        framesExecuted
-        && frameClockAdvanced
-        && deltasAreBounded
-        && passed;
+        activationWorks,
+        "only owned valid documents can become active");
+    passed = activationWorks && passed;
 
-    runtime.request_quit(0);
-    const bool quitWasRequested =
-        runtime.state().quitRequested
-        && runtime.window().should_close();
+    const bool nonActiveCloseWorks =
+        manager.close_document(secondId)
+        && manager.document_count() == 2
+        && manager.find(secondId) == nullptr
+        && manager.active_document() == &first;
     print_result(
-        quitWasRequested,
-        "quit request reaches runtime and window state");
-    passed = quitWasRequested && passed;
+        nonActiveCloseWorks,
+        "closing an inactive document preserves the active document");
+    passed = nonActiveCloseWorks && passed;
 
-    const ApplicationResult<int> runResult = runtime.run();
-    const bool runCompleted =
-        runResult.ok()
-        && runResult.value() == 0;
-    const bool shutdownCompleted =
-        !runtime.initialized()
-        && !runtime.window().initialized()
-        && runtime.state().phase == ApplicationPhase::Stopped
-        && runtime.state().frameIndex == 3;
+    const bool activeCloseSelectsReplacement =
+        manager.close_document(firstId)
+        && manager.document_count() == 1
+        && manager.find(firstId) == nullptr
+        && manager.active_document() == &third;
     print_result(
-        runCompleted,
-        "run exits with the configured process code");
-    print_result(
-        shutdownCompleted,
-        "run shuts down the window and preserves final state");
-    passed = runCompleted && shutdownCompleted && passed;
+        activeCloseSelectsReplacement,
+        "closing the active document selects a valid replacement");
+    passed = activeCloseSelectsReplacement && passed;
 
-    runtime.shutdown();
-    runtime.shutdown();
-    const bool shutdownIsIdempotent =
-        runtime.state().phase == ApplicationPhase::Stopped
-        && !runtime.window().initialized();
+    DocumentSession& fourth = manager.create_document();
+    const DocumentId fourthId = fourth.id();
+    fourth.mark_dirty();
+
+    const bool idsAreNotReused =
+        fourthId != firstId
+        && fourthId != secondId
+        && fourthId != thirdId;
+    const bool dirtyCloseHasNoPolicy =
+        manager.close_document(fourthId)
+        && manager.active_document() == &third;
     print_result(
-        shutdownIsIdempotent,
-        "runtime shutdown is idempotent");
-    passed = shutdownIsIdempotent && passed;
+        idsAreNotReused,
+        "new sessions continue the monotonic ID sequence");
+    print_result(
+        dirtyCloseHasNoPolicy,
+        "manager closes dirty sessions without UI policy");
+    passed = idsAreNotReused && dirtyCloseHasNoPolicy && passed;
+
+    const bool finalCloseWorks =
+        manager.close_document(thirdId)
+        && manager.empty()
+        && manager.document_count() == 0
+        && manager.active_document() == nullptr
+        && !manager.close_document(thirdId);
+    print_result(
+        finalCloseWorks,
+        "closing the final document clears active state");
+    passed = finalCloseWorks && passed;
+
+    print_result(
+        true,
+        "manager and sessions run without a window or graphics context");
 
     std::cout << '\n';
 
     if (passed) {
         std::cout
-            << "=== All ApplicationRuntime smoke tests passed ===\n";
+            << "=== All DocumentManager headless smoke tests passed ===\n";
         return 0;
     }
 
     std::cout
-        << "=== ApplicationRuntime smoke test failed ===\n";
+        << "=== DocumentManager headless smoke test failed ===\n";
     return 1;
 }

@@ -80,12 +80,12 @@ source\application
 |       WindowAction.h [!]
 |       WindowPlacement.h [!]
 |
-+---document [!]
-|       DocumentId.h [!]
-|       DocumentSession.h [!]
-|       DocumentSession.cpp [!]
-|       DocumentManager.h [!]
-|       DocumentManager.cpp [!]
++---document
+|       DocumentId.h
+|       DocumentSession.h
+|       DocumentSession.cpp
+|       DocumentManager.h
+|       DocumentManager.cpp
 |
 +---viewport [!]
 |       EditorViewport.h [!]
@@ -107,11 +107,6 @@ source\application
 - [!] `window/WindowState.h`
 - [!] `window/WindowAction.h`
 - [!] `window/WindowPlacement.h`
-- [!] `document/DocumentId.h`
-- [!] `document/DocumentSession.h`
-- [!] `document/DocumentSession.cpp`
-- [!] `document/DocumentManager.h`
-- [!] `document/DocumentManager.cpp`
 - [!] `viewport/EditorViewport.h`
 - [!] `viewport/EditorViewport.cpp`
 - [!] `input/InputEvent.h`

@@ -10,6 +10,11 @@ target_sources(locus3d_application
         "ApplicationConfig.h"
         "ApplicationError.h"
         "ApplicationResult.h"
+        "document/DocumentId.h"
+        "document/DocumentManager.h"
+        "document/DocumentManager.cpp"
+        "document/DocumentSession.h"
+        "document/DocumentSession.cpp"
         "runtime/ApplicationRuntime.h"
         "runtime/ApplicationRuntime.cpp"
         "runtime/ApplicationState.h"
@@ -32,6 +37,7 @@ target_compile_features(locus3d_application
 
 target_link_libraries(locus3d_application
     PUBLIC
+        Locus3D::Editor
         Locus3D::Graphics
 )
 
