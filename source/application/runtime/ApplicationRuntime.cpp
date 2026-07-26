@@ -39,6 +39,21 @@ namespace locus::application {
             return windowResult.error();
         }
 
+        (void)documents_.create_document();
+
+        ApplicationResult<void> viewportResult =
+            editorViewport_.initialize(
+                window_.framebuffer_width(),
+                window_.framebuffer_height());
+
+        if (!viewportResult) {
+            documents_ = DocumentManager{};
+            window_.shutdown();
+            state_.phase = ApplicationPhase::Failed;
+            state_.exitCode = 1;
+            return viewportResult.error();
+        }
+
         frameClock_.reset();
         state_.phase = ApplicationPhase::Running;
         return {};
@@ -89,6 +104,25 @@ namespace locus::application {
         const FrameContext context = frameClock_.tick();
         state_.frameIndex = frameClock_.next_frame_index();
 
+        DocumentSession* activeDocument = documents_.active_document();
+
+        if (!activeDocument) {
+            return ApplicationError::make(
+                ApplicationErrorCode::InternalFailure,
+                "ApplicationRuntime has no active document to render.");
+        }
+
+        editorViewport_.resize(
+            window_.framebuffer_width(),
+            window_.framebuffer_height());
+
+        ApplicationResult<void> renderResult =
+            editorViewport_.render(*activeDocument);
+
+        if (!renderResult) {
+            return renderResult.error();
+        }
+
         window_.present();
 
         if (window_.should_close()) {
@@ -111,7 +145,12 @@ namespace locus::application {
 
     void ApplicationRuntime::shutdown()
     {
-        if (!window_.initialized()) {
+        const bool hasOwnedResources =
+            editorViewport_.initialized()
+            || !documents_.empty()
+            || window_.initialized();
+
+        if (!hasOwnedResources) {
             if (state_.phase == ApplicationPhase::Initializing
                 || state_.phase == ApplicationPhase::Running
                 || state_.phase == ApplicationPhase::Suspended
@@ -124,6 +163,8 @@ namespace locus::application {
         }
 
         state_.phase = ApplicationPhase::Stopping;
+        editorViewport_.shutdown();
+        documents_ = DocumentManager{};
         window_.shutdown();
         state_.phase = ApplicationPhase::Stopped;
     }
@@ -131,6 +172,7 @@ namespace locus::application {
     bool ApplicationRuntime::initialized() const noexcept
     {
         return window_.initialized()
+            && editorViewport_.initialized()
             && (state_.phase == ApplicationPhase::Running
                 || state_.phase == ApplicationPhase::Suspended);
     }
@@ -154,6 +196,27 @@ namespace locus::application {
     const ApplicationWindow& ApplicationRuntime::window() const noexcept
     {
         return window_;
+    }
+
+    DocumentManager& ApplicationRuntime::documents() noexcept
+    {
+        return documents_;
+    }
+
+    const DocumentManager& ApplicationRuntime::documents() const noexcept
+    {
+        return documents_;
+    }
+
+    EditorViewport& ApplicationRuntime::editor_viewport() noexcept
+    {
+        return editorViewport_;
+    }
+
+    const EditorViewport&
+    ApplicationRuntime::editor_viewport() const noexcept
+    {
+        return editorViewport_;
     }
 
 } // namespace locus::application

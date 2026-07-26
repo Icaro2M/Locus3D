@@ -7,9 +7,11 @@
 
 #include "application/ApplicationConfig.h"
 #include "application/ApplicationResult.h"
+#include "application/document/DocumentManager.h"
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
+#include "application/viewport/EditorViewport.h"
 #include "application/window/ApplicationWindow.h"
 
 namespace locus::application {
@@ -35,7 +37,7 @@ namespace locus::application {
         ApplicationRuntime& operator=(ApplicationRuntime&&) = delete;
 
         /**
-         * @brief Initializes the application window and frame clock.
+         * @brief Initializes the window, default document, viewport, and clock.
          *
          * @param config Product-level runtime configuration.
          * @return Success or an initialization error.
@@ -55,8 +57,8 @@ namespace locus::application {
         /**
          * @brief Executes one main-loop iteration.
          *
-         * This method processes events, advances the frame clock, updates the
-         * global frame index, and presents the window.
+         * This method processes events, advances the frame clock, renders the
+         * active document through the editor viewport, and presents the window.
          *
          * @return Context for the completed frame or a runtime-state error.
          */
@@ -111,11 +113,42 @@ namespace locus::application {
          */
         [[nodiscard]] const ApplicationWindow& window() const noexcept;
 
+        /**
+         * @brief Returns the runtime-owned document manager.
+         *
+         * @return Mutable document manager reference.
+         */
+        [[nodiscard]] DocumentManager& documents() noexcept;
+
+        /**
+         * @brief Returns the runtime-owned document manager.
+         *
+         * @return Read-only document manager reference.
+         */
+        [[nodiscard]] const DocumentManager& documents() const noexcept;
+
+        /**
+         * @brief Returns the runtime-owned primary editor viewport.
+         *
+         * @return Mutable editor viewport reference.
+         */
+        [[nodiscard]] EditorViewport& editor_viewport() noexcept;
+
+        /**
+         * @brief Returns the runtime-owned primary editor viewport.
+         *
+         * @return Read-only editor viewport reference.
+         */
+        [[nodiscard]] const EditorViewport&
+            editor_viewport() const noexcept;
+
     private:
         ApplicationConfig configuration_{};
         ApplicationState state_{};
         FrameClock frameClock_{};
         ApplicationWindow window_{};
+        DocumentManager documents_{};
+        EditorViewport editorViewport_{};
     };
 
 } // namespace locus::application
