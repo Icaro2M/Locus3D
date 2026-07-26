@@ -21,6 +21,8 @@ target_sources(locus3d_application
         "runtime/FrameContext.h"
         "runtime/FrameClock.h"
         "runtime/FrameClock.cpp"
+        "viewport/EditorViewport.h"
+        "viewport/EditorViewport.cpp"
         "window/ApplicationWindow.h"
         "window/ApplicationWindow.cpp"
 )

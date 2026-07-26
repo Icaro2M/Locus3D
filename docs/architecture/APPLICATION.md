@@ -87,9 +87,9 @@ source\application
 |       DocumentManager.h
 |       DocumentManager.cpp
 |
-+---viewport [!]
-|       EditorViewport.h [!]
-|       EditorViewport.cpp [!]
++---viewport
+|       EditorViewport.h
+|       EditorViewport.cpp
 |
 \---input [!]
         InputEvent.h [!]
@@ -107,8 +107,6 @@ source\application
 - [!] `window/WindowState.h`
 - [!] `window/WindowAction.h`
 - [!] `window/WindowPlacement.h`
-- [!] `viewport/EditorViewport.h`
-- [!] `viewport/EditorViewport.cpp`
 - [!] `input/InputEvent.h`
 - [!] `input/InputState.h`
 - [!] `input/InputState.cpp`

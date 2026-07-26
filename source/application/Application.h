@@ -20,4 +20,5 @@
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
+#include "application/viewport/EditorViewport.h"
 #include "application/window/ApplicationWindow.h"
