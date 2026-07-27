@@ -6,6 +6,7 @@
 #include "editor/sync/EditorSync.h"
 
 #include "editor/Editor.h"
+#include "editor/render/PickingRenderAdapter.h"
 
 namespace locus::editor {
 
@@ -24,6 +25,16 @@ namespace locus::editor {
         return renderSceneSync_.render_scene();
     }
 
+    PickingSync& EditorSync::picking_sync()
+    {
+        return pickingSync_;
+    }
+
+    const PickingSync& EditorSync::picking_sync() const
+    {
+        return pickingSync_;
+    }
+
     const EditorSyncResult& EditorSync::last_result() const
     {
         return lastResult_;
@@ -32,6 +43,7 @@ namespace locus::editor {
     void EditorSync::clear()
     {
         renderSceneSync_.clear();
+        pickingSync_.clear();
 
         lastResult_ = {};
         lastResult_.message = "Editor sync state cleared.";
@@ -48,6 +60,14 @@ namespace locus::editor {
 
         lastResult_.renderSceneSynced = rebuilt;
         lastResult_.renderSceneResult = renderSceneSync_.last_result();
+
+        if (rebuilt) {
+            const Editor& readOnlyEditor = editor;
+            (void)pickingSync_.sync(readOnlyEditor.scene());
+            PickingRenderAdapter::apply_to_scene(
+                renderSceneSync_.render_scene(),
+                pickingSync_);
+        }
 
         if (rebuilt && options.clearDirtyFlagsAfterSync) {
             editor.clear_dirty(options.renderCleanFlags);
@@ -76,7 +96,6 @@ namespace locus::editor {
                 uploader,
                 options.renderSceneOptions
             );
-
         if (!result) {
             lastResult_.renderSceneSynced = false;
             lastResult_.renderSceneResult = renderSceneSync_.last_result();
@@ -88,6 +107,14 @@ namespace locus::editor {
 
         lastResult_.renderSceneSynced = rebuilt;
         lastResult_.renderSceneResult = renderSceneSync_.last_result();
+
+        if (rebuilt) {
+            const Editor& readOnlyEditor = editor;
+            (void)pickingSync_.sync(readOnlyEditor.scene());
+            PickingRenderAdapter::apply_to_scene(
+                renderSceneSync_.render_scene(),
+                pickingSync_);
+        }
 
         if (rebuilt && options.clearDirtyFlagsAfterSync) {
             editor.clear_dirty(options.renderCleanFlags);

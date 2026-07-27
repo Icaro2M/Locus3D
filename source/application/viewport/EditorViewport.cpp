@@ -7,11 +7,14 @@
 
 #include "application/document/DocumentSession.h"
 #include "editor/EditorTypes.h"
+#include "editor/Editor.h"
+#include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/scene/RenderObject.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
@@ -104,6 +107,48 @@ namespace locus::application {
 
         documentShader_ = documentShaderResult.value();
 
+        auto pickingShaderResult = shaderManager_.load(
+            "picking/object",
+            "picking/picking_vert.glsl",
+            "picking/picking_frag.glsl");
+
+        if (!pickingShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the viewport picking shader",
+                pickingShaderResult.error());
+        }
+
+        const auto pickingRendererResult =
+            pickingRenderer_.create(shaderManager_);
+
+        if (!pickingRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the viewport picking renderer",
+                pickingRendererResult.error());
+        }
+
+        framebufferWidth_ = framebufferWidth;
+        framebufferHeight_ = framebufferHeight;
+
+        if (framebufferWidth_ > 0 && framebufferHeight_ > 0) {
+            const auto pickingBufferResult =
+                pickingBuffer_.create(
+                    framebufferWidth_,
+                    framebufferHeight_);
+
+            if (!pickingBufferResult) {
+                shutdown();
+                return graphics_failure(
+                    ApplicationErrorCode::InitializationFailed,
+                    "Failed to create the viewport picking buffer",
+                    pickingBufferResult.error());
+            }
+        }
+
         const auto gridResult = gridRenderer_.create(
             meshUploader_,
             shaderManager_,
@@ -137,8 +182,17 @@ namespace locus::application {
     void EditorViewport::shutdown()
     {
         renderQueue_.clear();
+        pickingBuffer_.destroy();
+        pickingRenderer_ = graphics::PickingRenderer{};
         activeDocumentId_ = {};
         documentShader_ = nullptr;
+        lastPickingResult_ = {};
+        framebufferWidth_ = 0;
+        framebufferHeight_ = 0;
+        lastPickingX_ = -1;
+        lastPickingY_ = -1;
+        pickingPassDirty_ = true;
+        pickingQueryValid_ = false;
 
         axisRenderer_.destroy();
         gridRenderer_.destroy();
@@ -157,19 +211,35 @@ namespace locus::application {
         std::int32_t framebufferWidth,
         std::int32_t framebufferHeight)
     {
+        if (framebufferWidth_ != framebufferWidth
+            || framebufferHeight_ != framebufferHeight) {
+            framebufferWidth_ = framebufferWidth;
+            framebufferHeight_ = framebufferHeight;
+            invalidate_picking();
+        }
+
         viewport_.resize(framebufferWidth, framebufferHeight);
     }
 
     void EditorViewport::orbit_camera(double deltaX, double deltaY)
     {
+        if (deltaX == 0.0 && deltaY == 0.0) {
+            return;
+        }
+
         constexpr float OrbitRadiansPerPixel = 0.005f;
         orbitRig_.orbit(
             static_cast<float>(-deltaX) * OrbitRadiansPerPixel,
             static_cast<float>(-deltaY) * OrbitRadiansPerPixel);
+        invalidate_picking();
     }
 
     void EditorViewport::pan_camera(double deltaX, double deltaY)
     {
+        if (deltaX == 0.0 && deltaY == 0.0) {
+            return;
+        }
+
         constexpr float PanDistancePerPixel = 0.0015f;
         const float scale =
             orbitRig_.distance() * PanDistancePerPixel;
@@ -177,6 +247,7 @@ namespace locus::application {
         orbitRig_.pan(
             static_cast<float>(-deltaX) * scale,
             static_cast<float>(deltaY) * scale);
+        invalidate_picking();
     }
 
     void EditorViewport::zoom_camera(double scrollDelta)
@@ -193,6 +264,7 @@ namespace locus::application {
 
         orbitRig_.zoom(
             static_cast<float>(-scrollDelta) * step);
+        invalidate_picking();
     }
 
     ApplicationResult<void> EditorViewport::render(
@@ -209,10 +281,18 @@ namespace locus::application {
         syncOptions.renderSceneOptions.sceneOptions.meshOptions.shader =
             documentShader_;
 
-        if (activeDocumentId_ != document.id()) {
+        const bool documentChanged =
+            activeDocumentId_ != document.id();
+
+        if (documentChanged) {
+            meshCache_.clear();
             document.editor().mark_dirty(editor::EditorDirtyFlags::Render);
             activeDocumentId_ = document.id();
+            invalidate_picking();
         }
+
+        const editor::EditorDirtyFlags dirtyFlags =
+            document.editor().dirty_flags();
 
         meshCache_.begin_frame();
 
@@ -228,6 +308,19 @@ namespace locus::application {
                 ApplicationErrorCode::RuntimeFailure,
                 "Failed to synchronize the document render scene",
                 syncResult.error());
+        }
+
+        const editor::EditorDirtyFlags pickingInvalidationFlags =
+            editor::EditorDirtyFlags::Scene |
+            editor::EditorDirtyFlags::Mesh |
+            editor::EditorDirtyFlags::Render |
+            editor::EditorDirtyFlags::Picking;
+
+        if (document.editor_sync().last_result().renderSceneSynced
+            && editor::has_flag(
+                dirtyFlags,
+                pickingInvalidationFlags)) {
+            invalidate_picking();
         }
 
         orbitRig_.apply(viewport_.camera());
@@ -256,8 +349,148 @@ namespace locus::application {
         return {};
     }
 
+    ApplicationResult<ViewportPickingResult>
+    EditorViewport::update_hover(
+        DocumentSession& document,
+        const InputVector2& cursor,
+        std::int32_t logicalWidth,
+        std::int32_t logicalHeight,
+        bool focused,
+        bool cameraCaptured)
+    {
+        if (!initialized_) {
+            return ApplicationError::make(
+                ApplicationErrorCode::InvalidState,
+                "EditorViewport must be initialized before picking.");
+        }
+
+        if (!focused) {
+            clear_hover(document, ViewportPickingStatus::FocusLost);
+            return lastPickingResult_;
+        }
+
+        if (cameraCaptured) {
+            clear_hover(
+                document,
+                ViewportPickingStatus::CameraCapture);
+            return lastPickingResult_;
+        }
+
+        if (framebufferWidth_ <= 0 || framebufferHeight_ <= 0) {
+            clear_hover(
+                document,
+                ViewportPickingStatus::EmptyFramebuffer);
+            return lastPickingResult_;
+        }
+
+        if (logicalWidth <= 0 || logicalHeight <= 0
+            || cursor.x < 0.0 || cursor.y < 0.0
+            || cursor.x >= static_cast<double>(logicalWidth)
+            || cursor.y >= static_cast<double>(logicalHeight)) {
+            clear_hover(
+                document,
+                ViewportPickingStatus::OutsideViewport);
+            return lastPickingResult_;
+        }
+
+        if (activeDocumentId_ != document.id()) {
+            clear_hover(
+                document,
+                ViewportPickingStatus::Unavailable);
+            return lastPickingResult_;
+        }
+
+        const double framebufferScaleX =
+            static_cast<double>(framebufferWidth_)
+            / static_cast<double>(logicalWidth);
+        const double framebufferScaleY =
+            static_cast<double>(framebufferHeight_)
+            / static_cast<double>(logicalHeight);
+
+        const std::int32_t globalX = static_cast<std::int32_t>(
+            std::floor(cursor.x * framebufferScaleX));
+        const std::int32_t topY = static_cast<std::int32_t>(
+            std::floor(cursor.y * framebufferScaleY));
+        const std::int32_t globalY =
+            framebufferHeight_ - 1 - topY;
+
+        const graphics::ViewportRect& rect = viewport_.state().rect;
+        if (globalX < rect.x || globalY < rect.y
+            || globalX >= rect.x + rect.width
+            || globalY >= rect.y + rect.height) {
+            clear_hover(
+                document,
+                ViewportPickingStatus::OutsideViewport);
+            return lastPickingResult_;
+        }
+
+        const std::int32_t localX = globalX - rect.x;
+        const std::int32_t localY = globalY - rect.y;
+
+        const auto bufferResult = ensure_picking_buffer();
+        if (!bufferResult) {
+            return bufferResult.error();
+        }
+
+        bool bufferRendered = false;
+        if (pickingPassDirty_) {
+            const graphics::Camera& camera = viewport_.camera();
+            pickingRenderer_.set_view_matrix(camera.view_matrix());
+            pickingRenderer_.set_projection_matrix(
+                camera.projection_matrix());
+            pickingRenderer_.render(
+                pickingBuffer_,
+                document.editor_sync().render_scene());
+
+            pickingPassDirty_ = false;
+            pickingQueryValid_ = false;
+            bufferRendered = true;
+        }
+
+        if (pickingQueryValid_
+            && localX == lastPickingX_
+            && localY == lastPickingY_) {
+            ViewportPickingResult cached = lastPickingResult_;
+            cached.bufferRendered = bufferRendered;
+            cached.pixelRead = false;
+            return cached;
+        }
+
+        const graphics::PickingId pickingId =
+            pickingBuffer_.read_id(localX, localY);
+        const editor::SceneNodeId sceneNodeId =
+            document.editor_sync().picking_sync().scene_node_id(
+                pickingId);
+
+        lastPickingResult_ = {};
+        lastPickingResult_.status =
+            pickingId.is_valid() && sceneNodeId.is_valid()
+            ? ViewportPickingStatus::Hit
+            : ViewportPickingStatus::Background;
+        lastPickingResult_.pickingId = pickingId;
+        lastPickingResult_.sceneNodeId = sceneNodeId;
+        lastPickingResult_.framebufferX = localX;
+        lastPickingResult_.framebufferY = localY;
+        lastPickingResult_.bufferRendered = bufferRendered;
+        lastPickingResult_.pixelRead = true;
+
+        lastPickingX_ = localX;
+        lastPickingY_ = localY;
+        pickingQueryValid_ = true;
+
+        set_hover(document, sceneNodeId);
+        return lastPickingResult_;
+    }
+
+    const ViewportPickingResult&
+    EditorViewport::last_picking_result() const noexcept
+    {
+        return lastPickingResult_;
+    }
+
     graphics::Viewport& EditorViewport::viewport() noexcept
     {
+        invalidate_picking();
         return viewport_;
     }
 
@@ -268,6 +501,7 @@ namespace locus::application {
 
     graphics::OrbitCameraRig& EditorViewport::orbit_rig() noexcept
     {
+        invalidate_picking();
         return orbitRig_;
     }
 
@@ -285,6 +519,66 @@ namespace locus::application {
     float EditorViewport::aspect_ratio() const noexcept
     {
         return viewport_.state().aspectRatio;
+    }
+
+    ApplicationResult<void> EditorViewport::ensure_picking_buffer()
+    {
+        if (pickingBuffer_.is_valid()
+            && pickingBuffer_.width() == framebufferWidth_
+            && pickingBuffer_.height() == framebufferHeight_) {
+            return {};
+        }
+
+        graphics::GraphicsResult<void> result =
+            pickingBuffer_.is_valid()
+            ? pickingBuffer_.resize(
+                framebufferWidth_,
+                framebufferHeight_)
+            : pickingBuffer_.create(
+                framebufferWidth_,
+                framebufferHeight_);
+
+        if (!result) {
+            return graphics_failure(
+                ApplicationErrorCode::RuntimeFailure,
+                "Failed to resize the viewport picking buffer",
+                result.error());
+        }
+
+        invalidate_picking();
+        return {};
+    }
+
+    void EditorViewport::invalidate_picking() noexcept
+    {
+        pickingPassDirty_ = true;
+        pickingQueryValid_ = false;
+    }
+
+    void EditorViewport::clear_hover(
+        DocumentSession& document,
+        ViewportPickingStatus status)
+    {
+        set_hover(document, editor::SceneNodeId{});
+        lastPickingResult_ = {};
+        lastPickingResult_.status = status;
+        lastPickingX_ = -1;
+        lastPickingY_ = -1;
+        pickingQueryValid_ = false;
+    }
+
+    void EditorViewport::set_hover(
+        DocumentSession& document,
+        editor::SceneNodeId nodeId)
+    {
+        const editor::Editor& readOnlyEditor = document.editor();
+        if (readOnlyEditor.selection().objects().hovered() == nodeId) {
+            return;
+        }
+
+        (void)document.editor()
+            .selection_controller()
+            .set_hovered_object(nodeId);
     }
 
 } // namespace locus::application

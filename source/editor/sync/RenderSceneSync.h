@@ -44,7 +44,8 @@ namespace locus::editor {
             EditorDirtyFlags::Scene |
             EditorDirtyFlags::Mesh |
             EditorDirtyFlags::Selection |
-            EditorDirtyFlags::Render;
+            EditorDirtyFlags::Render |
+            EditorDirtyFlags::Picking;
     };
 
     /**
@@ -121,6 +122,13 @@ namespace locus::editor {
          * @return Read-only render scene reference.
          */
         [[nodiscard]] const graphics::RenderScene& render_scene() const;
+
+        /**
+         * @brief Returns the latest synchronized render scene for derived-data adapters.
+         *
+         * @return Mutable render scene reference.
+         */
+        [[nodiscard]] graphics::RenderScene& render_scene();
 
         /**
          * @brief Returns diagnostics from the latest synchronization.

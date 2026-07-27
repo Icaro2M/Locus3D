@@ -38,7 +38,7 @@ source/kernel geometry, modeling, validation, manufacturing analysis
 - `runtime/`: application lifetime, startup/shutdown sequencing, per-frame execution, global application state, frame context, and frame timing.
 - `window/`: application-owned window shell, persisted/restored placement, window state, and window-level actions requested by the UI or platform.
 - `document/`: document identifiers, open document sessions, active document ownership, document creation/closing, and coordination between editor state and future document IO.
-- `viewport/`: application-level editor viewport composition that binds a document/editor context to graphics viewport presentation.
+- `viewport/`: application-level editor viewport composition that binds a document/editor context to graphics presentation and owns viewport-scoped camera, overlay, and picking resources.
 - `input/`: platform input events, current input state, capture ownership, and routing from window/input devices into editor tools and viewport interaction.
 
 ### Application Boundaries
@@ -117,7 +117,7 @@ When changing application code:
 
 - Keep process lifetime, window ownership, document sessions, and frame timing in `source/application/`.
 - Keep editor behavior, command history, selection, tools, and gizmos in `source/editor/`.
-- Keep GPU resource ownership, picking buffers, render scenes, overlays, and viewport drawing in `source/graphics/`.
+- Keep GPU implementations, render scenes, overlays, viewport drawing, and picking operations in `source/graphics/`; application viewports may own their viewport-scoped graphics resource instances.
 - Keep mesh topology, modeling operations, validation, and manufacturing analysis in `source/kernel/`.
 - Prefer explicit context objects over global state when connecting application runtime to editor, graphics, and document systems.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

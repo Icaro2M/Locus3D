@@ -17,6 +17,11 @@ namespace locus::editor {
         return renderScene_;
     }
 
+    graphics::RenderScene& RenderSceneSync::render_scene()
+    {
+        return renderScene_;
+    }
+
     const RenderSceneSyncResult& RenderSceneSync::last_result() const
     {
         return lastResult_;

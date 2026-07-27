@@ -129,6 +129,23 @@ namespace locus::application {
             return renderResult.error();
         }
 
+        const bool cameraCaptured =
+            inputRouter_.capture().owner()
+            == InputCaptureOwner::ViewportCamera;
+
+        const auto pickingResult = editorViewport_.update_hover(
+            *activeDocument,
+            inputState_.cursor_position(),
+            window_.width(),
+            window_.height(),
+            inputState_.focused(),
+            cameraCaptured);
+
+        if (!pickingResult) {
+            inputState_.end_frame();
+            return pickingResult.error();
+        }
+
         window_.present();
         inputState_.end_frame();
 

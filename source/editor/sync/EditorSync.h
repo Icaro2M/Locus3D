@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "editor/sync/PickingSync.h"
 #include "editor/sync/RenderSceneSync.h"
 
 namespace locus::editor {
@@ -32,7 +33,8 @@ namespace locus::editor {
             EditorDirtyFlags::Scene |
             EditorDirtyFlags::Mesh |
             EditorDirtyFlags::Selection |
-            EditorDirtyFlags::Render;
+            EditorDirtyFlags::Render |
+            EditorDirtyFlags::Picking;
     };
 
     /**
@@ -63,8 +65,7 @@ namespace locus::editor {
     /**
      * @brief High-level synchronization facade for editor-side derived data.
      *
-     * EditorSync coordinates sync modules. The first implementation only owns
-     * RenderSceneSync; picking and manufacturing sync can be added later.
+     * EditorSync coordinates render-scene and picking synchronization.
      */
     class EditorSync {
     public:
@@ -103,6 +104,20 @@ namespace locus::editor {
          * @return Read-only render scene reference.
          */
         [[nodiscard]] const graphics::RenderScene& render_scene() const;
+
+        /**
+         * @brief Returns editor-to-graphics picking identifier mappings.
+         *
+         * @return Mutable picking synchronization state.
+         */
+        [[nodiscard]] PickingSync& picking_sync();
+
+        /**
+         * @brief Returns editor-to-graphics picking identifier mappings.
+         *
+         * @return Read-only picking synchronization state.
+         */
+        [[nodiscard]] const PickingSync& picking_sync() const;
 
         /**
          * @brief Returns diagnostics from the latest editor sync pass.
@@ -146,6 +161,7 @@ namespace locus::editor {
 
     private:
         RenderSceneSync renderSceneSync_{};
+        PickingSync pickingSync_{};
         EditorSyncResult lastResult_{};
     };
 

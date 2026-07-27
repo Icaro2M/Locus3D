@@ -9,6 +9,39 @@ enable_testing()
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
+add_executable(Locus3DApplicationPickingIntegrationTests
+    ${GLAD_DIR}/src/glad.c
+    integration/application_editor/ApplicationPickingIntegrationTest.cpp
+)
+
+target_include_directories(Locus3DApplicationPickingIntegrationTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+        ${GLAD_DIR}/include
+)
+
+target_link_libraries(Locus3DApplicationPickingIntegrationTests
+    PRIVATE
+        Locus3D::Application
+        Locus3D::Geometry
+)
+
+target_compile_definitions(Locus3DApplicationPickingIntegrationTests
+    PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+)
+
+add_custom_command(
+    TARGET Locus3DApplicationPickingIntegrationTests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${LOCUS3D_ASSETS_DIR}"
+        "$<TARGET_FILE_DIR:Locus3DApplicationPickingIntegrationTests>/assets"
+)
+
+# This integration test opens a real OpenGL window and is run manually.
+
 add_executable(Locus3DApplicationInputTests
     ${GLAD_DIR}/src/glad.c
     unit/application/input/InputTestMain.cpp

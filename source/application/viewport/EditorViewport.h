@@ -7,12 +7,16 @@
 
 #include "application/ApplicationResult.h"
 #include "application/document/DocumentId.h"
+#include "application/input/InputEvent.h"
+#include "editor/scene/SceneNodeId.h"
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/mesh/MeshRenderCache.h"
 #include "graphics/mesh/MeshUploader.h"
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/picking/PickingBuffer.h"
+#include "graphics/picking/PickingRenderer.h"
 #include "graphics/renderer/RenderQueue.h"
 #include "graphics/renderer/Renderer.h"
 #include "graphics/viewport/Viewport.h"
@@ -23,6 +27,39 @@
 namespace locus::application {
 
     class DocumentSession;
+
+    /**
+     * @brief Outcome of the latest viewport picking query.
+     */
+    enum class ViewportPickingStatus {
+        Unavailable,
+        OutsideViewport,
+        Background,
+        Hit,
+        FocusLost,
+        CameraCapture,
+        EmptyFramebuffer
+    };
+
+    /**
+     * @brief Diagnostics for one cached or evaluated picking query.
+     */
+    struct ViewportPickingResult {
+        ViewportPickingStatus status = ViewportPickingStatus::Unavailable;
+        graphics::PickingId pickingId{};
+        editor::SceneNodeId sceneNodeId{};
+        std::int32_t framebufferX = -1;
+        std::int32_t framebufferY = -1;
+        bool bufferRendered = false;
+        bool pixelRead = false;
+
+        [[nodiscard]] bool has_hit() const noexcept
+        {
+            return status == ViewportPickingStatus::Hit
+                && pickingId.is_valid()
+                && sceneNodeId.is_valid();
+        }
+    };
 
     /**
      * @brief Composes the primary visual viewport for an editor document.
@@ -122,6 +159,33 @@ namespace locus::application {
             DocumentSession& document);
 
         /**
+         * @brief Updates document hover from the logical window cursor.
+         *
+         * @param document Document whose hover state receives the result.
+         * @param cursor Logical window cursor coordinates.
+         * @param logicalWidth Logical window width.
+         * @param logicalHeight Logical window height.
+         * @param focused True while the application window has focus.
+         * @param cameraCaptured True during viewport camera pointer capture.
+         * @return Picking query diagnostics or a runtime graphics error.
+         */
+        [[nodiscard]] ApplicationResult<ViewportPickingResult> update_hover(
+            DocumentSession& document,
+            const InputVector2& cursor,
+            std::int32_t logicalWidth,
+            std::int32_t logicalHeight,
+            bool focused,
+            bool cameraCaptured);
+
+        /**
+         * @brief Returns diagnostics from the latest picking query.
+         *
+         * @return Read-only picking result.
+         */
+        [[nodiscard]] const ViewportPickingResult&
+            last_picking_result() const noexcept;
+
+        /**
          * @brief Returns the graphics viewport and its owned camera.
          *
          * @return Mutable graphics viewport reference.
@@ -165,6 +229,15 @@ namespace locus::application {
         [[nodiscard]] float aspect_ratio() const noexcept;
 
     private:
+        [[nodiscard]] ApplicationResult<void> ensure_picking_buffer();
+        void invalidate_picking() noexcept;
+        void clear_hover(
+            DocumentSession& document,
+            ViewportPickingStatus status);
+        void set_hover(
+            DocumentSession& document,
+            editor::SceneNodeId nodeId);
+
         graphics::ShaderManager shaderManager_{};
         graphics::MeshUploader meshUploader_{};
         graphics::MeshRenderCache meshCache_{};
@@ -174,8 +247,17 @@ namespace locus::application {
         graphics::OrbitCameraRig orbitRig_{};
         graphics::Renderer renderer_{};
         graphics::RenderQueue renderQueue_{};
+        graphics::PickingBuffer pickingBuffer_{};
+        graphics::PickingRenderer pickingRenderer_{};
         const graphics::Shader* documentShader_ = nullptr;
         DocumentId activeDocumentId_{};
+        ViewportPickingResult lastPickingResult_{};
+        std::int32_t framebufferWidth_ = 0;
+        std::int32_t framebufferHeight_ = 0;
+        std::int32_t lastPickingX_ = -1;
+        std::int32_t lastPickingY_ = -1;
+        bool pickingPassDirty_ = true;
+        bool pickingQueryValid_ = false;
         bool initialized_ = false;
     };
 
