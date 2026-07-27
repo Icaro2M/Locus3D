@@ -11,6 +11,7 @@
 #include "graphics/common/GraphicsError.h"
 #include "graphics/scene/RenderObject.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -157,6 +158,41 @@ namespace locus::application {
         std::int32_t framebufferHeight)
     {
         viewport_.resize(framebufferWidth, framebufferHeight);
+    }
+
+    void EditorViewport::orbit_camera(double deltaX, double deltaY)
+    {
+        constexpr float OrbitRadiansPerPixel = 0.005f;
+        orbitRig_.orbit(
+            static_cast<float>(-deltaX) * OrbitRadiansPerPixel,
+            static_cast<float>(-deltaY) * OrbitRadiansPerPixel);
+    }
+
+    void EditorViewport::pan_camera(double deltaX, double deltaY)
+    {
+        constexpr float PanDistancePerPixel = 0.0015f;
+        const float scale =
+            orbitRig_.distance() * PanDistancePerPixel;
+
+        orbitRig_.pan(
+            static_cast<float>(-deltaX) * scale,
+            static_cast<float>(deltaY) * scale);
+    }
+
+    void EditorViewport::zoom_camera(double scrollDelta)
+    {
+        if (scrollDelta == 0.0) {
+            return;
+        }
+
+        constexpr float ZoomDistanceRatio = 0.1f;
+        constexpr float MinimumZoomStep = 0.05f;
+        const float step = std::max(
+            orbitRig_.distance() * ZoomDistanceRatio,
+            MinimumZoomStep);
+
+        orbitRig_.zoom(
+            static_cast<float>(-scrollDelta) * step);
     }
 
     ApplicationResult<void> EditorViewport::render(

@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "application/Application.h"
+#include "application/ApplicationResult.h"
+#include "application/runtime/ApplicationRuntime.h"
 
 #include <iostream>
 

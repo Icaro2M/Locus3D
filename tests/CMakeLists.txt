@@ -9,6 +9,29 @@ enable_testing()
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
+add_executable(Locus3DApplicationInputTests
+    ${GLAD_DIR}/src/glad.c
+    unit/application/input/InputTestMain.cpp
+)
+
+target_include_directories(Locus3DApplicationInputTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+        ${GLAD_DIR}/include
+)
+
+target_link_libraries(Locus3DApplicationInputTests
+    PRIVATE
+        Locus3D::Application
+)
+
+add_test(NAME application.unit.input COMMAND Locus3DApplicationInputTests)
+set_tests_properties(application.unit.input PROPERTIES
+    LABELS "unit;application;input"
+)
+
 add_executable(Locus3DGeometryTests
     unit/kernel/geometry/mesh/LEMAttributeTests.cpp
     unit/kernel/geometry/mesh/LEMEditorDiffTests.cpp

@@ -8,6 +8,8 @@
 #include "application/ApplicationConfig.h"
 #include "application/ApplicationResult.h"
 #include "application/document/DocumentManager.h"
+#include "application/input/InputRouter.h"
+#include "application/input/InputState.h"
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
@@ -57,8 +59,8 @@ namespace locus::application {
         /**
          * @brief Executes one main-loop iteration.
          *
-         * This method processes events, advances the frame clock, renders the
-         * active document through the editor viewport, and presents the window.
+         * This method processes input, advances the frame clock, updates the
+         * viewport camera, renders the active document, and presents the window.
          *
          * @return Context for the completed frame or a runtime-state error.
          */
@@ -142,10 +144,40 @@ namespace locus::application {
         [[nodiscard]] const EditorViewport&
             editor_viewport() const noexcept;
 
+        /**
+         * @brief Returns current application input state.
+         *
+         * @return Mutable input state reference.
+         */
+        [[nodiscard]] InputState& input_state() noexcept;
+
+        /**
+         * @brief Returns current application input state.
+         *
+         * @return Read-only input state reference.
+         */
+        [[nodiscard]] const InputState& input_state() const noexcept;
+
+        /**
+         * @brief Returns application input routing and capture state.
+         *
+         * @return Mutable input router reference.
+         */
+        [[nodiscard]] InputRouter& input_router() noexcept;
+
+        /**
+         * @brief Returns application input routing and capture state.
+         *
+         * @return Read-only input router reference.
+         */
+        [[nodiscard]] const InputRouter& input_router() const noexcept;
+
     private:
         ApplicationConfig configuration_{};
         ApplicationState state_{};
         FrameClock frameClock_{};
+        InputState inputState_{};
+        InputRouter inputRouter_{};
         ApplicationWindow window_{};
         DocumentManager documents_{};
         EditorViewport editorViewport_{};

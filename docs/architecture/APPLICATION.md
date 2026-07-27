@@ -91,13 +91,13 @@ source\application
 |       EditorViewport.h
 |       EditorViewport.cpp
 |
-\---input [!]
-        InputEvent.h [!]
-        InputState.h [!]
-        InputState.cpp [!]
-        InputCapture.h [!]
-        InputRouter.h [!]
-        InputRouter.cpp [!]
+\---input
+        InputEvent.h
+        InputState.h
+        InputState.cpp
+        InputCapture.h
+        InputRouter.h
+        InputRouter.cpp
 ```
 
 ---
@@ -107,14 +107,7 @@ source\application
 - [!] `window/WindowState.h`
 - [!] `window/WindowAction.h`
 - [!] `window/WindowPlacement.h`
-- [!] `input/InputEvent.h`
-- [!] `input/InputState.h`
-- [!] `input/InputState.cpp`
-- [!] `input/InputCapture.h`
-- [!] `input/InputRouter.h`
-- [!] `input/InputRouter.cpp`
-
-They should be added when the application shell starts taking ownership of runtime startup, document lifetime, viewport composition, and input routing. Until then, editor, graphics, and kernel code should continue to expose explicit subsystem APIs without depending on application-owned global state.
+The remaining window-shell types should be added when persisted placement and UI-requested window actions are implemented. Editor, graphics, and kernel code should continue to expose explicit subsystem APIs without depending on application-owned global state.
 
 ---
 

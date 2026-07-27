@@ -39,6 +39,7 @@ namespace locus::application {
             return windowResult.error();
         }
 
+        window_.connect_input(inputState_);
         (void)documents_.create_document();
 
         ApplicationResult<void> viewportResult =
@@ -99,6 +100,7 @@ namespace locus::application {
                 "ApplicationRuntime is not ready to process a frame.");
         }
 
+        inputState_.begin_frame();
         window_.process_events();
 
         const FrameContext context = frameClock_.tick();
@@ -107,6 +109,7 @@ namespace locus::application {
         DocumentSession* activeDocument = documents_.active_document();
 
         if (!activeDocument) {
+            inputState_.end_frame();
             return ApplicationError::make(
                 ApplicationErrorCode::InternalFailure,
                 "ApplicationRuntime has no active document to render.");
@@ -116,14 +119,18 @@ namespace locus::application {
             window_.framebuffer_width(),
             window_.framebuffer_height());
 
+        inputRouter_.route(inputState_, editorViewport_);
+
         ApplicationResult<void> renderResult =
             editorViewport_.render(*activeDocument);
 
         if (!renderResult) {
+            inputState_.end_frame();
             return renderResult.error();
         }
 
         window_.present();
+        inputState_.end_frame();
 
         if (window_.should_close()) {
             state_.quitRequested = true;
@@ -163,6 +170,9 @@ namespace locus::application {
         }
 
         state_.phase = ApplicationPhase::Stopping;
+        window_.disconnect_input();
+        inputRouter_.reset();
+        inputState_.reset();
         editorViewport_.shutdown();
         documents_ = DocumentManager{};
         window_.shutdown();
@@ -217,6 +227,26 @@ namespace locus::application {
     ApplicationRuntime::editor_viewport() const noexcept
     {
         return editorViewport_;
+    }
+
+    InputState& ApplicationRuntime::input_state() noexcept
+    {
+        return inputState_;
+    }
+
+    const InputState& ApplicationRuntime::input_state() const noexcept
+    {
+        return inputState_;
+    }
+
+    InputRouter& ApplicationRuntime::input_router() noexcept
+    {
+        return inputRouter_;
+    }
+
+    const InputRouter& ApplicationRuntime::input_router() const noexcept
+    {
+        return inputRouter_;
     }
 
 } // namespace locus::application

@@ -90,6 +90,29 @@ namespace locus::application {
             std::int32_t framebufferHeight);
 
         /**
+         * @brief Orbits the camera from a logical cursor drag.
+         *
+         * @param deltaX Horizontal cursor delta in logical pixels.
+         * @param deltaY Vertical cursor delta in logical pixels.
+         */
+        void orbit_camera(double deltaX, double deltaY);
+
+        /**
+         * @brief Pans the camera from a logical cursor drag.
+         *
+         * @param deltaX Horizontal cursor delta in logical pixels.
+         * @param deltaY Vertical cursor delta in logical pixels.
+         */
+        void pan_camera(double deltaX, double deltaY);
+
+        /**
+         * @brief Zooms the camera from vertical scroll input.
+         *
+         * @param scrollDelta Vertical scroll offset.
+         */
+        void zoom_camera(double scrollDelta);
+
+        /**
          * @brief Synchronizes and renders one document into this viewport.
          *
          * @param document Document temporarily presented by the viewport.

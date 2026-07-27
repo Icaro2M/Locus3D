@@ -14,6 +14,8 @@
 
 namespace locus::application {
 
+    class InputState;
+
     /**
      * @brief Owns the graphics window and context used by the application.
      *
@@ -60,6 +62,18 @@ namespace locus::application {
          * @return True after successful initialization and before shutdown.
          */
         [[nodiscard]] bool initialized() const noexcept;
+
+        /**
+         * @brief Connects platform callbacks to an application input state.
+         *
+         * @param inputState State that receives subsequent window events.
+         */
+        void connect_input(InputState& inputState);
+
+        /**
+         * @brief Removes application input callbacks from the graphics window.
+         */
+        void disconnect_input();
 
         /**
          * @brief Polls pending platform events.
@@ -122,6 +136,7 @@ namespace locus::application {
         ApplicationConfig configuration_{};
         graphics::Window window_{};
         graphics::OpenGLContext context_{};
+        InputState* inputState_ = nullptr;
         bool initialized_ = false;
     };
 
