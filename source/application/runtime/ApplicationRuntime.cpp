@@ -258,6 +258,11 @@ namespace locus::application {
                     document,
                     editor::GizmoMode::Scale);
 
+            case ShortcutAction::ActivateUniversalTool:
+                return activate_transform_tool(
+                    document,
+                    editor::GizmoMode::Universal);
+
             case ShortcutAction::Cancel:
                 return dispatch_tool_event(
                     document,

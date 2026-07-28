@@ -362,6 +362,15 @@ void apply_route(
         return false;
     }
 
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::T));
+
+    if (shortcuts.resolve(state, context)
+        != ShortcutAction::ActivateUniversalTool) {
+        return false;
+    }
+
     context.objectMode = false;
     if (shortcuts.resolve(state, context) != ShortcutAction::None) {
         return false;

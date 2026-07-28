@@ -18,6 +18,7 @@ namespace locus::application {
         ActivateTranslateTool,
         ActivateRotateTool,
         ActivateScaleTool,
+        ActivateUniversalTool,
         Undo,
         Redo,
         Save,

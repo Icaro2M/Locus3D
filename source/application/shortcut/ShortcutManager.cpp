@@ -35,6 +35,7 @@ namespace locus::application {
             case ShortcutAction::ActivateTranslateTool:
             case ShortcutAction::ActivateRotateTool:
             case ShortcutAction::ActivateScaleTool:
+            case ShortcutAction::ActivateUniversalTool:
                 return context.objectMode
                     && !context.modalActive;
 
@@ -70,6 +71,7 @@ namespace locus::application {
             { Key::W, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateTranslateTool },
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateRotateTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
+            { Key::T, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateUniversalTool },
             { Key::Z, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Undo },
             { Key::Z, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::Redo },
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },

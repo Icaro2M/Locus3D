@@ -56,8 +56,7 @@ namespace locus::editor {
 
     bool TransformTool::set_mode(GizmoMode mode) {
         if (state() == ToolState::Interacting ||
-            mode == GizmoMode::None ||
-            mode == GizmoMode::Universal) {
+            mode == GizmoMode::None) {
 
             return false;
         }
