@@ -478,7 +478,6 @@ namespace locus::application {
         lastPickingY_ = localY;
         pickingQueryValid_ = true;
 
-        set_hover(document, sceneNodeId);
         return lastPickingResult_;
     }
 
@@ -576,9 +575,15 @@ namespace locus::application {
             return;
         }
 
-        (void)document.editor()
+        const bool changed = document.editor()
             .selection_controller()
             .set_hovered_object(nodeId);
+
+        if (changed) {
+            document.editor().mark_dirty(
+                editor::EditorDirtyFlags::Selection |
+                editor::EditorDirtyFlags::Render);
+        }
     }
 
 } // namespace locus::application

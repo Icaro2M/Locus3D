@@ -5,6 +5,11 @@
 
 #include "application/document/DocumentSession.h"
 
+#include "editor/tools/core/ToolContext.h"
+#include "editor/tools/selection/SelectTool.h"
+
+#include <memory>
+
 namespace locus::application {
 
     DocumentSession::DocumentSession(DocumentId id)
@@ -12,6 +17,21 @@ namespace locus::application {
         , commandDispatcher_(editor_)
         , toolManager_(toolRegistry_)
     {
+        (void)toolRegistry_.register_tool(
+            editor::SelectTool::make_descriptor(),
+            [] {
+                return std::make_unique<editor::SelectTool>();
+            });
+
+        editor::ToolContext toolContext(
+            editor_,
+            commandDispatcher_,
+            history_,
+            editorSync_.picking_sync());
+
+        (void)toolManager_.activate_tool(
+            toolContext,
+            editor::ToolId{ editor::SelectTool::Id });
     }
 
     DocumentId DocumentSession::id() const noexcept
