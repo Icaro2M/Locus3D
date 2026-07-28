@@ -9,8 +9,44 @@
 
 namespace locus::application {
 
-    class EditorViewport;
     class InputState;
+
+    /**
+     * @brief Top-level destination selected for an input frame.
+     */
+    enum class InputRouteDestination {
+        None,
+        ViewportCamera,
+        Editor,
+        Shortcut
+    };
+
+    /**
+     * @brief Viewport navigation operation requested by routing.
+     */
+    enum class ViewportNavigationAction {
+        None,
+        Orbit,
+        Pan,
+        Zoom
+    };
+
+    /**
+     * @brief Routed interpretation of one normalized input frame.
+     */
+    struct InputRouteResult {
+        InputRouteDestination destination = InputRouteDestination::None;
+        InputCaptureOwner owner = InputCaptureOwner::None;
+        ViewportNavigationAction navigation =
+            ViewportNavigationAction::None;
+        InputVector2 cursorDelta{};
+        double scrollDelta = 0.0;
+        bool captureBegan = false;
+        bool captureEnded = false;
+        bool editorPointerMove = false;
+        bool editorPointerPress = false;
+        bool editorPointerRelease = false;
+    };
 
     /**
      * @brief Selects the application consumer for current pointer input.
@@ -18,16 +54,16 @@ namespace locus::application {
     class InputRouter {
     public:
         /**
-         * @brief Routes one input frame to camera or future editor tools.
+         * @brief Routes one input frame to a semantic destination.
          *
-         * Camera gestures are Alt+left drag for orbit, Alt+middle drag for pan,
-         * and vertical scroll for zoom. Plain left drag is captured for the
-         * future editor tool path and does not affect the camera.
+         * Camera gestures are middle-button drag for orbit, Shift+middle drag
+         * for pan, and vertical scroll for zoom. Plain left input is captured
+         * for the editor tool path and does not affect the camera.
          *
          * @param input Current input state after platform polling.
-         * @param viewport Primary editor viewport.
+         * @return Route result with destination and semantic input intent.
          */
-        void route(const InputState& input, EditorViewport& viewport);
+        [[nodiscard]] InputRouteResult route(const InputState& input);
 
         /**
          * @brief Cancels any active routing and pointer capture.
@@ -44,11 +80,18 @@ namespace locus::application {
             Pan
         };
 
-        [[nodiscard]] bool begin_capture(const InputState& input);
-        void route_camera_drag(
+        [[nodiscard]] bool begin_capture(
             const InputState& input,
-            EditorViewport& viewport);
-        void finish_released_capture(const InputState& input);
+            InputRouteResult& result);
+        void route_active_capture(
+            const InputState& input,
+            InputRouteResult& result) const;
+        void route_scroll(
+            const InputState& input,
+            InputRouteResult& result) const;
+        void finish_released_capture(
+            const InputState& input,
+            InputRouteResult& result);
 
     private:
         InputCapture capture_{};

@@ -8,8 +8,12 @@
 #include "application/document/DocumentSession.h"
 #include "editor/EditorTypes.h"
 #include "editor/Editor.h"
+#include "editor/gizmo/GizmoAxis.h"
+#include "editor/gizmo/GizmoMode.h"
+#include "editor/gizmo/GizmoState.h"
 #include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
+#include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/scene/RenderObject.h"
 
@@ -35,6 +39,73 @@ namespace locus::application {
             }
 
             return ApplicationError::make(code, std::move(message));
+        }
+
+        [[nodiscard]] graphics::GizmoVisualMode to_visual_mode(
+            editor::GizmoMode mode) noexcept
+        {
+            switch (mode) {
+            case editor::GizmoMode::None:
+                return graphics::GizmoVisualMode::None;
+            case editor::GizmoMode::Translate:
+                return graphics::GizmoVisualMode::Translate;
+            case editor::GizmoMode::Rotate:
+                return graphics::GizmoVisualMode::Rotate;
+            case editor::GizmoMode::Scale:
+                return graphics::GizmoVisualMode::Scale;
+            case editor::GizmoMode::Universal:
+                return graphics::GizmoVisualMode::Universal;
+            }
+
+            return graphics::GizmoVisualMode::None;
+        }
+
+        [[nodiscard]] graphics::GizmoVisualHandle to_visual_handle(
+            editor::GizmoAxis axis) noexcept
+        {
+            switch (axis) {
+            case editor::GizmoAxis::None:
+                return graphics::GizmoVisualHandle::None;
+            case editor::GizmoAxis::X:
+                return graphics::GizmoVisualHandle::X;
+            case editor::GizmoAxis::Y:
+                return graphics::GizmoVisualHandle::Y;
+            case editor::GizmoAxis::Z:
+                return graphics::GizmoVisualHandle::Z;
+            case editor::GizmoAxis::XY:
+                return graphics::GizmoVisualHandle::XY;
+            case editor::GizmoAxis::XZ:
+                return graphics::GizmoVisualHandle::XZ;
+            case editor::GizmoAxis::YZ:
+                return graphics::GizmoVisualHandle::YZ;
+            case editor::GizmoAxis::XYZ:
+                return graphics::GizmoVisualHandle::XYZ;
+            case editor::GizmoAxis::View:
+                return graphics::GizmoVisualHandle::View;
+            }
+
+            return graphics::GizmoVisualHandle::None;
+        }
+
+        [[nodiscard]] graphics::GizmoVisualSelection to_visual_selection(
+            const editor::GizmoHit& hit) noexcept
+        {
+            if (!hit.is_valid()) {
+                return graphics::GizmoVisualSelection::none();
+            }
+
+            return graphics::GizmoVisualSelection::make(
+                to_visual_mode(hit.mode),
+                to_visual_handle(hit.axis));
+        }
+
+        [[nodiscard]] const editor::TransformTool* active_transform_tool(
+            const DocumentSession& document)
+        {
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            return dynamic_cast<const editor::TransformTool*>(tool);
         }
 
     } // namespace
@@ -175,6 +246,19 @@ namespace locus::application {
                 axisResult.error());
         }
 
+        const auto gizmoResult = gizmoRenderer_.create(
+            meshUploader_,
+            shaderManager_,
+            graphics::GizmoRendererConfig{});
+
+        if (!gizmoResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the transform gizmo renderer",
+                gizmoResult.error());
+        }
+
         initialized_ = true;
         return {};
     }
@@ -195,6 +279,7 @@ namespace locus::application {
         pickingQueryValid_ = false;
 
         axisRenderer_.destroy();
+        gizmoRenderer_.destroy();
         gridRenderer_.destroy();
         meshCache_.clear();
         shaderManager_.clear();
@@ -334,11 +419,53 @@ namespace locus::application {
         const graphics::RenderScene& scene =
             document.editor_sync().render_scene();
 
+        graphics::GizmoDrawData gizmoData{};
+        gizmoData.visible = false;
+
+        if (const editor::TransformTool* transformTool =
+                active_transform_tool(document)) {
+            const editor::GizmoState& gizmoState =
+                transformTool->gizmo_state();
+
+            const bool hasSelection =
+                !document.editor().selection().objects().empty();
+
+            gizmoData.mode = to_visual_mode(gizmoState.mode);
+            gizmoData.pivot = gizmoState.pivot;
+            gizmoData.orientation = gizmoState.orientation;
+            gizmoData.visualScale = gizmoState.visualScale;
+            gizmoData.viewDirection = viewport_.camera().forward();
+            gizmoData.viewRight = viewport_.camera().right();
+            gizmoData.viewUp = viewport_.camera().up();
+            gizmoData.hovered =
+                to_visual_selection(gizmoState.hovered);
+            gizmoData.active =
+                to_visual_selection(gizmoState.active);
+            gizmoData.visible =
+                hasSelection
+                && gizmoState.visible
+                && gizmoData.mode != graphics::GizmoVisualMode::None;
+            gizmoData.enabled = gizmoState.enabled;
+        }
+
+        gizmoRenderer_.update(gizmoData);
+
+        graphics::RenderScene gizmoScene{};
+        gizmoScene.reserve(gizmoRenderer_.submitted_object_count());
+        gizmoRenderer_.submit(gizmoScene);
+
         renderQueue_.clear();
-        renderQueue_.reserve(scene.object_count() + 2);
+        renderQueue_.reserve(
+            scene.object_count()
+            + 2
+            + gizmoScene.object_count());
         renderQueue_.add_object(gridRenderer_.render_object());
 
         for (const graphics::RenderObject& object : scene.objects()) {
+            renderQueue_.add_object(object);
+        }
+
+        for (const graphics::RenderObject& object : gizmoScene.objects()) {
             renderQueue_.add_object(object);
         }
 

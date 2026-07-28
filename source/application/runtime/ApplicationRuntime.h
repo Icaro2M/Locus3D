@@ -13,6 +13,7 @@
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
+#include "application/shortcut/ShortcutManager.h"
 #include "application/viewport/EditorViewport.h"
 #include "application/window/ApplicationWindow.h"
 
@@ -172,12 +173,28 @@ namespace locus::application {
          */
         [[nodiscard]] const InputRouter& input_router() const noexcept;
 
+        /**
+         * @brief Returns semantic shortcut resolver.
+         *
+         * @return Mutable shortcut manager reference.
+         */
+        [[nodiscard]] ShortcutManager& shortcut_manager() noexcept;
+
+        /**
+         * @brief Returns semantic shortcut resolver.
+         *
+         * @return Read-only shortcut manager reference.
+         */
+        [[nodiscard]] const ShortcutManager&
+            shortcut_manager() const noexcept;
+
     private:
         ApplicationConfig configuration_{};
         ApplicationState state_{};
         FrameClock frameClock_{};
         InputState inputState_{};
         InputRouter inputRouter_{};
+        ShortcutManager shortcutManager_{};
         ApplicationWindow window_{};
         DocumentManager documents_{};
         EditorViewport editorViewport_{};

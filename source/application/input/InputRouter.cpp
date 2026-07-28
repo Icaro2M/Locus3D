@@ -6,38 +6,30 @@
 #include "application/input/InputRouter.h"
 
 #include "application/input/InputState.h"
-#include "application/viewport/EditorViewport.h"
 
 namespace locus::application {
 
-    void InputRouter::route(
-        const InputState& input,
-        EditorViewport& viewport)
+    InputRouteResult InputRouter::route(const InputState& input)
     {
+        InputRouteResult result{};
         routedOwner_ = InputCaptureOwner::None;
 
         if (!input.focused() || input.focus_lost()) {
             reset();
-            return;
+            result.captureEnded = true;
+            return result;
         }
 
-        const bool captureBegan =
-            !capture_.active() && begin_capture(input);
-
-        routedOwner_ = capture_.owner();
-
-        if (capture_.owner() == InputCaptureOwner::ViewportCamera
-            && !captureBegan) {
-            route_camera_drag(input, viewport);
+        if (!capture_.active()) {
+            result.captureBegan = begin_capture(input, result);
         }
 
-        if (capture_.owner() != InputCaptureOwner::EditorTool
-            && input.scroll_delta().y != 0.0) {
-            viewport.zoom_camera(input.scroll_delta().y);
-            routedOwner_ = InputCaptureOwner::ViewportCamera;
-        }
+        route_active_capture(input, result);
+        route_scroll(input, result);
+        finish_released_capture(input, result);
 
-        finish_released_capture(input);
+        routedOwner_ = result.owner;
+        return result;
     }
 
     void InputRouter::reset() noexcept
@@ -57,61 +49,112 @@ namespace locus::application {
         return routedOwner_;
     }
 
-    bool InputRouter::begin_capture(const InputState& input)
+    bool InputRouter::begin_capture(
+        const InputState& input,
+        InputRouteResult& result)
     {
-        const bool alt =
-            input.modifier_down(InputModifiers::Alt);
+        const bool shift =
+            input.modifier_down(InputModifiers::Shift);
 
-        if (alt && input.button_pressed(MouseButton::Left)) {
-            if (capture_.acquire(
-                    InputCaptureOwner::ViewportCamera,
-                    MouseButton::Left)) {
-                cameraDragMode_ = CameraDragMode::Orbit;
-                return true;
-            }
-            return false;
-        }
-
-        if (alt && input.button_pressed(MouseButton::Middle)) {
+        if (input.button_pressed(MouseButton::Middle)) {
             if (capture_.acquire(
                     InputCaptureOwner::ViewportCamera,
                     MouseButton::Middle)) {
-                cameraDragMode_ = CameraDragMode::Pan;
+                cameraDragMode_ = shift
+                    ? CameraDragMode::Pan
+                    : CameraDragMode::Orbit;
+                result.destination =
+                    InputRouteDestination::ViewportCamera;
+                result.owner = InputCaptureOwner::ViewportCamera;
                 return true;
             }
+
             return false;
         }
 
         if (input.button_pressed(MouseButton::Left)) {
-            return capture_.acquire(
-                InputCaptureOwner::EditorTool,
-                MouseButton::Left);
+            if (capture_.acquire(
+                    InputCaptureOwner::EditorTool,
+                    MouseButton::Left)) {
+                result.destination = InputRouteDestination::Editor;
+                result.owner = InputCaptureOwner::EditorTool;
+                result.editorPointerPress = true;
+                return true;
+            }
         }
 
         return false;
     }
 
-    void InputRouter::route_camera_drag(
+    void InputRouter::route_active_capture(
         const InputState& input,
-        EditorViewport& viewport)
+        InputRouteResult& result) const
     {
-        const InputVector2& delta = input.cursor_delta();
+        if (!capture_.active()) {
+            if (input.cursor_delta().x != 0.0
+                || input.cursor_delta().y != 0.0) {
+                result.destination = InputRouteDestination::Editor;
+                result.owner = InputCaptureOwner::EditorTool;
+                result.editorPointerMove = true;
+            }
 
-        switch (cameraDragMode_) {
-        case CameraDragMode::Orbit:
-            viewport.orbit_camera(delta.x, delta.y);
-            break;
+            return;
+        }
 
-        case CameraDragMode::Pan:
-            viewport.pan_camera(delta.x, delta.y);
-            break;
+        result.owner = capture_.owner();
 
-        case CameraDragMode::None:
-            break;
+        if (capture_.owner() == InputCaptureOwner::ViewportCamera) {
+            result.destination = InputRouteDestination::ViewportCamera;
+            result.cursorDelta = input.cursor_delta();
+
+            switch (cameraDragMode_) {
+            case CameraDragMode::Orbit:
+                result.navigation =
+                    ViewportNavigationAction::Orbit;
+                break;
+
+            case CameraDragMode::Pan:
+                result.navigation =
+                    ViewportNavigationAction::Pan;
+                break;
+
+            case CameraDragMode::None:
+                break;
+            }
+
+            return;
+        }
+
+        if (capture_.owner() == InputCaptureOwner::EditorTool) {
+            result.destination = InputRouteDestination::Editor;
+            result.editorPointerMove =
+                input.cursor_delta().x != 0.0
+                || input.cursor_delta().y != 0.0;
+            result.editorPointerPress =
+                input.button_pressed(capture_.button());
+            result.editorPointerRelease =
+                input.button_released(capture_.button());
         }
     }
 
-    void InputRouter::finish_released_capture(const InputState& input)
+    void InputRouter::route_scroll(
+        const InputState& input,
+        InputRouteResult& result) const
+    {
+        if (input.scroll_delta().y == 0.0
+            || capture_.owner() == InputCaptureOwner::EditorTool) {
+            return;
+        }
+
+        result.destination = InputRouteDestination::ViewportCamera;
+        result.owner = InputCaptureOwner::ViewportCamera;
+        result.navigation = ViewportNavigationAction::Zoom;
+        result.scrollDelta = input.scroll_delta().y;
+    }
+
+    void InputRouter::finish_released_capture(
+        const InputState& input,
+        InputRouteResult& result)
     {
         if (!capture_.active()) {
             return;
@@ -119,7 +162,8 @@ namespace locus::application {
 
         const MouseButton capturedButton = capture_.button();
         if (input.button_released(capturedButton)) {
-            (void)capture_.release_for(capturedButton);
+            result.captureEnded =
+                capture_.release_for(capturedButton);
             cameraDragMode_ = CameraDragMode::None;
         }
     }

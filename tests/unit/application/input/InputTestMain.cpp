@@ -5,6 +5,7 @@
 
 #include "application/input/InputRouter.h"
 #include "application/input/InputState.h"
+#include "application/shortcut/ShortcutManager.h"
 #include "application/viewport/EditorViewport.h"
 
 #include <glm/geometric.hpp>
@@ -45,9 +46,50 @@ using namespace locus::application;
     return event;
 }
 
+[[nodiscard]] InputEvent key(
+    Key keyValue,
+    InputModifiers modifiers = InputModifiers::None)
+{
+    InputEvent event{};
+    event.type = InputEventType::KeyPressed;
+    event.key = keyValue;
+    event.modifiers = modifiers;
+    return event;
+}
+
 [[nodiscard]] bool near(double lhs, double rhs)
 {
     return std::abs(lhs - rhs) < 0.0001;
+}
+
+void apply_route(
+    const InputRouteResult& route,
+    EditorViewport& viewport)
+{
+    if (route.captureBegan) {
+        return;
+    }
+
+    switch (route.navigation) {
+    case ViewportNavigationAction::Orbit:
+        viewport.orbit_camera(
+            route.cursorDelta.x,
+            route.cursorDelta.y);
+        break;
+
+    case ViewportNavigationAction::Pan:
+        viewport.pan_camera(
+            route.cursorDelta.x,
+            route.cursorDelta.y);
+        break;
+
+    case ViewportNavigationAction::Zoom:
+        viewport.zoom_camera(route.scrollDelta);
+        break;
+
+    case ViewportNavigationAction::None:
+        break;
+    }
 }
 
 [[nodiscard]] bool test_input_state()
@@ -65,7 +107,7 @@ using namespace locus::application;
 
     InputEvent keyPress{};
     keyPress.type = InputEventType::KeyPressed;
-    keyPress.key = 65;
+    keyPress.key = Key::A;
     keyPress.modifiers = InputModifiers::Alt;
     state.consume(keyPress);
     state.consume(scroll(1.0, -2.0));
@@ -76,8 +118,8 @@ using namespace locus::application;
         || !near(state.cursor_delta().y, 5.0)
         || !state.button_pressed(MouseButton::Left)
         || !state.button_down(MouseButton::Left)
-        || !state.key_pressed(65)
-        || !state.key_down(65)
+        || !state.key_pressed(Key::A)
+        || !state.key_down(Key::A)
         || !state.modifier_down(InputModifiers::Alt)
         || !near(state.scroll_delta().x, 1.0)
         || !near(state.scroll_delta().y, -2.0)) {
@@ -89,8 +131,8 @@ using namespace locus::application;
 
     if (state.button_pressed(MouseButton::Left)
         || !state.button_down(MouseButton::Left)
-        || state.key_pressed(65)
-        || !state.key_down(65)
+        || state.key_pressed(Key::A)
+        || !state.key_down(Key::A)
         || !near(state.cursor_delta().x, 0.0)
         || !near(state.scroll_delta().y, 0.0)) {
         return false;
@@ -102,13 +144,13 @@ using namespace locus::application;
 
     InputEvent keyRelease{};
     keyRelease.type = InputEventType::KeyReleased;
-    keyRelease.key = 65;
+    keyRelease.key = Key::A;
     state.consume(keyRelease);
 
     return state.button_released(MouseButton::Left)
         && !state.button_down(MouseButton::Left)
-        && state.key_released(65)
-        && !state.key_down(65);
+        && state.key_released(Key::A)
+        && !state.key_down(Key::A);
 }
 
 [[nodiscard]] bool test_camera_routing_and_capture()
@@ -125,13 +167,15 @@ using namespace locus::application;
     state.consume(cursor(120.0, 100.0));
     state.consume(button(
         InputEventType::MouseButtonPressed,
-        MouseButton::Left,
-        InputModifiers::Alt));
-    router.route(state, viewport);
+        MouseButton::Middle));
+    const InputRouteResult pressRoute = router.route(state);
+    apply_route(pressRoute, viewport);
 
     if (router.capture().owner()
             != InputCaptureOwner::ViewportCamera
-        || router.capture().button() != MouseButton::Left
+        || router.capture().button() != MouseButton::Middle
+        || pressRoute.destination
+            != InputRouteDestination::ViewportCamera
         || !near(viewport.orbit_rig().yaw_radians(), initialYaw)
         || !near(viewport.orbit_rig().pitch_radians(), initialPitch)) {
         return false;
@@ -140,10 +184,12 @@ using namespace locus::application;
     state.end_frame();
     state.begin_frame();
     state.consume(cursor(130.0, 80.0));
-    router.route(state, viewport);
+    const InputRouteResult dragRoute = router.route(state);
+    apply_route(dragRoute, viewport);
 
     if (near(viewport.orbit_rig().yaw_radians(), initialYaw)
         || near(viewport.orbit_rig().pitch_radians(), initialPitch)
+        || dragRoute.navigation != ViewportNavigationAction::Orbit
         || router.capture().owner()
             != InputCaptureOwner::ViewportCamera) {
         return false;
@@ -157,12 +203,14 @@ using namespace locus::application;
     state.consume(cursor(-25.0, 900.0));
     state.consume(button(
         InputEventType::MouseButtonReleased,
-        MouseButton::Left));
-    router.route(state, viewport);
+        MouseButton::Middle));
+    const InputRouteResult releaseRoute = router.route(state);
+    apply_route(releaseRoute, viewport);
 
     return !near(
             viewport.orbit_rig().yaw_radians(),
             yawBeforeOutsideRelease)
+        && releaseRoute.captureEnded
         && !router.capture().active();
 }
 
@@ -178,17 +226,20 @@ using namespace locus::application;
     state.consume(button(
         InputEventType::MouseButtonPressed,
         MouseButton::Middle,
-        InputModifiers::Alt));
-    router.route(state, viewport);
+        InputModifiers::Shift));
+    const InputRouteResult pressRoute = router.route(state);
+    apply_route(pressRoute, viewport);
 
     const glm::vec3 targetBefore = viewport.orbit_rig().target();
     state.end_frame();
     state.begin_frame();
     state.consume(cursor(90.0, 70.0));
-    router.route(state, viewport);
+    const InputRouteResult panRoute = router.route(state);
+    apply_route(panRoute, viewport);
 
     if (glm::length(viewport.orbit_rig().target() - targetBefore)
-        < 0.0001f) {
+        < 0.0001f
+        || panRoute.navigation != ViewportNavigationAction::Pan) {
         return false;
     }
 
@@ -197,12 +248,14 @@ using namespace locus::application;
     state.begin_frame();
     const float distanceBefore = viewport.orbit_rig().distance();
     state.consume(scroll(0.0, 1.0));
-    router.route(state, viewport);
+    const InputRouteResult zoomRoute = router.route(state);
+    apply_route(zoomRoute, viewport);
 
     if (!(viewport.orbit_rig().distance() < distanceBefore)
         || router.capture().active()
-        || router.routed_owner()
-            != InputCaptureOwner::ViewportCamera) {
+        || zoomRoute.destination
+            != InputRouteDestination::ViewportCamera
+        || zoomRoute.navigation != ViewportNavigationAction::Zoom) {
         return false;
     }
 
@@ -216,11 +269,11 @@ using namespace locus::application;
     state.consume(button(
         InputEventType::MouseButtonPressed,
         MouseButton::Right));
-    router.route(state, viewport);
+    apply_route(router.route(state), viewport);
     state.end_frame();
     state.begin_frame();
     state.consume(cursor(100.0, 100.0));
-    router.route(state, viewport);
+    apply_route(router.route(state), viewport);
 
     viewport.resize(800, 400);
 
@@ -244,18 +297,21 @@ using namespace locus::application;
     state.consume(button(
         InputEventType::MouseButtonPressed,
         MouseButton::Left));
-    router.route(state, viewport);
+    const InputRouteResult pressRoute = router.route(state);
 
-    if (router.capture().owner() != InputCaptureOwner::EditorTool) {
+    if (router.capture().owner() != InputCaptureOwner::EditorTool
+        || pressRoute.destination != InputRouteDestination::Editor
+        || !pressRoute.editorPointerPress) {
         return false;
     }
 
     state.end_frame();
     state.begin_frame();
     state.consume(cursor(80.0, 40.0));
-    router.route(state, viewport);
+    const InputRouteResult moveRoute = router.route(state);
 
     if (!near(viewport.orbit_rig().yaw_radians(), yawBefore)
+        || !moveRoute.editorPointerMove
         || router.capture().owner() != InputCaptureOwner::EditorTool) {
         return false;
     }
@@ -263,13 +319,57 @@ using namespace locus::application;
     InputEvent focusLost{};
     focusLost.type = InputEventType::FocusLost;
     state.consume(focusLost);
-    router.route(state, viewport);
+    const InputRouteResult focusRoute = router.route(state);
 
     return !state.focused()
         && state.focus_lost()
         && state.button_released(MouseButton::Left)
         && !state.button_down(MouseButton::Left)
+        && focusRoute.captureEnded
         && !router.capture().active();
+}
+
+[[nodiscard]] bool test_shortcut_resolution()
+{
+    ShortcutManager shortcuts{};
+    ShortcutContext context{};
+    InputState state{};
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Z, InputModifiers::Control));
+
+    if (shortcuts.resolve(state, context) != ShortcutAction::Undo) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(
+        Key::Z,
+        InputModifiers::Control | InputModifiers::Shift));
+
+    if (shortcuts.resolve(state, context) != ShortcutAction::Redo) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::W));
+
+    if (shortcuts.resolve(state, context)
+        != ShortcutAction::ActivateTranslateTool) {
+        return false;
+    }
+
+    context.objectMode = false;
+    if (shortcuts.resolve(state, context) != ShortcutAction::None) {
+        return false;
+    }
+
+    context.objectMode = true;
+    context.textInputActive = true;
+    return shortcuts.resolve(state, context) == ShortcutAction::None;
 }
 
 } // namespace
@@ -286,6 +386,7 @@ int main()
         { "CameraRoutingAndCapture", &test_camera_routing_and_capture },
         { "PanZoomAndInvalidGestures", &test_pan_zoom_and_invalid_gestures },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
+        { "ShortcutResolution", &test_shortcut_resolution },
     };
 
     for (const TestCase& test : tests) {

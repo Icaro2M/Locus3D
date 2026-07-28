@@ -27,6 +27,7 @@ target_sources(locus3d_graphics PRIVATE
     "mesh/MeshUploader.cpp"
     "overlay/renderers/AxisRenderer.cpp"
     "overlay/renderers/BoundingBoxRenderer.cpp"
+    "overlay/renderers/GizmoRenderer.cpp"
     "overlay/renderers/GridRenderer.cpp"
     "overlay/renderers/MeasurementRenderer.cpp"
     "overlay/renderers/NormalRenderer.cpp"

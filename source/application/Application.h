@@ -24,5 +24,7 @@
 #include "application/runtime/ApplicationState.h"
 #include "application/runtime/FrameClock.h"
 #include "application/runtime/FrameContext.h"
+#include "application/shortcut/Shortcut.h"
+#include "application/shortcut/ShortcutManager.h"
 #include "application/viewport/EditorViewport.h"
 #include "application/window/ApplicationWindow.h"

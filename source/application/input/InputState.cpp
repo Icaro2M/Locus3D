@@ -107,7 +107,7 @@ namespace locus::application {
         }
 
         case InputEventType::KeyPressed:
-            if (event.key != UnknownKey) {
+            if (event.key != Key::Unknown) {
                 const bool inserted = keysDown_.insert(event.key).second;
                 if (inserted) {
                     keysPressed_.insert(event.key);
@@ -117,7 +117,7 @@ namespace locus::application {
             break;
 
         case InputEventType::KeyReleased:
-            if (event.key != UnknownKey) {
+            if (event.key != Key::Unknown) {
                 if (keysDown_.erase(event.key) != 0) {
                     keysReleased_.insert(event.key);
                 }
@@ -126,7 +126,7 @@ namespace locus::application {
             break;
 
         case InputEventType::KeyRepeated:
-            if (event.key != UnknownKey) {
+            if (event.key != Key::Unknown) {
                 keysDown_.insert(event.key);
             }
             modifiers_ = event.modifiers;
@@ -203,17 +203,17 @@ namespace locus::application {
         return index != InvalidButtonIndex && buttons_[index].released;
     }
 
-    bool InputState::key_down(KeyCode key) const
+    bool InputState::key_down(Key key) const
     {
         return keysDown_.find(key) != keysDown_.end();
     }
 
-    bool InputState::key_pressed(KeyCode key) const
+    bool InputState::key_pressed(Key key) const
     {
         return keysPressed_.find(key) != keysPressed_.end();
     }
 
-    bool InputState::key_released(KeyCode key) const
+    bool InputState::key_released(Key key) const
     {
         return keysReleased_.find(key) != keysReleased_.end();
     }

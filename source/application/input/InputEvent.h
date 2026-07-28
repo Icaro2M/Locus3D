@@ -34,11 +34,54 @@ namespace locus::application {
     };
 
     /**
-     * @brief Application key identifier preserving the platform key code.
+     * @brief Backend-independent keys recognized by application input.
      */
-    using KeyCode = std::int32_t;
-
-    constexpr KeyCode UnknownKey = -1;
+    enum class Key : std::int32_t {
+        Unknown = 0,
+        A,
+        B,
+        C,
+        D,
+        E,
+        F,
+        G,
+        H,
+        I,
+        J,
+        K,
+        L,
+        M,
+        N,
+        O,
+        P,
+        Q,
+        R,
+        S,
+        T,
+        U,
+        V,
+        W,
+        X,
+        Y,
+        Z,
+        Num0,
+        Num1,
+        Num2,
+        Num3,
+        Num4,
+        Num5,
+        Num6,
+        Num7,
+        Num8,
+        Num9,
+        Escape,
+        Delete,
+        Backspace,
+        Enter,
+        Space,
+        Equal,
+        Minus
+    };
 
     /**
      * @brief Modifier keys active for an input event.
@@ -109,7 +152,7 @@ namespace locus::application {
         InputVector2 cursorPosition{};
         InputVector2 scrollDelta{};
         MouseButton mouseButton = MouseButton::Unknown;
-        KeyCode key = UnknownKey;
+        Key key = Key::Unknown;
         std::int32_t scancode = 0;
         InputModifiers modifiers = InputModifiers::None;
     };

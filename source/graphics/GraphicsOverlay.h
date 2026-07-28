@@ -19,6 +19,7 @@
  */
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/BoundingBoxRenderer.h"
+#include "graphics/overlay/renderers/GizmoRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/overlay/renderers/MeasurementRenderer.h"
 #include "graphics/overlay/renderers/NormalRenderer.h"

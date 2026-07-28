@@ -60,9 +60,9 @@ namespace locus::application {
         [[nodiscard]] bool button_pressed(MouseButton button) const noexcept;
         [[nodiscard]] bool button_released(MouseButton button) const noexcept;
 
-        [[nodiscard]] bool key_down(KeyCode key) const;
-        [[nodiscard]] bool key_pressed(KeyCode key) const;
-        [[nodiscard]] bool key_released(KeyCode key) const;
+        [[nodiscard]] bool key_down(Key key) const;
+        [[nodiscard]] bool key_pressed(Key key) const;
+        [[nodiscard]] bool key_released(Key key) const;
 
         [[nodiscard]] InputModifiers modifiers() const noexcept;
         [[nodiscard]] bool modifier_down(
@@ -84,9 +84,9 @@ namespace locus::application {
         static constexpr std::size_t InvalidButtonIndex = MouseButtonCount;
 
         std::array<ButtonState, MouseButtonCount> buttons_{};
-        std::unordered_set<KeyCode> keysDown_{};
-        std::unordered_set<KeyCode> keysPressed_{};
-        std::unordered_set<KeyCode> keysReleased_{};
+        std::unordered_set<Key> keysDown_{};
+        std::unordered_set<Key> keysPressed_{};
+        std::unordered_set<Key> keysReleased_{};
         InputVector2 cursorPosition_{};
         InputVector2 cursorDelta_{};
         InputVector2 scrollDelta_{};

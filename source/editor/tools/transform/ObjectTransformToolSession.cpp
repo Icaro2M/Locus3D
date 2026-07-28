@@ -15,6 +15,13 @@
 
 namespace locus::editor {
 
+    namespace {
+
+        constexpr const char* NoGizmoHandleHitMessage =
+            "No gizmo handle was hit.";
+
+    } // namespace
+
     ObjectTransformToolSession::ObjectTransformToolSession(
         GizmoController controller)
         : controller_(std::move(controller)) {
@@ -60,6 +67,12 @@ namespace locus::editor {
             controller_.begin_drag(beginInput);
 
         if (!result.success) {
+            if (result.message != nullptr
+                && std::string{ result.message }
+                    == NoGizmoHandleHitMessage) {
+                return ToolResult::ignored();
+            }
+
             return ToolResult::fail(
                 result.message != nullptr
                 ? std::string{ result.message }

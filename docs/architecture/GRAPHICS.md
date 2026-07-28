@@ -169,7 +169,8 @@ source\graphics
 |           AxisRenderer.h
 |           BoundingBoxRenderer.cpp
 |           BoundingBoxRenderer.h
-|           GizmoRenderer.h [!]
+|           GizmoRenderer.cpp
+|           GizmoRenderer.h
 |           GridRenderer.cpp
 |           GridRenderer.h
 |           MeasurementRenderer.cpp
@@ -242,9 +243,8 @@ The files marked with `[!]` in the tree are likely next pieces for the graphics 
 - [!] `passes/OutlinePass.h`
 - [!] `passes/OverlayPass.h`
 - [!] `passes/DebugPass.h`
-- [!] `overlay/renderers/GizmoRenderer.h`
 
-They should be added only when the higher-level state they depend on becomes clear. In particular, gizmo rendering likely depends on editor interaction state, selected objects, active transform mode, snapping, and manipulation handles, so it should remain a boundary between graphics and editor systems rather than forcing editor concepts into the low-level graphics layer.
+They should be added only when the higher-level state they depend on becomes clear. Gizmo rendering is implemented as a graphics-only renderer that receives explicit visual state from higher layers, keeping editor concepts outside the low-level graphics layer.
 
 ---
 
