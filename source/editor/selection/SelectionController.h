@@ -7,6 +7,7 @@
 
 #include "editor/scene/EditorScene.h"
 #include "editor/selection/SelectionState.h"
+#include "kernel/geometry/queries/SelectionHit.h"
 
 namespace locus::editor {
 
@@ -147,6 +148,21 @@ namespace locus::editor {
          * @return True when selected after the operation.
          */
         bool toggle_face(kernel::geometry::FaceHandle handle);
+
+        /**
+         * @brief Sets the hovered mesh component according to the active granularity.
+         *
+         * @param hit Component hit resolved from editor picking context.
+         * @return True when hover state changed.
+         */
+        bool set_hovered_mesh_component(const kernel::geometry::SelectionHit& hit);
+
+        /**
+         * @brief Clears all hovered mesh components.
+         *
+         * @return True when hover state changed.
+         */
+        bool clear_hovered_mesh_component();
 
         /**
          * @brief Clears all mesh component selections.

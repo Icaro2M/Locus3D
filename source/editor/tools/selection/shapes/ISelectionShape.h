@@ -6,6 +6,7 @@
 #pragma once
 
 #include "editor/scene/SceneNodeId.h"
+#include "kernel/geometry/queries/SelectionHit.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 
@@ -23,6 +24,12 @@ namespace locus::editor {
         std::vector<SceneNodeId> objects{};
 
         /**
+         * @brief Mesh component resolved by the selection query.
+         */
+        kernel::geometry::SelectionHit component =
+            kernel::geometry::SelectionHit::miss();
+
+        /**
          * @brief Checks whether the query resolved at least one object.
          *
          * @return True when the result contains objects.
@@ -37,7 +44,7 @@ namespace locus::editor {
          * @return True when no object was resolved.
          */
         [[nodiscard]] bool empty() const {
-            return objects.empty();
+            return objects.empty() && !component.hit;
         }
 
         /**
@@ -45,6 +52,7 @@ namespace locus::editor {
          */
         void clear() {
             objects.clear();
+            component = kernel::geometry::SelectionHit::miss();
         }
     };
 

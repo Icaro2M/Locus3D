@@ -10,9 +10,13 @@
 #include "editor/command/transform/SetNodeTransformsCommand.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/scene/NodeTransform.h"
+#include "editor/selection/SelectionGranularity.h"
 #include "editor/tools/core/ToolContext.h"
+#include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/selection/SelectTool.h"
 #include "editor/transform/TransformSession.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -446,6 +450,290 @@ namespace {
         return true;
     }
 
+    [[nodiscard]] locus::editor::ToolEvent make_mesh_pointer_event(
+        locus::editor::ToolEventType type,
+        const glm::vec3& target)
+    {
+        locus::editor::ToolEvent event{};
+        event.type = type;
+        event.button = type == locus::editor::ToolEventType::PointerPress
+            ? locus::editor::ToolPointerButton::Primary
+            : locus::editor::ToolPointerButton::None;
+        event.pointer.worldRay.origin = target + glm::vec3{ 0.0f, 0.0f, 4.0f };
+        event.pointer.worldRay.direction = glm::vec3{ 0.0f, 0.0f, -1.0f };
+        event.pointer.viewDirection = glm::vec3{ 0.0f, 0.0f, -1.0f };
+        event.pointer.viewRight = glm::vec3{ 1.0f, 0.0f, 0.0f };
+        event.pointer.viewUp = glm::vec3{ 0.0f, 1.0f, 0.0f };
+        event.pointer.visualScale = 1.0f;
+        return event;
+    }
+
+    [[nodiscard]] bool dispatch_mesh_smoke_event(
+        DocumentSession& document,
+        const locus::editor::ToolEvent& event,
+        std::string_view label)
+    {
+        locus::editor::ToolContext context(
+            document.editor(),
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+
+        const locus::editor::ToolResult result =
+            document.tool_manager().handle_event(context, event);
+
+        if (result.failed()) {
+            std::cerr << label << " failed: " << result.message << '\n';
+            return false;
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] bool run_mesh_edit_smoke_test()
+    {
+        using locus::editor::SelectionGranularity;
+        using locus::kernel::geometry::EdgeHandle;
+        using locus::kernel::geometry::FaceHandle;
+        using locus::kernel::geometry::TopologyTraversal;
+        using locus::kernel::geometry::VertexHandle;
+
+        DocumentSession document{ locus::application::DocumentId{ 2u } };
+        Editor& editor = document.editor();
+
+        const SceneNodeId meshId =
+            editor.scene().create_mesh("Mesh Edit Smoke Cube");
+        locus::editor::MeshNode* meshNode =
+            editor.scene().find_mesh(meshId);
+
+        if (meshNode == nullptr ||
+            !locus::kernel::geometry::TopologyBuilder::build_box_into(
+                meshNode->mesh())) {
+            std::cerr << "Failed to create mesh edit smoke cube.\n";
+            return false;
+        }
+
+        const std::vector<VertexHandle> vertices =
+            TopologyTraversal::vertices(meshNode->mesh());
+        const std::vector<EdgeHandle> edges =
+            TopologyTraversal::edges(meshNode->mesh());
+        const std::vector<FaceHandle> faces =
+            TopologyTraversal::faces(meshNode->mesh());
+
+        if (vertices.empty() || edges.empty() || faces.empty()) {
+            std::cerr << "Mesh edit smoke cube has no editable components.\n";
+            return false;
+        }
+
+        editor.selection_controller().select_object(meshId);
+        editor.set_mode(locus::editor::EditorMode::Mesh);
+        if (!editor.selection_controller().set_active_mesh(meshId)) {
+            std::cerr << "Could not enter mesh edit mode with active mesh.\n";
+            return false;
+        }
+
+        std::cout << "=== Mesh Edit Mode ===\n";
+        std::cout
+            << "[OK] active mesh valido SceneNodeId="
+            << meshId.value << '\n';
+
+        locus::editor::ToolContext activateContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+        (void)document.tool_manager().activate_tool(
+            activateContext,
+            locus::editor::ToolId{ locus::editor::SelectTool::Id });
+
+        VertexHandle vertex = vertices.front();
+        for (const VertexHandle candidate : vertices) {
+            if (meshNode->mesh().vertex(candidate).position.z >
+                meshNode->mesh().vertex(vertex).position.z) {
+                vertex = candidate;
+            }
+        }
+        const glm::vec3 vertexPosition =
+            meshNode->mesh().vertex(vertex).position;
+
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Vertex);
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    vertexPosition),
+                "Vertex hover") ||
+            editor.selection().mesh().hovered_vertex() != vertex ||
+            !editor.selection().mesh().empty()) {
+            std::cerr << "Vertex hover invariant failed.\n";
+            return false;
+        }
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    vertexPosition),
+                "Vertex select") ||
+            !editor.selection().mesh().vertices().contains(vertex)) {
+            std::cerr << "Vertex selection invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== Vertex picking ===\n";
+        std::cout
+            << "[OK] hovered vertex handle=" << vertex.id.value << '\n'
+            << "[OK] selected vertex handle=" << vertex.id.value << '\n';
+
+        locus::editor::ToolEvent toggleVertex =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                vertexPosition);
+        toggleVertex.modifiers = locus::editor::ToolModifiers::Toggle;
+
+        if (!dispatch_mesh_smoke_event(document, toggleVertex, "Vertex toggle") ||
+            editor.selection().mesh().vertices().contains(vertex)) {
+            std::cerr << "Vertex toggle invariant failed.\n";
+            return false;
+        }
+
+        EdgeHandle edge = edges.front();
+        for (const EdgeHandle candidate : edges) {
+            const auto& candidateData = meshNode->mesh().edge(candidate);
+            const glm::vec3 a =
+                meshNode->mesh().vertex(candidateData.vertexA).position;
+            const glm::vec3 b =
+                meshNode->mesh().vertex(candidateData.vertexB).position;
+
+            if (a.z > 0.0f && b.z > 0.0f) {
+                edge = candidate;
+                break;
+            }
+        }
+        const auto& edgeData = meshNode->mesh().edge(edge);
+        const glm::vec3 edgePosition =
+            (meshNode->mesh().vertex(edgeData.vertexA).position +
+                meshNode->mesh().vertex(edgeData.vertexB).position) *
+            0.5f;
+
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Edge);
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    edgePosition),
+                "Edge hover") ||
+            editor.selection().mesh().hovered_edge() != edge) {
+            std::cerr << "Edge hover invariant failed.\n";
+            return false;
+        }
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    edgePosition),
+                "Edge select") ||
+            !editor.selection().mesh().edges().contains(edge)) {
+            std::cerr << "Edge selection invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== Edge picking ===\n";
+        std::cout
+            << "[OK] hovered edge handle=" << edge.id.value << '\n'
+            << "[OK] selected edge handle=" << edge.id.value << '\n';
+
+        FaceHandle face = faces.front();
+        for (const FaceHandle candidate : faces) {
+            if (meshNode->mesh().face(candidate).normal.z > 0.5f) {
+                face = candidate;
+                break;
+            }
+        }
+        const std::vector<VertexHandle> faceVertices =
+            TopologyTraversal::face_vertices(meshNode->mesh(), face);
+        glm::vec3 facePosition{ 0.0f, 0.0f, 0.0f };
+        for (const VertexHandle handle : faceVertices) {
+            facePosition += meshNode->mesh().vertex(handle).position;
+        }
+        facePosition /= static_cast<float>(faceVertices.size());
+
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Face);
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    facePosition),
+                "Face hover") ||
+            editor.selection().mesh().hovered_face() != face) {
+            std::cerr << "Face hover invariant failed.\n";
+            return false;
+        }
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    facePosition),
+                "Face select") ||
+            !editor.selection().mesh().faces().contains(face)) {
+            std::cerr << "Face selection invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== Face picking ===\n";
+        std::cout
+            << "[OK] triangulo resolve para FaceHandle="
+            << face.id.value << '\n';
+
+        const CommandResult undoResult =
+            document.history().undo(document.command_dispatcher());
+        const CommandResult redoResult =
+            document.history().redo(document.command_dispatcher());
+
+        if (!undoResult.success ||
+            !redoResult.success ||
+            !editor.selection().mesh().faces().contains(face)) {
+            std::cerr << "Selection undo/redo invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== Selection history ===\n";
+        std::cout << "[OK] undo\n[OK] redo\n";
+
+        locus::editor::ToolEvent emptyClick =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                glm::vec3{ 20.0f, 20.0f, 20.0f });
+
+        if (!dispatch_mesh_smoke_event(document, emptyClick, "Clear click") ||
+            !editor.selection().mesh().empty() ||
+            editor.selection().mesh().active_mesh() != meshId) {
+            std::cerr << "Empty click clear invariant failed.\n";
+            return false;
+        }
+
+        editor.set_mode(locus::editor::EditorMode::Object);
+        editor.selection_controller().clear_hovered_mesh_component();
+        editor.selection().mesh().clear();
+
+        if (editor.selection().mesh().active_mesh().is_valid()) {
+            std::cerr << "Leaving mesh mode did not clear active mesh.\n";
+            return false;
+        }
+
+        std::cout << "[OK] clear preservou active mesh durante Mesh Mode\n";
+        std::cout << "[OK] sair do Mesh Edit Mode limpou active mesh\n";
+        return true;
+    }
+
     [[nodiscard]] bool seed_demo_scene(
         locus::application::ApplicationRuntime& runtime)
     {
@@ -527,6 +815,11 @@ int main(int argc, char** argv)
     if (argc > 1 &&
         std::string_view{ argv[1] } == "--transform-smoke-test") {
         return run_transform_history_smoke_test() ? 0 : 1;
+    }
+
+    if (argc > 1 &&
+        std::string_view{ argv[1] } == "--mesh-edit-smoke-test") {
+        return run_mesh_edit_smoke_test() ? 0 : 1;
     }
 
     return run_application();

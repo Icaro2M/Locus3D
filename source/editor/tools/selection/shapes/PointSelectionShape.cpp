@@ -15,7 +15,8 @@ namespace locus::editor {
 
         if (!event.is_pointer_event() ||
             !event.pointer.has_picking_hit()) {
-
+            result.component =
+                context.resolve_active_mesh_component(event);
             return result;
         }
 
@@ -24,10 +25,14 @@ namespace locus::editor {
                 event.pointer.pickingId);
 
         if (!nodeId.is_valid()) {
+            result.component =
+                context.resolve_active_mesh_component(event);
             return result;
         }
 
         result.objects.push_back(nodeId);
+        result.component =
+            context.resolve_active_mesh_component(event);
         return result;
     }
 

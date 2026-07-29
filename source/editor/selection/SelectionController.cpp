@@ -202,6 +202,52 @@ namespace locus::editor {
         return selected;
     }
 
+    bool SelectionController::set_hovered_mesh_component(
+        const kernel::geometry::SelectionHit& hit)
+    {
+        kernel::geometry::VertexHandle vertex{};
+        kernel::geometry::EdgeHandle edge{};
+        kernel::geometry::LoopHandle loop{};
+        kernel::geometry::FaceHandle face{};
+
+        if (hit.is_vertex()) {
+            vertex = hit.vertex;
+        }
+        else if (hit.is_edge()) {
+            edge = hit.edge;
+        }
+        else if (hit.is_loop()) {
+            loop = hit.loop;
+        }
+        else if (hit.is_face()) {
+            face = hit.face;
+        }
+
+        MeshSelection& mesh = state_->mesh();
+        const bool changed =
+            mesh.hovered_vertex() != vertex ||
+            mesh.hovered_edge() != edge ||
+            mesh.hovered_loop() != loop ||
+            mesh.hovered_face() != face;
+
+        if (!changed) {
+            return false;
+        }
+
+        mesh.set_hovered_vertex(vertex);
+        mesh.set_hovered_edge(edge);
+        mesh.set_hovered_loop(loop);
+        mesh.set_hovered_face(face);
+        state_->mark_dirty();
+        return true;
+    }
+
+    bool SelectionController::clear_hovered_mesh_component()
+    {
+        return set_hovered_mesh_component(
+            kernel::geometry::SelectionHit::miss());
+    }
+
     void SelectionController::clear_mesh_components()
     {
         state_->mesh().clear_components();

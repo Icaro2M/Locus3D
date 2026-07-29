@@ -8,6 +8,7 @@
 #include "editor/Editor.h"
 #include "editor/command/CommandResult.h"
 #include "editor/scene/SceneNodeId.h"
+#include "kernel/geometry/queries/SelectionHit.h"
 
 #include "graphics/picking/PickingId.h"
 
@@ -19,6 +20,7 @@ namespace locus::editor {
     class HistoryStack;
     class ICommand;
     class PickingSync;
+    struct ToolEvent;
 
     /**
      * @brief Runtime services and editor access provided to active tools.
@@ -222,6 +224,18 @@ namespace locus::editor {
          */
         [[nodiscard]] SceneNodeId resolve_scene_node(
             graphics::PickingId pickingId) const;
+
+        /**
+         * @brief Resolves the active mesh component under a pointer event.
+         *
+         * The application supplies the normalized world ray; the editor owns the
+         * active mesh, granularity, node transform, and LEM handle interpretation.
+         *
+         * @param event Pointer event carrying a world-space ray.
+         * @return Component hit with stable LEM handles, or miss.
+         */
+        [[nodiscard]] kernel::geometry::SelectionHit resolve_active_mesh_component(
+            const ToolEvent& event) const;
 
         /**
          * @brief Marks editor subsystems as dirty.

@@ -11,16 +11,21 @@
 #include "editor/gizmo/GizmoAxis.h"
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/gizmo/GizmoState.h"
+#include "editor/render/MeshNodeRenderAdapter.h"
+#include "editor/render/OverlayRenderAdapter.h"
+#include "editor/scene/MeshNode.h"
 #include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
+#include "graphics/primitives/PrimitiveMeshConverter.h"
 #include "graphics/scene/RenderObject.h"
 
 #include <algorithm>
 #include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace locus::application {
 
@@ -106,6 +111,77 @@ namespace locus::application {
                 document.tool_manager().active_tool();
 
             return dynamic_cast<const editor::TransformTool*>(tool);
+        }
+
+        void append_mesh_component_overlays(
+            const editor::Editor& editor,
+            const graphics::Shader* shader,
+            const graphics::MeshUploader& uploader,
+            std::vector<graphics::GpuMesh>& meshes,
+            std::vector<graphics::RenderObject>& objects)
+        {
+            const editor::SceneNodeId activeMesh =
+                editor.selection().mesh().active_mesh();
+
+            if (!activeMesh.is_valid()) {
+                return;
+            }
+
+            const editor::MeshNode* meshNode =
+                editor.scene().find_mesh(activeMesh);
+
+            if (meshNode == nullptr || shader == nullptr) {
+                return;
+            }
+
+            editor::OverlayGeometry overlay =
+                editor::OverlayRenderAdapter::build_mesh_overlay(
+                    *meshNode,
+                    editor.selection().mesh());
+
+            if (!overlay.has_geometry()) {
+                return;
+            }
+
+            meshes.reserve(meshes.size() + overlay.groups.size());
+            objects.reserve(objects.size() + overlay.groups.size());
+
+            for (const editor::OverlayPrimitiveGroup& group
+                : overlay.groups) {
+                if (!group.has_geometry()) {
+                    continue;
+                }
+
+                graphics::MeshUploadData uploadData =
+                    graphics::PrimitiveMeshConverter::to_upload_data(
+                        group.mesh,
+                        graphics::BufferUsage::Dynamic);
+
+                auto uploadResult = uploader.upload(uploadData);
+                if (!uploadResult) {
+                    continue;
+                }
+
+                meshes.push_back(uploadResult.move_value());
+
+                editor::MeshNodeRenderOptions options{};
+                options.shader = shader;
+                options.layer = graphics::RenderLayer::Overlay;
+
+                graphics::RenderObject object =
+                    editor::MeshNodeRenderAdapter::build_render_object(
+                        *meshNode,
+                        &meshes.back(),
+                        options);
+
+                object.name = "Mesh component overlay";
+                object.pickingId = graphics::PickingId::invalid();
+                object.visibility.selectable = false;
+                object.selected = false;
+                object.hovered = false;
+
+                objects.push_back(std::move(object));
+            }
         }
 
     } // namespace
@@ -454,14 +530,28 @@ namespace locus::application {
         gizmoScene.reserve(gizmoRenderer_.submitted_object_count());
         gizmoRenderer_.submit(gizmoScene);
 
+        std::vector<graphics::GpuMesh> overlayMeshes;
+        std::vector<graphics::RenderObject> overlayObjects;
+        append_mesh_component_overlays(
+            document.editor(),
+            documentShader_,
+            meshUploader_,
+            overlayMeshes,
+            overlayObjects);
+
         renderQueue_.clear();
         renderQueue_.reserve(
             scene.object_count()
+            + overlayObjects.size()
             + 2
             + gizmoScene.object_count());
         renderQueue_.add_object(gridRenderer_.render_object());
 
         for (const graphics::RenderObject& object : scene.objects()) {
+            renderQueue_.add_object(object);
+        }
+
+        for (const graphics::RenderObject& object : overlayObjects) {
             renderQueue_.add_object(object);
         }
 

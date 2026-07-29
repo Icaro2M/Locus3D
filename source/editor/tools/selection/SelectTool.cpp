@@ -6,9 +6,14 @@
 #include "editor/tools/selection/SelectTool.h"
 
 #include "editor/command/selection/ClearObjectSelectionCommand.h"
+#include "editor/command/selection/ClearMeshSelectionCommand.h"
 #include "editor/command/selection/SelectObjectCommand.h"
+#include "editor/command/selection/SelectMeshComponentCommand.h"
 #include "editor/command/selection/ToggleObjectSelectionCommand.h"
+#include "editor/command/selection/ToggleMeshComponentSelectionCommand.h"
+#include "editor/EditorTypes.h"
 #include "editor/tools/selection/shapes/PointSelectionShape.h"
+#include "kernel/geometry/queries/SelectionHit.h"
 
 #include <memory>
 #include <string>
@@ -107,6 +112,26 @@ namespace locus::editor {
                 context,
                 event);
 
+        if (context.mode() == EditorMode::Mesh) {
+            const bool changed =
+                context.selection_controller()
+                .set_hovered_mesh_component(hit.component);
+
+            (void)context.selection_controller()
+                .set_hovered_object(SceneNodeId{});
+
+            if (!changed) {
+                return ToolResult::ignored();
+            }
+
+            return ToolResult::consumed(
+                EditorDirtyFlags::Selection |
+                EditorDirtyFlags::Render,
+                hit.component.hit
+                ? "Hovered mesh component updated."
+                : "Hovered mesh component cleared.");
+        }
+
         SceneNodeId hovered{};
 
         if (hit.has_objects()) {
@@ -162,6 +187,85 @@ namespace locus::editor {
         const bool additive =
             event.has_modifier(
                 ToolModifiers::Additive);
+
+        if (context.mode() == EditorMode::Mesh) {
+            if (hit.component.hit) {
+                switch (hit.component.type) {
+                case kernel::geometry::LEMElementType::Vertex:
+                    if (toggle || additive) {
+                        return from_command_result(
+                            context.execute_command(
+                                std::make_unique<ToggleMeshComponentSelectionCommand>(
+                                    hit.component.vertex)),
+                            "Vertex selection toggled.");
+                    }
+
+                    return from_command_result(
+                        context.execute_command(
+                            std::make_unique<SelectMeshComponentCommand>(
+                                hit.component.vertex)),
+                        "Vertex selected.");
+
+                case kernel::geometry::LEMElementType::Edge:
+                    if (toggle || additive) {
+                        return from_command_result(
+                            context.execute_command(
+                                std::make_unique<ToggleMeshComponentSelectionCommand>(
+                                    hit.component.edge)),
+                            "Edge selection toggled.");
+                    }
+
+                    return from_command_result(
+                        context.execute_command(
+                            std::make_unique<SelectMeshComponentCommand>(
+                                hit.component.edge)),
+                        "Edge selected.");
+
+                case kernel::geometry::LEMElementType::Loop:
+                    if (toggle || additive) {
+                        return from_command_result(
+                            context.execute_command(
+                                std::make_unique<ToggleMeshComponentSelectionCommand>(
+                                    hit.component.loop)),
+                            "Loop selection toggled.");
+                    }
+
+                    return from_command_result(
+                        context.execute_command(
+                            std::make_unique<SelectMeshComponentCommand>(
+                                hit.component.loop)),
+                        "Loop selected.");
+
+                case kernel::geometry::LEMElementType::Face:
+                    if (toggle || additive) {
+                        return from_command_result(
+                            context.execute_command(
+                                std::make_unique<ToggleMeshComponentSelectionCommand>(
+                                    hit.component.face)),
+                            "Face selection toggled.");
+                    }
+
+                    return from_command_result(
+                        context.execute_command(
+                            std::make_unique<SelectMeshComponentCommand>(
+                                hit.component.face)),
+                        "Face selected.");
+                }
+            }
+
+            if (toggle || additive) {
+                return ToolResult::ignored();
+            }
+
+            if (context.selection().mesh().empty()) {
+                return ToolResult::ignored();
+            }
+
+            return from_command_result(
+                context.execute_command(
+                    std::make_unique<ClearMeshSelectionCommand>()),
+                "Mesh component selection cleared.");
+        }
 
         if (hit.empty()) {
             /*
