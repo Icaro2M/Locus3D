@@ -101,16 +101,18 @@ TestResult run_gizmo_controller_tests()
     if (!result.success ||
         !result.changed ||
         !result.constraint.is_valid() ||
-        !near_vec3(node->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f })) {
-        return TestResult::fail("update_drag should apply incremental translation preview");
+        !near_vec3(node->transform().position(), glm::vec3{ 1.0f, 0.0f, 0.0f }) ||
+        !near_vec3(controller.state().pivot, glm::vec3{ 1.0f, 0.0f, 0.0f })) {
+        return TestResult::fail("update_drag should move the node and visual gizmo pivot during preview");
     }
 
     drag.pointer = pointer_at(3.0f, 0.0f);
     result = controller.update_drag(scene, drag);
     if (!result.success ||
         !result.changed ||
-        !near_vec3(node->transform().position(), glm::vec3{ 2.0f, 0.0f, 0.0f })) {
-        return TestResult::fail("update_drag should convert absolute constraint to incremental scene changes");
+        !near_vec3(node->transform().position(), glm::vec3{ 2.0f, 0.0f, 0.0f }) ||
+        !near_vec3(controller.state().pivot, glm::vec3{ 2.0f, 0.0f, 0.0f })) {
+        return TestResult::fail("update_drag should convert absolute constraint to incremental scene and gizmo changes");
     }
 
     if (!controller.end_drag() ||
@@ -120,16 +122,17 @@ TestResult run_gizmo_controller_tests()
         return TestResult::fail("end_drag should confirm the preview transform");
     }
 
-    begin.pointer = pointer_at(1.0f, 0.0f);
+    begin.pointer = pointer_at(3.0f, 0.0f);
     result = controller.begin_drag(begin);
     if (!result.success) {
         return TestResult::fail("begin_drag should allow a second drag after confirmation");
     }
 
-    drag.pointer = pointer_at(2.0f, 0.0f);
+    drag.pointer = pointer_at(4.0f, 0.0f);
     result = controller.update_drag(scene, drag);
     if (!result.success ||
-        !near_vec3(node->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f })) {
+        !near_vec3(node->transform().position(), glm::vec3{ 3.0f, 0.0f, 0.0f }) ||
+        !near_vec3(controller.state().pivot, glm::vec3{ 3.0f, 0.0f, 0.0f })) {
         return TestResult::fail("second drag should preview from the current node transform");
     }
 

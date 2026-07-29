@@ -363,6 +363,11 @@ namespace locus::editor {
             const glm::vec3 incremental = absoluteTranslation - lastTranslation_;
             changed = session_.translate(scene, incremental);
             lastTranslation_ = absoluteTranslation;
+
+            if (changed) {
+                state_.pivot = startPivot_ + lastTranslation_;
+            }
+
             break;
         }
 

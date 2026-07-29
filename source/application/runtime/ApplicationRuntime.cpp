@@ -134,6 +134,9 @@ namespace locus::application {
             DocumentSession& document,
             const editor::ToolEvent& event)
         {
+            const std::size_t undoSizeBefore =
+                document.history().undo_size();
+
             editor::ToolContext toolContext = make_tool_context(document);
             const editor::ToolResult result =
                 document.tool_manager().handle_event(
@@ -142,6 +145,18 @@ namespace locus::application {
 
             if (result.failed()) {
                 return tool_failure(result).error();
+            }
+
+            const bool persistentSceneChange =
+                result.code == editor::ToolResultCode::Confirmed
+                && document.history().undo_size() > undoSizeBefore
+                && editor::has_flag(
+                    result.dirtyFlags,
+                    editor::EditorDirtyFlags::Scene |
+                    editor::EditorDirtyFlags::Mesh);
+
+            if (persistentSceneChange) {
+                document.mark_dirty();
             }
 
             return result;
@@ -282,6 +297,14 @@ namespace locus::application {
                     return ApplicationError::make(
                         ApplicationErrorCode::RuntimeFailure,
                         result.message);
+                }
+
+                if (result.success
+                    && editor::has_flag(
+                        result.dirtyFlags,
+                        editor::EditorDirtyFlags::Scene |
+                        editor::EditorDirtyFlags::Mesh)) {
+                    document.mark_dirty();
                 }
 
                 return {};
