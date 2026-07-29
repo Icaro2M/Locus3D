@@ -173,6 +173,7 @@ namespace locus::editor {
         gizmoState.clear_active();
 
         activeSession_ = nullptr;
+        refresh_gizmo_presentation(context);
 
         return ToolResult::consumed(
             EditorDirtyFlags::Render,
@@ -329,6 +330,7 @@ namespace locus::editor {
 
         if (!result.failed()) {
             activeSession_ = nullptr;
+            refresh_gizmo_presentation(context);
         }
 
         return result;
@@ -349,6 +351,7 @@ namespace locus::editor {
 
         if (!result.failed()) {
             activeSession_ = nullptr;
+            refresh_gizmo_presentation(context);
         }
 
         return result;
@@ -393,6 +396,33 @@ namespace locus::editor {
             objects.active(),
             options_.pivotMode,
             options_.customPivot);
+    }
+
+    void TransformTool::refresh_gizmo_presentation(
+        const ToolContext& context) {
+
+        GizmoState& gizmoState =
+            objectSession_
+            .controller()
+            .state();
+
+        gizmoState.enabled = true;
+        gizmoState.visible =
+            context.mode() == EditorMode::Object &&
+            !context.selection().objects().empty();
+        gizmoState.mode = mode_;
+        gizmoState.space = options_.space;
+        gizmoState.orientation = orientation_;
+
+        if (gizmoState.visible) {
+            gizmoState.pivot =
+                resolve_object_pivot(context);
+        }
+        else {
+            gizmoState.clear_hover();
+        }
+
+        gizmoState.clear_active();
     }
 
     ITransformToolSession*

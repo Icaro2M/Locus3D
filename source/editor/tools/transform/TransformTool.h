@@ -256,6 +256,18 @@ namespace locus::editor {
             const ToolContext& context) const;
 
         /**
+         * @brief Refreshes the render-facing gizmo state from current editor state.
+         *
+         * This keeps the visual gizmo anchored to the current selection after
+         * activation, commit, or cancellation, even when transient controller
+         * session state has been cleared.
+         *
+         * @param context Tool context.
+         */
+        void refresh_gizmo_presentation(
+            const ToolContext& context);
+
+        /**
          * @brief Returns the concrete session used by the current implementation.
          *
          * @return Active session interface.
