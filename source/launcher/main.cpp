@@ -781,36 +781,58 @@ namespace {
         }
 
         locus::editor::Editor& editor = document->editor();
-        const locus::editor::SceneNodeId cubeId =
-            editor.scene().create_mesh("Demo cube");
+        const locus::editor::SceneNodeId cubeAId =
+            editor.scene().create_mesh("Cube A");
+        const locus::editor::SceneNodeId cubeBId =
+            editor.scene().create_mesh("Cube B");
 
-        locus::editor::MeshNode* cube =
-            editor.scene().find_mesh(cubeId);
+        locus::editor::MeshNode* cubeA =
+            editor.scene().find_mesh(cubeAId);
+        locus::editor::MeshNode* cubeB =
+            editor.scene().find_mesh(cubeBId);
 
-        if (cube == nullptr) {
-            std::cerr << "Failed to create demo cube.\n";
+        if (cubeA == nullptr || cubeB == nullptr) {
+            std::cerr << "Failed to create demo cubes.\n";
             return false;
         }
 
-        const auto cubeResult =
+        const auto cubeAResult =
             locus::kernel::geometry::TopologyBuilder::build_box_into(
-                cube->mesh());
+                cubeA->mesh());
+        const auto cubeBResult =
+            locus::kernel::geometry::TopologyBuilder::build_box_into(
+                cubeB->mesh());
 
-        if (!cubeResult) {
-            std::cerr << "Failed to build demo cube.\n";
+        if (!cubeAResult || !cubeBResult) {
+            std::cerr << "Failed to build demo cubes.\n";
             return false;
         }
+
+        cubeA->transform().set_position(
+            glm::vec3{ -1.4f, 0.0f, 0.0f });
+        cubeB->transform().set_position(
+            glm::vec3{ 1.4f, 0.0f, 0.0f });
 
         editor.mark_dirty(
             locus::editor::EditorDirtyFlags::Scene |
             locus::editor::EditorDirtyFlags::Mesh |
             locus::editor::EditorDirtyFlags::Render |
-            locus::editor::EditorDirtyFlags::Picking);
+                locus::editor::EditorDirtyFlags::Picking);
 
         std::cout
-            << "Demo cube created with scene node "
-            << cubeId.value
-            << ". Click it to select, then use W/E/R.\n";
+            << "Interactive selection/context checkpoint started.\n"
+            << "Cube A SceneNodeId=" << cubeAId.value
+            << " at x=-1.4\n"
+            << "Cube B SceneNodeId=" << cubeBId.value
+            << " at x=1.4\n"
+            << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
+            << "Q Select, W/E/R/T transform gizmo in Object context, "
+            << "Esc Cancel, Ctrl+Z Undo, Ctrl+Shift+Z Redo.\n"
+            << "Test path: press 1 and click Cube A; press 4 and click "
+            << "a face on Cube A; press 1 and click Cube B; press 4 "
+            << "and click a face on Cube B.\n"
+            << "Watch [selection] logs for activeMesh, component counts, "
+            << "and stale hover/handle values.\n";
 
         return true;
     }

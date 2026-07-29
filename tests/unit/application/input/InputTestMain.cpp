@@ -62,6 +62,70 @@ using namespace locus::application;
     return std::abs(lhs - rhs) < 0.0001;
 }
 
+[[nodiscard]] const char* shortcut_action_name(
+    ShortcutAction action)
+{
+    switch (action) {
+    case ShortcutAction::None:
+        return "None";
+    case ShortcutAction::ActivateSelectTool:
+        return "ActivateSelectTool";
+    case ShortcutAction::ActivateTranslateTool:
+        return "ActivateTranslateTool";
+    case ShortcutAction::ActivateRotateTool:
+        return "ActivateRotateTool";
+    case ShortcutAction::ActivateScaleTool:
+        return "ActivateScaleTool";
+    case ShortcutAction::ActivateUniversalTool:
+        return "ActivateUniversalTool";
+    case ShortcutAction::SetObjectGranularity:
+        return "SetObjectGranularity";
+    case ShortcutAction::SetVertexGranularity:
+        return "SetVertexGranularity";
+    case ShortcutAction::SetEdgeGranularity:
+        return "SetEdgeGranularity";
+    case ShortcutAction::SetFaceGranularity:
+        return "SetFaceGranularity";
+    case ShortcutAction::Undo:
+        return "Undo";
+    case ShortcutAction::Redo:
+        return "Redo";
+    case ShortcutAction::Save:
+        return "Save";
+    case ShortcutAction::Open:
+        return "Open";
+    case ShortcutAction::DeleteSelection:
+        return "DeleteSelection";
+    case ShortcutAction::Cancel:
+        return "Cancel";
+    }
+
+    return "Unknown";
+}
+
+[[nodiscard]] bool expect_shortcut(
+    const ShortcutManager& shortcuts,
+    const InputState& state,
+    const ShortcutContext& context,
+    ShortcutAction expected,
+    const char* label)
+{
+    const ShortcutAction actual =
+        shortcuts.resolve(state, context);
+
+    if (actual == expected) {
+        return true;
+    }
+
+    std::cerr
+        << label
+        << ": expected " << shortcut_action_name(expected)
+        << ", got " << shortcut_action_name(actual)
+        << '\n';
+
+    return false;
+}
+
 void apply_route(
     const InputRouteResult& route,
     EditorViewport& viewport)
@@ -339,7 +403,12 @@ void apply_route(
     state.begin_frame();
     state.consume(key(Key::Z, InputModifiers::Control));
 
-    if (shortcuts.resolve(state, context) != ShortcutAction::Undo) {
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::Undo,
+            "Undo shortcut")) {
         return false;
     }
 
@@ -349,7 +418,12 @@ void apply_route(
         Key::Z,
         InputModifiers::Control | InputModifiers::Shift));
 
-    if (shortcuts.resolve(state, context) != ShortcutAction::Redo) {
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::Redo,
+            "Redo shortcut")) {
         return false;
     }
 
@@ -357,8 +431,12 @@ void apply_route(
     state.begin_frame();
     state.consume(key(Key::W));
 
-    if (shortcuts.resolve(state, context)
-        != ShortcutAction::ActivateTranslateTool) {
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateTranslateTool,
+            "Translate shortcut")) {
         return false;
     }
 
@@ -366,19 +444,96 @@ void apply_route(
     state.begin_frame();
     state.consume(key(Key::T));
 
-    if (shortcuts.resolve(state, context)
-        != ShortcutAction::ActivateUniversalTool) {
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateUniversalTool,
+            "Universal transform shortcut")) {
         return false;
     }
 
     context.objectMode = false;
-    if (shortcuts.resolve(state, context) != ShortcutAction::None) {
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Transform shortcut blocked outside object context")) {
         return false;
     }
 
     context.objectMode = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num1));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::SetObjectGranularity,
+            "Object granularity shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num2));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::SetVertexGranularity,
+            "Vertex granularity shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num3));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::SetEdgeGranularity,
+            "Edge granularity shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num4));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::SetFaceGranularity,
+            "Face granularity shortcut")) {
+        return false;
+    }
+
+    context.modalActive = true;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Granularity shortcut blocked during modal interaction")) {
+        return false;
+    }
+
+    context.modalActive = false;
     context.textInputActive = true;
-    return shortcuts.resolve(state, context) == ShortcutAction::None;
+    return expect_shortcut(
+        shortcuts,
+        state,
+        context,
+        ShortcutAction::None,
+        "Shortcut blocked while text input is active");
 }
 
 } // namespace

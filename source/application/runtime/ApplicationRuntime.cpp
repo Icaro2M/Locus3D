@@ -12,10 +12,12 @@
 #include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/core/ToolState.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/camera/CameraRayBuilder.h"
 
+#include <iostream>
 #include <glm/vec2.hpp>
 
 namespace locus::application {
@@ -57,6 +59,72 @@ namespace locus::application {
                 document.command_dispatcher(),
                 document.history(),
                 document.editor_sync().picking_sync());
+        }
+
+        [[nodiscard]] const char* granularity_name(
+            editor::SelectionGranularity granularity) noexcept
+        {
+            switch (granularity) {
+            case editor::SelectionGranularity::Object:
+                return "Object";
+            case editor::SelectionGranularity::Vertex:
+                return "Vertex";
+            case editor::SelectionGranularity::Edge:
+                return "Edge";
+            case editor::SelectionGranularity::Loop:
+                return "Loop";
+            case editor::SelectionGranularity::Face:
+                return "Face";
+            }
+
+            return "Unknown";
+        }
+
+        [[nodiscard]] const char* scope_name(
+            editor::SelectionScope scope) noexcept
+        {
+            switch (scope) {
+            case editor::SelectionScope::Scene:
+                return "Scene";
+            case editor::SelectionScope::ActiveMesh:
+                return "ActiveMesh";
+            }
+
+            return "Unknown";
+        }
+
+        void print_selection_summary(
+            const char* label,
+            const DocumentSession& document)
+        {
+            const editor::SelectionState& selection =
+                document.editor().selection();
+            const editor::MeshSelection& meshSelection =
+                selection.mesh();
+
+            std::cout
+                << "[selection] " << label
+                << " scope=" << scope_name(selection.scope())
+                << " granularity="
+                << granularity_name(selection.granularity())
+                << " activeObject="
+                << selection.objects().active().value
+                << " hoveredObject="
+                << selection.objects().hovered().value
+                << " activeMesh="
+                << meshSelection.active_mesh().value
+                << " vertices=" << meshSelection.vertices().size()
+                << " edges=" << meshSelection.edges().size()
+                << " faces=" << meshSelection.faces().size()
+                << " hoverVertex="
+                << meshSelection.hovered_vertex().id.value
+                << " hoverEdge="
+                << meshSelection.hovered_edge().id.value
+                << " hoverFace="
+                << meshSelection.hovered_face().id.value
+                << " undo=" << document.history().undo_size()
+                << " redo=" << document.history().redo_size()
+                << '\n';
         }
 
         [[nodiscard]] editor::ToolEvent make_pointer_event(
@@ -149,6 +217,17 @@ namespace locus::application {
                 return tool_failure(result).error();
             }
 
+            if (event.type != editor::ToolEventType::PointerMove
+                && result.was_consumed()) {
+                if (!result.message.empty()) {
+                    std::cout
+                        << "[tool] " << result.message << '\n';
+                }
+                print_selection_summary(
+                    "after tool event",
+                    document);
+            }
+
             const bool persistentSceneChange =
                 result.code == editor::ToolResultCode::Confirmed
                 && document.history().undo_size() > undoSizeBefore
@@ -209,6 +288,37 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> set_selection_granularity(
+            DocumentSession& document,
+            editor::SelectionGranularity granularity)
+        {
+            document.editor().selection_controller()
+                .set_granularity(granularity);
+            document.editor().mark_dirty(
+                editor::EditorDirtyFlags::Selection |
+                editor::EditorDirtyFlags::Render);
+
+            const auto activateResult =
+                activate_tool(
+                    document,
+                    editor::ToolId{ editor::SelectTool::Id });
+
+            if (!activateResult) {
+                return activateResult.error();
+            }
+
+            std::cout
+                << "[shortcut] Selection granularity -> "
+                << granularity_name(
+                    document.editor().selection().granularity())
+                << '\n';
+            print_selection_summary(
+                "after granularity shortcut",
+                document);
+
+            return {};
+        }
+
         [[nodiscard]] ApplicationResult<void> activate_transform_tool(
             DocumentSession& document,
             editor::GizmoMode mode)
@@ -259,6 +369,26 @@ namespace locus::application {
                 return activate_tool(
                     document,
                     editor::ToolId{ editor::SelectTool::Id });
+
+            case ShortcutAction::SetObjectGranularity:
+                return set_selection_granularity(
+                    document,
+                    editor::SelectionGranularity::Object);
+
+            case ShortcutAction::SetVertexGranularity:
+                return set_selection_granularity(
+                    document,
+                    editor::SelectionGranularity::Vertex);
+
+            case ShortcutAction::SetEdgeGranularity:
+                return set_selection_granularity(
+                    document,
+                    editor::SelectionGranularity::Edge);
+
+            case ShortcutAction::SetFaceGranularity:
+                return set_selection_granularity(
+                    document,
+                    editor::SelectionGranularity::Face);
 
             case ShortcutAction::ActivateTranslateTool:
                 return activate_transform_tool(
@@ -321,6 +451,16 @@ namespace locus::application {
         {
             return document.tool_manager().is_active(
                 editor::ToolId{ editor::TransformTool::Id });
+        }
+
+        [[nodiscard]] bool active_tool_is_interacting(
+            const DocumentSession& document)
+        {
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            return tool != nullptr
+                && tool->state() == editor::ToolState::Interacting;
         }
 
         [[nodiscard]] ApplicationResult<void> route_press_to_select_tool(
@@ -490,6 +630,8 @@ namespace locus::application {
 
         ShortcutContext shortcutContext{};
         shortcutContext.viewportFocused = inputState_.focused();
+        shortcutContext.modalActive =
+            active_tool_is_interacting(*activeDocument);
         shortcutContext.objectMode =
             activeDocument->editor().selection().scope()
             == editor::SelectionScope::Scene &&

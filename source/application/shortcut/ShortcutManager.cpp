@@ -32,6 +32,12 @@ namespace locus::application {
             const ShortcutContext& context) noexcept
         {
             switch (action) {
+            case ShortcutAction::SetObjectGranularity:
+            case ShortcutAction::SetVertexGranularity:
+            case ShortcutAction::SetEdgeGranularity:
+            case ShortcutAction::SetFaceGranularity:
+                return !context.modalActive;
+
             case ShortcutAction::ActivateTranslateTool:
             case ShortcutAction::ActivateRotateTool:
             case ShortcutAction::ActivateScaleTool:
@@ -72,6 +78,10 @@ namespace locus::application {
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateRotateTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
             { Key::T, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateUniversalTool },
+            { Key::Num1, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetObjectGranularity },
+            { Key::Num2, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetVertexGranularity },
+            { Key::Num3, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetEdgeGranularity },
+            { Key::Num4, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetFaceGranularity },
             { Key::Z, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Undo },
             { Key::Z, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::Redo },
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },
