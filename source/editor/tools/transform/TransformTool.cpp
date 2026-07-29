@@ -6,6 +6,8 @@
 #include "editor/tools/transform/TransformTool.h"
 
 #include "editor/selection/ObjectSelection.h"
+#include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 #include "editor/transform/TransformPivotResolver.h"
 
 #include <glm/geometric.hpp>
@@ -17,6 +19,15 @@ namespace locus::editor {
     namespace {
 
         constexpr float orientationEpsilon = 0.000001f;
+
+        [[nodiscard]] bool has_object_transform_context(
+            const ToolContext& context)
+        {
+            return context.selection().scope() == SelectionScope::Scene &&
+                context.selection().granularity() ==
+                SelectionGranularity::Object &&
+                !context.selection().objects().empty();
+        }
 
     } // namespace
 
@@ -151,7 +162,8 @@ namespace locus::editor {
     bool TransformTool::can_activate_tool(
         const ToolContext& context) const {
 
-        return context.mode() == EditorMode::Object;
+        return context.selection().scope() == SelectionScope::Scene &&
+            context.selection().granularity() == SelectionGranularity::Object;
     }
 
     ToolResult TransformTool::on_activate(
@@ -203,8 +215,7 @@ namespace locus::editor {
         const GizmoHit previous =
             controller.state().hovered;
 
-        if (context.mode() != EditorMode::Object ||
-            context.selection().objects().empty()) {
+        if (!has_object_transform_context(context)) {
 
             controller.state().clear_hover();
 
@@ -249,9 +260,11 @@ namespace locus::editor {
         ToolContext& context,
         const ToolEvent& event) {
 
-        if (context.mode() != EditorMode::Object) {
+        if (context.selection().scope() != SelectionScope::Scene ||
+            context.selection().granularity() !=
+            SelectionGranularity::Object) {
             return ToolResult::fail(
-                "Object transform requires object editor mode.");
+                "Object transform requires object selection context.");
         }
 
         if (context.selection().objects().empty()) {
@@ -408,8 +421,7 @@ namespace locus::editor {
 
         gizmoState.enabled = true;
         gizmoState.visible =
-            context.mode() == EditorMode::Object &&
-            !context.selection().objects().empty();
+            has_object_transform_context(context);
         gizmoState.mode = mode_;
         gizmoState.space = options_.space;
         gizmoState.orientation = orientation_;

@@ -90,6 +90,21 @@ namespace locus::editor {
         }
 
         state_.mode = mode;
+
+        if (mode == EditorMode::Object) {
+            selectionController_->enter_scene_context();
+        }
+        else {
+            const SceneNodeId activeObject =
+                state_.selection.objects().active();
+
+            if (activeObject.is_valid()) {
+                (void)selectionController_->enter_mesh_context(
+                    activeObject,
+                    SelectionGranularity::Face);
+            }
+        }
+
         mark_dirty(EditorDirtyFlags::Selection);
     }
 

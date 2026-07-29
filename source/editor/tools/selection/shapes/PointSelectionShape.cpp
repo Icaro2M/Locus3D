@@ -17,6 +17,10 @@ namespace locus::editor {
             !event.pointer.has_picking_hit()) {
             result.component =
                 context.resolve_active_mesh_component(event);
+            if (result.component.hit) {
+                result.componentNode =
+                    context.selection().mesh().active_mesh();
+            }
             return result;
         }
 
@@ -27,12 +31,29 @@ namespace locus::editor {
         if (!nodeId.is_valid()) {
             result.component =
                 context.resolve_active_mesh_component(event);
+            if (result.component.hit) {
+                result.componentNode =
+                    context.selection().mesh().active_mesh();
+            }
             return result;
         }
 
         result.objects.push_back(nodeId);
+
+        result.component =
+            context.resolve_mesh_component(nodeId, event);
+
+        if (result.component.hit) {
+            result.componentNode = nodeId;
+            return result;
+        }
+
         result.component =
             context.resolve_active_mesh_component(event);
+        if (result.component.hit) {
+            result.componentNode =
+                context.selection().mesh().active_mesh();
+        }
         return result;
     }
 

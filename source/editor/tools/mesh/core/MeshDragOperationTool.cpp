@@ -110,7 +110,9 @@ namespace locus::editor {
     bool MeshDragOperationTool::can_activate_tool(
         const ToolContext& context) const
     {
-        return context.mode() == EditorMode::Mesh &&
+        return is_mesh_granularity(targetGranularity_) &&
+            context.selection().mesh().active_mesh().is_valid() &&
+            context.selection().granularity() == targetGranularity_ &&
             can_activate_mesh_tool(context);
     }
 
@@ -145,7 +147,8 @@ namespace locus::editor {
             return false;
         }
 
-        if (context.mode() != EditorMode::Mesh) {
+        if (context.selection().mesh().active_mesh().is_invalid() ||
+            context.selection().granularity() != targetGranularity_) {
             return false;
         }
 

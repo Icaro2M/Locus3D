@@ -30,6 +30,11 @@ namespace locus::editor {
             kernel::geometry::SelectionHit::miss();
 
         /**
+         * @brief Mesh node that owns the resolved component.
+         */
+        SceneNodeId componentNode{};
+
+        /**
          * @brief Checks whether the query resolved at least one object.
          *
          * @return True when the result contains objects.

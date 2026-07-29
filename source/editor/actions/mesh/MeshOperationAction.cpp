@@ -186,7 +186,6 @@ namespace locus::editor {
 
         if (!descriptor_.is_valid()
             || !operationFactory_
-            || context.mode() != EditorMode::Mesh
             || !is_mesh_granularity(requiredGranularity_)
             || context.selection().granularity()
             != requiredGranularity_

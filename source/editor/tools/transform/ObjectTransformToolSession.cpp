@@ -6,6 +6,8 @@
 #include "editor/tools/transform/ObjectTransformToolSession.h"
 
 #include "editor/command/transform/SetNodeTransformsCommand.h"
+#include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 #include "editor/transform/TransformTarget.h"
 
 #include <memory>
@@ -40,9 +42,11 @@ namespace locus::editor {
                 "An object transform session is already active.");
         }
 
-        if (context.mode() != EditorMode::Object) {
+        if (context.selection().scope() != SelectionScope::Scene ||
+            context.selection().granularity() !=
+            SelectionGranularity::Object) {
             return ToolResult::fail(
-                "Object transforms require object editor mode.");
+                "Object transforms require object selection context.");
         }
 
         if (context.selection().objects().empty()) {

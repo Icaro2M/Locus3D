@@ -19,7 +19,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_object_mode();
+        enter_scene_context();
         state_->objects().set(id);
         state_->mark_dirty();
         return true;
@@ -31,7 +31,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_object_mode();
+        enter_scene_context();
         const bool added = state_->objects().add(id);
 
         if (added) {
@@ -58,7 +58,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_object_mode();
+        enter_scene_context();
         const bool selected = state_->objects().toggle(id);
         state_->mark_dirty();
         return selected;
@@ -70,7 +70,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_object_mode();
+        enter_scene_context();
         state_->objects().set_active(id);
         state_->mark_dirty();
         return true;
@@ -95,15 +95,40 @@ namespace locus::editor {
 
     bool SelectionController::set_active_mesh(SceneNodeId id)
     {
-        if (!is_valid_mesh(id)) {
+        return enter_mesh_context(
+            id,
+            is_mesh_granularity(state_->granularity())
+            ? state_->granularity()
+            : SelectionGranularity::Face);
+    }
+
+    void SelectionController::enter_scene_context()
+    {
+        state_->mesh().clear();
+        state_->set_scope(SelectionScope::Scene);
+        state_->set_granularity(SelectionGranularity::Object);
+        state_->mark_dirty();
+    }
+
+    bool SelectionController::enter_mesh_context(
+        SceneNodeId id,
+        SelectionGranularity granularity)
+    {
+        if (!is_valid_mesh(id) || !is_mesh_granularity(granularity)) {
             return false;
         }
 
         state_->mesh().set_active_mesh(id);
         state_->objects().set_active(id);
         state_->set_scope(SelectionScope::ActiveMesh);
+        state_->set_granularity(granularity);
         state_->mark_dirty();
         return true;
+    }
+
+    void SelectionController::leave_mesh_context()
+    {
+        enter_scene_context();
     }
 
     bool SelectionController::select_vertex(kernel::geometry::VertexHandle handle)
@@ -112,7 +137,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Vertex);
+        set_mesh_granularity(SelectionGranularity::Vertex);
         state_->mesh().set_vertex(handle);
         state_->mark_dirty();
         return true;
@@ -124,7 +149,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Edge);
+        set_mesh_granularity(SelectionGranularity::Edge);
         state_->mesh().set_edge(handle);
         state_->mark_dirty();
         return true;
@@ -136,7 +161,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Loop);
+        set_mesh_granularity(SelectionGranularity::Loop);
         state_->mesh().set_loop(handle);
         state_->mark_dirty();
         return true;
@@ -148,7 +173,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Face);
+        set_mesh_granularity(SelectionGranularity::Face);
         state_->mesh().set_face(handle);
         state_->mark_dirty();
         return true;
@@ -160,7 +185,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Vertex);
+        set_mesh_granularity(SelectionGranularity::Vertex);
         const bool selected = state_->mesh().toggle_vertex(handle);
         state_->mark_dirty();
         return selected;
@@ -172,7 +197,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Edge);
+        set_mesh_granularity(SelectionGranularity::Edge);
         const bool selected = state_->mesh().toggle_edge(handle);
         state_->mark_dirty();
         return selected;
@@ -184,7 +209,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Loop);
+        set_mesh_granularity(SelectionGranularity::Loop);
         const bool selected = state_->mesh().toggle_loop(handle);
         state_->mark_dirty();
         return selected;
@@ -196,7 +221,7 @@ namespace locus::editor {
             return false;
         }
 
-        enter_mesh_mode(SelectionGranularity::Face);
+        set_mesh_granularity(SelectionGranularity::Face);
         const bool selected = state_->mesh().toggle_face(handle);
         state_->mark_dirty();
         return selected;
@@ -256,6 +281,21 @@ namespace locus::editor {
 
     void SelectionController::set_granularity(SelectionGranularity granularity)
     {
+        if (granularity == SelectionGranularity::Object) {
+            enter_scene_context();
+            return;
+        }
+
+        const SceneNodeId mesh =
+            state_->mesh().active_mesh().is_valid()
+            ? state_->mesh().active_mesh()
+            : active_object_mesh();
+
+        if (mesh.is_valid()) {
+            (void)enter_mesh_context(mesh, granularity);
+            return;
+        }
+
         state_->set_granularity(granularity);
     }
 
@@ -271,13 +311,14 @@ namespace locus::editor {
         return node && node->is_selectable();
     }
 
-    void SelectionController::enter_object_mode()
+    SceneNodeId SelectionController::active_object_mesh() const
     {
-        state_->set_scope(SelectionScope::Scene);
-        state_->set_granularity(SelectionGranularity::Object);
+        const SceneNodeId active = state_->objects().active();
+        return is_valid_mesh(active) ? active : SceneNodeId{};
     }
 
-    void SelectionController::enter_mesh_mode(SelectionGranularity granularity)
+    void SelectionController::set_mesh_granularity(
+        SelectionGranularity granularity)
     {
         state_->set_scope(SelectionScope::ActiveMesh);
         state_->set_granularity(granularity);

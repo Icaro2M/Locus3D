@@ -98,10 +98,6 @@ namespace locus::editor {
     kernel::geometry::SelectionHit ToolContext::resolve_active_mesh_component(
         const ToolEvent& event) const
     {
-        if (!event.is_pointer_event()) {
-            return kernel::geometry::SelectionHit::miss();
-        }
-
         const SelectionGranularity granularity =
             selection().granularity();
 
@@ -112,12 +108,27 @@ namespace locus::editor {
         const SceneNodeId activeMesh =
             selection().mesh().active_mesh();
 
-        if (!activeMesh.is_valid()) {
+        return resolve_mesh_component(activeMesh, event);
+    }
+
+    kernel::geometry::SelectionHit ToolContext::resolve_mesh_component(
+        const SceneNodeId meshNodeId,
+        const ToolEvent& event) const
+    {
+        if (!event.is_pointer_event()) {
+            return kernel::geometry::SelectionHit::miss();
+        }
+
+        const SelectionGranularity granularity =
+            selection().granularity();
+
+        if (!is_mesh_granularity(granularity) ||
+            !meshNodeId.is_valid()) {
             return kernel::geometry::SelectionHit::miss();
         }
 
         const MeshNode* meshNode =
-            scene().find_mesh(activeMesh);
+            scene().find_mesh(meshNodeId);
 
         if (meshNode == nullptr || !meshNode->is_selectable()) {
             return kernel::geometry::SelectionHit::miss();
@@ -131,7 +142,7 @@ namespace locus::editor {
         }
 
         const glm::mat4 inverseWorld =
-            glm::inverse(node_world_matrix(scene(), activeMesh));
+            glm::inverse(node_world_matrix(scene(), meshNodeId));
 
         const glm::vec4 localOrigin =
             inverseWorld * glm::vec4(event.pointer.worldRay.origin, 1.0f);

@@ -8,6 +8,8 @@
 #include "editor/EditorTypes.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
+#include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/selection/SelectTool.h"
@@ -489,8 +491,10 @@ namespace locus::application {
         ShortcutContext shortcutContext{};
         shortcutContext.viewportFocused = inputState_.focused();
         shortcutContext.objectMode =
-            activeDocument->editor().mode()
-            == editor::EditorMode::Object;
+            activeDocument->editor().selection().scope()
+            == editor::SelectionScope::Scene &&
+            activeDocument->editor().selection().granularity()
+            == editor::SelectionGranularity::Object;
 
         const ShortcutAction shortcutAction =
             shortcutManager_.resolve(

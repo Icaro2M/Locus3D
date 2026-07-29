@@ -86,6 +86,29 @@ namespace locus::editor {
         bool set_active_mesh(SceneNodeId id);
 
         /**
+         * @brief Enters scene-object selection context.
+         *
+         * Mesh component hover, selected components, and active mesh are cleared.
+         */
+        void enter_scene_context();
+
+        /**
+         * @brief Enters mesh component selection context for a valid mesh node.
+         *
+         * @param id Mesh scene node identifier.
+         * @param granularity Component granularity to activate.
+         * @return True when the mesh context is valid and active.
+         */
+        bool enter_mesh_context(
+            SceneNodeId id,
+            SelectionGranularity granularity);
+
+        /**
+         * @brief Leaves mesh context and returns to scene-object selection.
+         */
+        void leave_mesh_context();
+
+        /**
          * @brief Selects one mesh vertex.
          *
          * @param handle Vertex handle.
@@ -179,8 +202,8 @@ namespace locus::editor {
     private:
         [[nodiscard]] bool is_valid_selectable_object(SceneNodeId id) const;
         [[nodiscard]] bool is_valid_mesh(SceneNodeId id) const;
-        void enter_object_mode();
-        void enter_mesh_mode(SelectionGranularity granularity);
+        [[nodiscard]] SceneNodeId active_object_mesh() const;
+        void set_mesh_granularity(SelectionGranularity granularity);
 
         EditorScene* scene_ = nullptr;
         SelectionState* state_ = nullptr;

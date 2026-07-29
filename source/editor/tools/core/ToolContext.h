@@ -238,6 +238,17 @@ namespace locus::editor {
             const ToolEvent& event) const;
 
         /**
+         * @brief Resolves a component inside a specific mesh node.
+         *
+         * @param meshNodeId Mesh scene node to query.
+         * @param event Pointer event carrying a world-space ray.
+         * @return Component hit with stable LEM handles, or miss.
+         */
+        [[nodiscard]] kernel::geometry::SelectionHit resolve_mesh_component(
+            SceneNodeId meshNodeId,
+            const ToolEvent& event) const;
+
+        /**
          * @brief Marks editor subsystems as dirty.
          *
          * @param flags Dirty flags to add.

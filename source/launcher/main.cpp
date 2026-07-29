@@ -11,6 +11,7 @@
 #include "editor/scene/MeshNode.h"
 #include "editor/scene/NodeTransform.h"
 #include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/selection/SelectTool.h"
@@ -503,15 +504,25 @@ namespace {
 
         const SceneNodeId meshId =
             editor.scene().create_mesh("Mesh Edit Smoke Cube");
+        const SceneNodeId meshBId =
+            editor.scene().create_mesh("Mesh Edit Smoke Cube B");
         locus::editor::MeshNode* meshNode =
             editor.scene().find_mesh(meshId);
+        locus::editor::MeshNode* meshBNode =
+            editor.scene().find_mesh(meshBId);
 
         if (meshNode == nullptr ||
+            meshBNode == nullptr ||
             !locus::kernel::geometry::TopologyBuilder::build_box_into(
-                meshNode->mesh())) {
-            std::cerr << "Failed to create mesh edit smoke cube.\n";
+                meshNode->mesh()) ||
+            !locus::kernel::geometry::TopologyBuilder::build_box_into(
+                meshBNode->mesh())) {
+            std::cerr << "Failed to create mesh edit smoke cubes.\n";
             return false;
         }
+
+        meshBNode->transform().set_position(
+            glm::vec3{ 4.0f, 0.0f, 0.0f });
 
         const std::vector<VertexHandle> vertices =
             TopologyTraversal::vertices(meshNode->mesh());
@@ -526,13 +537,24 @@ namespace {
         }
 
         editor.selection_controller().select_object(meshId);
-        editor.set_mode(locus::editor::EditorMode::Mesh);
-        if (!editor.selection_controller().set_active_mesh(meshId)) {
-            std::cerr << "Could not enter mesh edit mode with active mesh.\n";
+        if (editor.selection().granularity() !=
+                SelectionGranularity::Object ||
+            editor.selection().mesh().active_mesh().is_valid()) {
+            std::cerr << "Object selection did not start in scene context.\n";
             return false;
         }
 
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Face);
+
         std::cout << "=== Mesh Edit Mode ===\n";
+        if (editor.selection().mesh().active_mesh() != meshId ||
+            editor.selection().scope() !=
+            locus::editor::SelectionScope::ActiveMesh) {
+            std::cerr << "Contextual mesh activation failed.\n";
+            return false;
+        }
+
         std::cout
             << "[OK] active mesh valido SceneNodeId="
             << meshId.value << '\n';
@@ -720,17 +742,30 @@ namespace {
             return false;
         }
 
-        editor.set_mode(locus::editor::EditorMode::Object);
-        editor.selection_controller().clear_hovered_mesh_component();
-        editor.selection().mesh().clear();
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Object);
 
         if (editor.selection().mesh().active_mesh().is_valid()) {
-            std::cerr << "Leaving mesh mode did not clear active mesh.\n";
+            std::cerr << "Returning to Objects did not clear active mesh.\n";
+            return false;
+        }
+
+        editor.selection_controller().select_object(meshBId);
+        editor.selection_controller().set_granularity(
+            SelectionGranularity::Face);
+
+        if (editor.selection().mesh().active_mesh() != meshBId ||
+            !editor.selection().mesh().empty() ||
+            editor.selection().mesh().hovered_face().is_valid()) {
+            std::cerr
+                << "Switching active mesh left stale component state.\n";
             return false;
         }
 
         std::cout << "[OK] clear preservou active mesh durante Mesh Mode\n";
-        std::cout << "[OK] sair do Mesh Edit Mode limpou active mesh\n";
+        std::cout << "[OK] voltar para Objects limpou active mesh\n";
+        std::cout
+            << "[OK] entrar no contexto de Mesh B limpou componentes de A\n";
         return true;
     }
 

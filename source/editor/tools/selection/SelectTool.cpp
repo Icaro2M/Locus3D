@@ -11,7 +11,8 @@
 #include "editor/command/selection/SelectMeshComponentCommand.h"
 #include "editor/command/selection/ToggleObjectSelectionCommand.h"
 #include "editor/command/selection/ToggleMeshComponentSelectionCommand.h"
-#include "editor/EditorTypes.h"
+#include "editor/selection/SelectionGranularity.h"
+#include "editor/selection/SelectionScope.h"
 #include "editor/tools/selection/shapes/PointSelectionShape.h"
 #include "kernel/geometry/queries/SelectionHit.h"
 
@@ -112,7 +113,7 @@ namespace locus::editor {
                 context,
                 event);
 
-        if (context.mode() == EditorMode::Mesh) {
+        if (is_mesh_granularity(context.selection().granularity())) {
             const bool changed =
                 context.selection_controller()
                 .set_hovered_mesh_component(hit.component);
@@ -188,8 +189,23 @@ namespace locus::editor {
             event.has_modifier(
                 ToolModifiers::Additive);
 
-        if (context.mode() == EditorMode::Mesh) {
+        if (is_mesh_granularity(context.selection().granularity())) {
             if (hit.component.hit) {
+                if (hit.componentNode.is_valid() &&
+                    hit.componentNode !=
+                    context.selection().mesh().active_mesh()) {
+                    const bool activated =
+                        context.selection_controller()
+                        .enter_mesh_context(
+                            hit.componentNode,
+                            context.selection().granularity());
+
+                    if (!activated) {
+                        return ToolResult::fail(
+                            "Could not activate the picked mesh context.");
+                    }
+                }
+
                 switch (hit.component.type) {
                 case kernel::geometry::LEMElementType::Vertex:
                     if (toggle || additive) {
