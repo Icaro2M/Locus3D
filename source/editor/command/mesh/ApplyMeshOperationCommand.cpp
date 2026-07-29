@@ -8,9 +8,82 @@
 #include "editor/scene/EditorScene.h"
 #include "editor/scene/MeshNode.h"
 
+#include <vector>
 #include <utility>
 
 namespace locus::editor {
+
+    namespace {
+
+        void prune_invalid_mesh_selection(
+            SelectionState& selection,
+            const MeshNode& node)
+        {
+            MeshSelection& meshSelection = selection.mesh();
+            const kernel::geometry::LEM& mesh = node.mesh();
+
+            const std::vector<kernel::geometry::VertexHandle> vertices =
+                meshSelection.vertices().items();
+            const std::vector<kernel::geometry::EdgeHandle> edges =
+                meshSelection.edges().items();
+            const std::vector<kernel::geometry::LoopHandle> loops =
+                meshSelection.loops().items();
+            const std::vector<kernel::geometry::FaceHandle> faces =
+                meshSelection.faces().items();
+
+            const kernel::geometry::VertexHandle hoveredVertex =
+                meshSelection.hovered_vertex();
+            const kernel::geometry::EdgeHandle hoveredEdge =
+                meshSelection.hovered_edge();
+            const kernel::geometry::LoopHandle hoveredLoop =
+                meshSelection.hovered_loop();
+            const kernel::geometry::FaceHandle hoveredFace =
+                meshSelection.hovered_face();
+
+            meshSelection.clear_components();
+
+            for (const kernel::geometry::VertexHandle handle : vertices) {
+                if (mesh.is_valid(handle)) {
+                    meshSelection.add_vertex(handle);
+                }
+            }
+
+            for (const kernel::geometry::EdgeHandle handle : edges) {
+                if (mesh.is_valid(handle)) {
+                    meshSelection.add_edge(handle);
+                }
+            }
+
+            for (const kernel::geometry::LoopHandle handle : loops) {
+                if (mesh.is_valid(handle)) {
+                    meshSelection.add_loop(handle);
+                }
+            }
+
+            for (const kernel::geometry::FaceHandle handle : faces) {
+                if (mesh.is_valid(handle)) {
+                    meshSelection.add_face(handle);
+                }
+            }
+
+            if (mesh.is_valid(hoveredVertex)) {
+                meshSelection.set_hovered_vertex(hoveredVertex);
+            }
+
+            if (mesh.is_valid(hoveredEdge)) {
+                meshSelection.set_hovered_edge(hoveredEdge);
+            }
+
+            if (mesh.is_valid(hoveredLoop)) {
+                meshSelection.set_hovered_loop(hoveredLoop);
+            }
+
+            if (mesh.is_valid(hoveredFace)) {
+                meshSelection.set_hovered_face(hoveredFace);
+            }
+        }
+
+    } // namespace
 
     ApplyMeshOperationCommand::ApplyMeshOperationCommand(
         SceneNodeId meshNode,
@@ -59,7 +132,9 @@ namespace locus::editor {
             return CommandResult::fail("Mesh operation failed.");
         }
 
+        node->bump_mesh_revision();
         context.selection().mesh().set_active_mesh(meshNode_);
+        prune_invalid_mesh_selection(context.selection(), *node);
         context.selection().mark_dirty();
 
         node->mark_dirty(

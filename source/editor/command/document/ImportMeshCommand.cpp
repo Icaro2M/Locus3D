@@ -145,6 +145,7 @@ namespace locus::editor {
         }
 
         node->mesh() = mesh_;
+        node->bump_mesh_revision();
 
         if (parent_.is_valid()) {
             if (!context.scene().reparent(importedNode_, parent_)) {
@@ -176,6 +177,7 @@ namespace locus::editor {
 
         auto meshNode = std::make_unique<MeshNode>(importedNode_, metadata_.name);
         meshNode->mesh() = mesh_;
+        meshNode->bump_mesh_revision();
         meshNode->transform() = transform_;
         meshNode->pivot() = pivot_;
         meshNode->metadata() = metadata_;

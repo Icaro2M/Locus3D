@@ -13,11 +13,14 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolState.h"
+#include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/camera/CameraRayBuilder.h"
 
+#include <cstddef>
 #include <iostream>
+#include <string>
 #include <glm/vec2.hpp>
 
 namespace locus::application {
@@ -93,6 +96,29 @@ namespace locus::application {
             return "Unknown";
         }
 
+        [[nodiscard]] const char* tool_result_code_name(
+            editor::ToolResultCode code) noexcept
+        {
+            switch (code) {
+            case editor::ToolResultCode::Ignored:
+                return "Ignored";
+            case editor::ToolResultCode::Consumed:
+                return "Consumed";
+            case editor::ToolResultCode::Started:
+                return "Started";
+            case editor::ToolResultCode::Updated:
+                return "Updated";
+            case editor::ToolResultCode::Confirmed:
+                return "Confirmed";
+            case editor::ToolResultCode::Cancelled:
+                return "Cancelled";
+            case editor::ToolResultCode::Failed:
+                return "Failed";
+            }
+
+            return "Unknown";
+        }
+
         void print_selection_summary(
             const char* label,
             const DocumentSession& document)
@@ -125,6 +151,51 @@ namespace locus::application {
                 << " undo=" << document.history().undo_size()
                 << " redo=" << document.history().redo_size()
                 << '\n';
+        }
+
+        void print_tool_result(
+            const char* label,
+            const editor::ToolResult& result,
+            const DocumentSession& document)
+        {
+            std::cout
+                << "[tool] " << label
+                << " code=" << tool_result_code_name(result.code)
+                << " state=";
+
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            if (tool == nullptr) {
+                std::cout << "None";
+            }
+            else {
+                switch (tool->state()) {
+                case editor::ToolState::Inactive:
+                    std::cout << "Inactive";
+                    break;
+                case editor::ToolState::Ready:
+                    std::cout << "Ready";
+                    break;
+                case editor::ToolState::Interacting:
+                    std::cout << "Interacting";
+                    break;
+                case editor::ToolState::Suspended:
+                    std::cout << "Suspended";
+                    break;
+                }
+            }
+
+            if (!result.message.empty()) {
+                std::cout << " message=\"" << result.message << '"';
+            }
+
+            std::cout
+                << " history=("
+                << document.history().undo_size()
+                << '/'
+                << document.history().redo_size()
+                << ")\n";
         }
 
         [[nodiscard]] editor::ToolEvent make_pointer_event(
@@ -219,13 +290,30 @@ namespace locus::application {
 
             if (event.type != editor::ToolEventType::PointerMove
                 && result.was_consumed()) {
-                if (!result.message.empty()) {
-                    std::cout
-                        << "[tool] " << result.message << '\n';
-                }
+                print_tool_result(
+                    "event",
+                    result,
+                    document);
                 print_selection_summary(
                     "after tool event",
                     document);
+            }
+            else if (event.type == editor::ToolEventType::PointerMove
+                && result.code == editor::ToolResultCode::Updated
+                && document.tool_manager().is_active(
+                    editor::ToolId{
+                        std::string{
+                            editor::ExtrudeFaceTool::Id } })) {
+                static std::size_t previewLogCounter = 0;
+
+                if ((previewLogCounter % 12u) == 0u) {
+                    print_tool_result(
+                        "preview update",
+                        result,
+                        document);
+                }
+
+                ++previewLogCounter;
             }
 
             const bool persistentSceneChange =
@@ -319,6 +407,45 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> activate_extrude_face_tool(
+            DocumentSession& document)
+        {
+            const editor::SelectionState& selection =
+                document.editor().selection();
+
+            if (selection.mesh().active_mesh().is_invalid()
+                || selection.granularity()
+                != editor::SelectionGranularity::Face
+                || selection.mesh().faces().empty()) {
+                return ApplicationError::make(
+                    ApplicationErrorCode::InvalidState,
+                    "Extrude requires an active mesh and at least one "
+                    "selected face.");
+            }
+
+            editor::ToolContext toolContext = make_tool_context(document);
+            const editor::ToolResult result =
+                document.tool_manager().activate_tool(
+                    toolContext,
+                    editor::ToolId{
+                        std::string{
+                            editor::ExtrudeFaceTool::Id } });
+
+            if (result.failed()) {
+                return tool_failure(result);
+            }
+
+            print_tool_result(
+                "ExtrudeFaceTool activation",
+                result,
+                document);
+            print_selection_summary(
+                "after Extrude activation",
+                document);
+
+            return {};
+        }
+
         [[nodiscard]] ApplicationResult<void> activate_transform_tool(
             DocumentSession& document,
             editor::GizmoMode mode)
@@ -369,6 +496,9 @@ namespace locus::application {
                 return activate_tool(
                     document,
                     editor::ToolId{ editor::SelectTool::Id });
+
+            case ShortcutAction::ActivateExtrudeFaceTool:
+                return activate_extrude_face_tool(document);
 
             case ShortcutAction::SetObjectGranularity:
                 return set_selection_granularity(
@@ -437,6 +567,19 @@ namespace locus::application {
                         editor::EditorDirtyFlags::Scene |
                         editor::EditorDirtyFlags::Mesh)) {
                     document.mark_dirty();
+                }
+
+                if (result.success) {
+                    std::cout
+                        << "[history] "
+                        << (action == ShortcutAction::Redo
+                            ? "redo"
+                            : "undo")
+                        << " success undo="
+                        << document.history().undo_size()
+                        << " redo="
+                        << document.history().redo_size()
+                        << '\n';
                 }
 
                 return {};
@@ -637,6 +780,15 @@ namespace locus::application {
             == editor::SelectionScope::Scene &&
             activeDocument->editor().selection().granularity()
             == editor::SelectionGranularity::Object;
+        shortcutContext.faceSelectionContext =
+            activeDocument->editor().selection().scope()
+            == editor::SelectionScope::ActiveMesh &&
+            activeDocument->editor().selection().granularity()
+            == editor::SelectionGranularity::Face &&
+            activeDocument->editor().selection().mesh()
+                .active_mesh().is_valid() &&
+            !activeDocument->editor().selection().mesh()
+                .faces().empty();
 
         const ShortcutAction shortcutAction =
             shortcutManager_.resolve(
@@ -649,6 +801,10 @@ namespace locus::application {
         if (!shortcutResult) {
             inputState_.end_frame();
             return shortcutResult.error();
+        }
+
+        if (shortcutAction == ShortcutAction::Cancel) {
+            inputRouter_.reset();
         }
 
         ApplicationResult<void> renderResult =

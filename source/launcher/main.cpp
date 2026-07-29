@@ -826,13 +826,18 @@ namespace {
             << "Cube B SceneNodeId=" << cubeBId.value
             << " at x=1.4\n"
             << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
-            << "Q Select, W/E/R/T transform gizmo in Object context, "
+            << "Q Select, E Extrude in Face context, "
+            << "W/E/R/T transform gizmo in Object context, "
             << "Esc Cancel, Ctrl+Z Undo, Ctrl+Shift+Z Redo.\n"
             << "Test path: press 1 and click Cube A; press 4 and click "
             << "a face on Cube A; press 1 and click Cube B; press 4 "
-            << "and click a face on Cube B.\n"
+            << "and click a face on Cube B. For Extrude: keep Face "
+            << "granularity, press E, press-drag-release on the selected "
+            << "face, then use Ctrl+Z/Ctrl+Shift+Z or start another "
+            << "Extrude and press Esc before release.\n"
             << "Watch [selection] logs for activeMesh, component counts, "
-            << "and stale hover/handle values.\n";
+            << "stale hover/handle values, and [tool] logs for preview, "
+            << "commit, cancel, and history.\n";
 
         return true;
     }

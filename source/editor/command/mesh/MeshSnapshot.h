@@ -47,6 +47,7 @@ namespace locus::editor {
             }
 
             node.mesh() = mesh_;
+            node.bump_mesh_revision();
             selection_.restore(selection);
 
             node.mark_dirty(

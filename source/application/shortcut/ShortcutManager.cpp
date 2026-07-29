@@ -32,6 +32,10 @@ namespace locus::application {
             const ShortcutContext& context) noexcept
         {
             switch (action) {
+            case ShortcutAction::ActivateExtrudeFaceTool:
+                return context.faceSelectionContext
+                    && !context.modalActive;
+
             case ShortcutAction::SetObjectGranularity:
             case ShortcutAction::SetVertexGranularity:
             case ShortcutAction::SetEdgeGranularity:
@@ -75,6 +79,7 @@ namespace locus::application {
         bindings_ = {
             { Key::Q, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateSelectTool },
             { Key::W, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateTranslateTool },
+            { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateExtrudeFaceTool },
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateRotateTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
             { Key::T, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateUniversalTool },

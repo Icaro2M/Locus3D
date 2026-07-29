@@ -78,6 +78,8 @@ using namespace locus::application;
         return "ActivateScaleTool";
     case ShortcutAction::ActivateUniversalTool:
         return "ActivateUniversalTool";
+    case ShortcutAction::ActivateExtrudeFaceTool:
+        return "ActivateExtrudeFaceTool";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -442,6 +444,30 @@ void apply_route(
 
     state.reset();
     state.begin_frame();
+    state.consume(key(Key::E));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateRotateTool,
+            "Rotate shortcut")) {
+        return false;
+    }
+
+    context.objectMode = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Transform shortcut blocked outside object context")) {
+        return false;
+    }
+
+    context.objectMode = true;
+    state.reset();
+    state.begin_frame();
     state.consume(key(Key::T));
 
     if (!expect_shortcut(
@@ -454,12 +480,27 @@ void apply_route(
     }
 
     context.objectMode = false;
+    context.faceSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::E));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateExtrudeFaceTool,
+            "Extrude shortcut in face context")) {
+        return false;
+    }
+
+    context.faceSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
             context,
             ShortcutAction::None,
-            "Transform shortcut blocked outside object context")) {
+            "Extrude shortcut blocked without selected face")) {
         return false;
     }
 

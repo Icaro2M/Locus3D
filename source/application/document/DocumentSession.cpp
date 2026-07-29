@@ -6,6 +6,7 @@
 #include "application/document/DocumentSession.h"
 
 #include "editor/tools/core/ToolContext.h"
+#include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 
@@ -28,6 +29,12 @@ namespace locus::application {
             editor::TransformTool::make_descriptor(),
             [] {
                 return std::make_unique<editor::TransformTool>();
+            });
+
+        (void)toolRegistry_.register_tool(
+            editor::ExtrudeFaceTool::make_descriptor(),
+            [] {
+                return std::make_unique<editor::ExtrudeFaceTool>();
             });
 
         editor::ToolContext toolContext(

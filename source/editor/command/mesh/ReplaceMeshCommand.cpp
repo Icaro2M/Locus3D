@@ -39,6 +39,7 @@ namespace locus::editor {
         previousSnapshot_.capture(*node, context.selection());
 
         node->mesh() = replacementMesh_;
+        node->bump_mesh_revision();
         context.selection().mesh().set_active_mesh(meshNode_);
 
         if (clearComponentSelection_) {

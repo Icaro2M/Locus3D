@@ -8,6 +8,8 @@
 #include "editor/scene/SceneNode.h"
 #include "kernel/geometry/mesh/LEM.h"
 
+#include <cstdint>
+
 namespace locus::editor {
 
     /**
@@ -47,8 +49,27 @@ namespace locus::editor {
             return mesh_;
         }
 
+        /**
+         * @brief Returns the revision used by render caches for this mesh.
+         *
+         * @return Monotonic mesh revision.
+         */
+        [[nodiscard]] std::uint64_t mesh_revision() const noexcept
+        {
+            return meshRevision_;
+        }
+
+        /**
+         * @brief Marks the mesh payload as definitively modified.
+         */
+        void bump_mesh_revision() noexcept
+        {
+            ++meshRevision_;
+        }
+
     private:
         kernel::geometry::LEM mesh_{};
+        std::uint64_t meshRevision_ = 1;
     };
 
 }

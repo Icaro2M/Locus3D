@@ -13,9 +13,11 @@
 #include "editor/gizmo/GizmoState.h"
 #include "editor/render/MeshNodeRenderAdapter.h"
 #include "editor/render/OverlayRenderAdapter.h"
+#include "editor/render/PreviewRenderAdapter.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
+#include "editor/tools/mesh/core/MeshDragOperationTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/primitives/PrimitiveMeshConverter.h"
@@ -113,6 +115,16 @@ namespace locus::application {
             return dynamic_cast<const editor::TransformTool*>(tool);
         }
 
+        [[nodiscard]] const editor::MeshDragOperationTool*
+        active_mesh_drag_tool(
+            const DocumentSession& document)
+        {
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            return dynamic_cast<const editor::MeshDragOperationTool*>(tool);
+        }
+
         void append_mesh_component_overlays(
             const editor::Editor& editor,
             const graphics::Shader* shader,
@@ -181,6 +193,97 @@ namespace locus::application {
                 object.hovered = false;
 
                 objects.push_back(std::move(object));
+            }
+        }
+
+        void append_operation_preview(
+            const DocumentSession& document,
+            const graphics::Shader* shader,
+            const graphics::MeshUploader& uploader,
+            std::vector<graphics::GpuMesh>& meshes,
+            std::vector<graphics::RenderObject>& objects)
+        {
+            const editor::MeshDragOperationTool* tool =
+                active_mesh_drag_tool(document);
+
+            if (tool == nullptr || !tool->has_operation_preview()) {
+                return;
+            }
+
+            const editor::MeshToolTarget& target =
+                tool->mesh_session().target();
+
+            const editor::MeshNode* meshNode =
+                document.editor().scene().find_mesh(target.nodeId);
+
+            if (meshNode == nullptr || shader == nullptr) {
+                return;
+            }
+
+            editor::PreviewRenderOptions options{};
+            options.solidShader = shader;
+            options.wireShader = shader;
+            options.solidObjectId = 0;
+            options.wireObjectId = 0;
+
+            const kernel::modeling::OperationPreview& preview =
+                tool->operation_preview();
+
+            graphics::MeshUploadData solidUpload =
+                editor::PreviewRenderAdapter::build_solid_upload_data(
+                    preview,
+                    options);
+            graphics::MeshUploadData wireUpload =
+                editor::PreviewRenderAdapter::build_wire_upload_data(
+                    preview,
+                    options);
+
+            if (solidUpload.is_empty() && wireUpload.is_empty()) {
+                return;
+            }
+
+            meshes.reserve(meshes.size() + 2u);
+            const graphics::GpuMesh* solidMesh = nullptr;
+            const graphics::GpuMesh* wireMesh = nullptr;
+
+            if (!solidUpload.is_empty()) {
+                auto uploadResult = uploader.upload(solidUpload);
+                if (uploadResult) {
+                    meshes.push_back(uploadResult.move_value());
+                    solidMesh = &meshes.back();
+                }
+            }
+
+            if (!wireUpload.is_empty()) {
+                auto uploadResult = uploader.upload(wireUpload);
+                if (uploadResult) {
+                    meshes.push_back(uploadResult.move_value());
+                    wireMesh = &meshes.back();
+                }
+            }
+
+            editor::PreviewRenderObjects previewObjects =
+                editor::PreviewRenderAdapter::build_render_objects(
+                    *meshNode,
+                    preview,
+                    solidMesh,
+                    wireMesh,
+                    options);
+
+            objects.reserve(objects.size() + 2u);
+
+            if (previewObjects.hasSolid) {
+                previewObjects.solid.pickingId =
+                    graphics::PickingId::invalid();
+                previewObjects.solid.visibility.selectable = false;
+                objects.push_back(std::move(previewObjects.solid));
+            }
+
+            if (previewObjects.hasWire) {
+                previewObjects.wire.pickingId =
+                    graphics::PickingId::invalid();
+                previewObjects.wire.visibility.selectable = false;
+                objects.push_back(std::move(previewObjects.wire));
             }
         }
 
@@ -441,6 +544,11 @@ namespace locus::application {
         syncOptions.renderSceneOptions.sceneOptions.allowNullGpuMeshes = false;
         syncOptions.renderSceneOptions.sceneOptions.meshOptions.shader =
             documentShader_;
+        syncOptions.renderSceneOptions.sceneOptions.meshRevisionResolver =
+            [](const editor::MeshNode& node) {
+                return static_cast<graphics::u64>(
+                    node.mesh_revision());
+            };
 
         const bool documentChanged =
             activeDocumentId_ != document.id();
@@ -532,8 +640,15 @@ namespace locus::application {
 
         std::vector<graphics::GpuMesh> overlayMeshes;
         std::vector<graphics::RenderObject> overlayObjects;
+        overlayMeshes.reserve(4u);
         append_mesh_component_overlays(
             document.editor(),
+            documentShader_,
+            meshUploader_,
+            overlayMeshes,
+            overlayObjects);
+        append_operation_preview(
+            document,
             documentShader_,
             meshUploader_,
             overlayMeshes,

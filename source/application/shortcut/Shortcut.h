@@ -19,6 +19,7 @@ namespace locus::application {
         ActivateRotateTool,
         ActivateScaleTool,
         ActivateUniversalTool,
+        ActivateExtrudeFaceTool,
         SetObjectGranularity,
         SetVertexGranularity,
         SetEdgeGranularity,
@@ -39,6 +40,7 @@ namespace locus::application {
         bool textInputActive = false;
         bool modalActive = false;
         bool objectMode = true;
+        bool faceSelectionContext = false;
     };
 
     /**
