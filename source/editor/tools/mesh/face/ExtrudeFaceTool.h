@@ -8,6 +8,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <memory>
 #include <string_view>
@@ -19,10 +20,10 @@ namespace locus::editor {
      */
     struct ExtrudeFaceToolOptions {
         /**
-         * @brief Extrusion distance produced by one viewport pixel.
+         * @brief Fallback extrusion distance produced by one viewport pixel.
          *
-         * This value is multiplied by ToolPointerData::visualScale when that
-         * scale is positive.
+         * This value is used only when the cursor ray cannot be solved
+         * robustly against the extrusion axis.
          */
         float distancePerPixel = 0.01f;
 
@@ -40,9 +41,9 @@ namespace locus::editor {
         bool keepSourceFace = false;
 
         /**
-         * @brief True when downward dragging produces positive extrusion.
+         * @brief True when the fallback screen drag direction is inverted.
          *
-         * By default, upward viewport dragging produces positive distance.
+         * This affects only the degenerate fallback path.
          */
         bool invertDragDirection = false;
 
@@ -166,7 +167,7 @@ namespace locus::editor {
 
     private:
         /**
-         * @brief Calculates distance from the current pointer position.
+         * @brief Calculates distance from the current pointer ray.
          *
          * @param event Current pointer event.
          * @return Signed extrusion distance.
@@ -174,6 +175,15 @@ namespace locus::editor {
         [[nodiscard]]
         float calculate_distance(
             const ToolEvent& event) const;
+
+        /**
+         * @brief Initializes the ray-to-axis drag mapping.
+         */
+        [[nodiscard]]
+        bool initialize_axis_drag(
+            const ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target);
 
         /**
          * @brief Checks whether the current distance produces geometry.
@@ -187,7 +197,14 @@ namespace locus::editor {
 
         glm::vec2 startPosition_{ 0.0f };
 
+        glm::vec3 extrusionAxisWorld_{ 0.0f, 1.0f, 0.0f };
+        glm::vec3 axisOriginWorld_{ 0.0f };
+        glm::vec3 startAxisPointWorld_{ 0.0f };
+        glm::vec2 fallbackScreenAxis_{ 0.0f, -1.0f };
+
         float interactionVisualScale_ = 1.0f;
+        float worldDistanceToLocalDistance_ = 1.0f;
+        bool axisDragReady_ = false;
         float distance_ = 0.0f;
     };
 

@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <deque>
 #include <string>
 #include <utility>
 #include <vector>
@@ -129,7 +130,7 @@ namespace locus::application {
             const editor::Editor& editor,
             const graphics::Shader* shader,
             const graphics::MeshUploader& uploader,
-            std::vector<graphics::GpuMesh>& meshes,
+            std::deque<graphics::GpuMesh>& meshes,
             std::vector<graphics::RenderObject>& objects)
         {
             const editor::SceneNodeId activeMesh =
@@ -155,7 +156,6 @@ namespace locus::application {
                 return;
             }
 
-            meshes.reserve(meshes.size() + overlay.groups.size());
             objects.reserve(objects.size() + overlay.groups.size());
 
             for (const editor::OverlayPrimitiveGroup& group
@@ -200,7 +200,7 @@ namespace locus::application {
             const DocumentSession& document,
             const graphics::Shader* shader,
             const graphics::MeshUploader& uploader,
-            std::vector<graphics::GpuMesh>& meshes,
+            std::deque<graphics::GpuMesh>& meshes,
             std::vector<graphics::RenderObject>& objects)
         {
             const editor::MeshDragOperationTool* tool =
@@ -242,7 +242,6 @@ namespace locus::application {
                 return;
             }
 
-            meshes.reserve(meshes.size() + 2u);
             const graphics::GpuMesh* solidMesh = nullptr;
             const graphics::GpuMesh* wireMesh = nullptr;
 
@@ -638,9 +637,8 @@ namespace locus::application {
         gizmoScene.reserve(gizmoRenderer_.submitted_object_count());
         gizmoRenderer_.submit(gizmoScene);
 
-        std::vector<graphics::GpuMesh> overlayMeshes;
+        std::deque<graphics::GpuMesh> overlayMeshes;
         std::vector<graphics::RenderObject> overlayObjects;
-        overlayMeshes.reserve(4u);
         append_mesh_component_overlays(
             document.editor(),
             documentShader_,
