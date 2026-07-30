@@ -4,6 +4,8 @@
  */
 
 #include "application/Application.h"
+#include "application/shortcut/Shortcut.h"
+#include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
 #include "editor/command/CommandResult.h"
 #include "editor/command/transform/NodeTransformChange.h"
@@ -15,6 +17,7 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
+#include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/transform/TransformSession.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
@@ -498,6 +501,27 @@ namespace {
         return true;
     }
 
+    [[nodiscard]] bool selected_edges_are_valid(
+        const locus::editor::Editor& editor,
+        SceneNodeId meshId)
+    {
+        const locus::editor::MeshNode* node =
+            editor.scene().find_mesh(meshId);
+
+        if (node == nullptr) {
+            return false;
+        }
+
+        for (const locus::kernel::geometry::EdgeHandle edge :
+            editor.selection().mesh().edges().items()) {
+            if (!node->mesh().is_valid(edge)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     [[nodiscard]] bool run_mesh_edit_smoke_test()
     {
         using locus::editor::SelectionGranularity;
@@ -872,6 +896,168 @@ namespace {
             << "[OK] Ctrl+Z/Ctrl+Y equivalent undo/redo restored slide\n"
             << "[OK] Mesh B cancel preserved mesh and valid edge handle\n";
 
+        const std::size_t meshBVertexCountBeforeLoopCut =
+            TopologyTraversal::vertices(meshBNode->mesh()).size();
+        const std::size_t historyBeforeLoopCut =
+            document.history().undo_size();
+
+        const locus::application::ApplicationResult<bool> loopCutActivation =
+            locus::application::MeshToolActivationController{}
+                .activate_shortcut(
+                    locus::application::ShortcutAction::ActivateLoopCutTool,
+                    document);
+
+        if (!loopCutActivation ||
+            !loopCutActivation.value()) {
+            std::cerr << "LoopCut shortcut activation failed";
+
+            if (!loopCutActivation) {
+                std::cerr << ": "
+                    << loopCutActivation.error().message;
+            }
+
+            std::cerr << '\n';
+            return false;
+        }
+
+        const glm::vec3 meshBLoopMove =
+            meshBEdgePosition +
+            glm::normalize(
+                meshBEdgeBOriginal -
+                meshBEdgeAOriginal) *
+            0.2f;
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    meshBEdgePosition),
+                "LoopCut Mesh B press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    meshBLoopMove),
+                "LoopCut Mesh B preview") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerRelease,
+                    meshBLoopMove),
+                "LoopCut Mesh B commit")) {
+            return false;
+        }
+
+        const std::size_t meshBVertexCountAfterLoopCut =
+            TopologyTraversal::vertices(meshBNode->mesh()).size();
+
+        if (document.history().undo_size() != historyBeforeLoopCut + 1u ||
+            meshBVertexCountAfterLoopCut <= meshBVertexCountBeforeLoopCut ||
+            !selected_edges_are_valid(editor, meshBId)) {
+            std::cerr << "LoopCut commit invariant failed.\n";
+            return false;
+        }
+
+        CommandResult loopCutUndoResult =
+            document.history().undo(document.command_dispatcher());
+
+        if (!loopCutUndoResult.success ||
+            TopologyTraversal::vertices(meshBNode->mesh()).size() !=
+                meshBVertexCountBeforeLoopCut ||
+            !selected_edges_are_valid(editor, meshBId)) {
+            std::cerr << "LoopCut undo invariant failed.\n";
+            return false;
+        }
+
+        CommandResult loopCutRedoResult =
+            document.history().redo(document.command_dispatcher());
+
+        if (!loopCutRedoResult.success ||
+            TopologyTraversal::vertices(meshBNode->mesh()).size() !=
+                meshBVertexCountAfterLoopCut ||
+            !selected_edges_are_valid(editor, meshBId)) {
+            std::cerr << "LoopCut redo invariant failed.\n";
+            return false;
+        }
+
+        const EdgeHandle meshALoopCancelEdge =
+            TopologyTraversal::edges(meshNode->mesh()).front();
+        const auto meshALoopCancelEdgeData =
+            meshNode->mesh().edge(meshALoopCancelEdge);
+        const glm::vec3 meshALoopCancelPosition =
+            (meshNode->mesh().vertex(meshALoopCancelEdgeData.vertexA).position +
+                meshNode->mesh().vertex(meshALoopCancelEdgeData.vertexB).position) *
+            0.5f;
+        const std::size_t meshAVertexCountBeforeLoopCancel =
+            TopologyTraversal::vertices(meshNode->mesh()).size();
+        const std::size_t historyBeforeLoopCancel =
+            document.history().undo_size();
+
+        if (!editor.selection_controller().enter_mesh_context(
+                meshId,
+                SelectionGranularity::Edge) ||
+            !editor.selection_controller().select_edge(meshALoopCancelEdge)) {
+            std::cerr << "Failed to prepare Mesh A for LoopCut cancel.\n";
+            return false;
+        }
+
+        const locus::application::ApplicationResult<bool>
+            loopCutCancelActivation =
+                locus::application::MeshToolActivationController{}
+                    .activate_shortcut(
+                        locus::application::ShortcutAction::ActivateLoopCutTool,
+                        document);
+
+        if (!loopCutCancelActivation ||
+            !loopCutCancelActivation.value()) {
+            std::cerr << "LoopCut cancel activation failed";
+
+            if (!loopCutCancelActivation) {
+                std::cerr << ": "
+                    << loopCutCancelActivation.error().message;
+            }
+
+            std::cerr << '\n';
+            return false;
+        }
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    meshALoopCancelPosition),
+                "LoopCut Mesh A cancel press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    meshALoopCancelPosition + glm::vec3{ 0.15f, 0.0f, 0.0f }),
+                "LoopCut Mesh A cancel preview") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                edgeSlideCancel,
+                "LoopCut Mesh A cancel")) {
+            return false;
+        }
+
+        if (document.history().undo_size() != historyBeforeLoopCancel ||
+            TopologyTraversal::vertices(meshNode->mesh()).size() !=
+                meshAVertexCountBeforeLoopCancel ||
+            !meshNode->mesh().is_valid(meshALoopCancelEdge) ||
+            !editor.selection().mesh().edges().contains(
+                meshALoopCancelEdge) ||
+            !selected_edges_are_valid(editor, meshId)) {
+            std::cerr << "LoopCut cancel invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== LoopCutTool ===\n";
+        std::cout
+            << "[OK] R activates LoopCut in Edge context\n"
+            << "[OK] preview committed one topological history entry\n"
+            << "[OK] undo/redo restored loop cut topology\n"
+            << "[OK] cancel preserved mesh and valid edge selection\n";
+
         locus::editor::ToolContext selectReactivateContext(
             editor,
             document.command_dispatcher(),
@@ -1048,6 +1234,7 @@ namespace {
             << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
             << "Q Select, E Extrude in Face context, "
             << "G EdgeSlide in Edge context, "
+            << "R LoopCut in Edge context, "
             << "I Inset in Face context, "
             << "W/E/R/T transform gizmo in Object context, "
             << "Esc Cancel, Ctrl+Z Undo, Ctrl+Shift+Z Redo.\n"
@@ -1063,7 +1250,10 @@ namespace {
             << "press 3, click an edge on Cube A, press G, press-drag "
             << "along an adjacent rail, release to commit, then use "
             << "Ctrl+Z/Ctrl+Y or start another EdgeSlide and press Esc "
-            << "before release.\n"
+            << "before release. For LoopCut: press 3, click an edge, "
+            << "press R, press-drag along the edge to position the cut, "
+            << "release to commit, then use Ctrl+Z/Ctrl+Y or start "
+            << "another LoopCut and press Esc before release.\n"
             << "Watch [selection] logs for activeMesh, component counts, "
             << "stale hover/handle values, and [tool] logs for preview, "
             << "commit, cancel, and history.\n";

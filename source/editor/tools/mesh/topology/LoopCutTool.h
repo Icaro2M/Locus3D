@@ -8,6 +8,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -149,6 +150,14 @@ namespace locus::editor {
         [[nodiscard]]
         std::size_t cuts() const;
 
+        /**
+         * @brief Builds the static tool descriptor.
+         *
+         * @return Loop cut tool descriptor.
+         */
+        [[nodiscard]]
+        static ToolDescriptor make_descriptor();
+
     protected:
         ToolResult begin_mesh_operation(
             ToolContext& context,
@@ -174,15 +183,21 @@ namespace locus::editor {
 
     private:
         [[nodiscard]]
-        static ToolDescriptor make_descriptor();
-
-        [[nodiscard]]
         static LoopCutToolOptions sanitize_options(
             LoopCutToolOptions options);
 
         [[nodiscard]]
         float calculate_factor(
             const ToolEvent& event) const;
+
+        /**
+         * @brief Initializes the ray-to-target-edge drag mapping.
+         */
+        [[nodiscard]]
+        bool initialize_edge_drag(
+            const ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target);
 
         /**
          * @brief Checks whether pointer movement controls the cut position.
@@ -196,7 +211,14 @@ namespace locus::editor {
 
         glm::vec2 startPosition_{ 0.0f };
 
+        glm::vec3 cutAxisWorld_{ 1.0f, 0.0f, 0.0f };
+        glm::vec3 axisOriginWorld_{ 0.0f };
+        glm::vec3 startAxisPointWorld_{ 0.0f };
+        glm::vec2 fallbackScreenAxis_{ 1.0f, 0.0f };
+
         float interactionVisualScale_ = 1.0f;
+        float worldDistanceToFactor_ = 1.0f;
+        bool edgeDragReady_ = false;
         float factor_ = 0.5f;
     };
 

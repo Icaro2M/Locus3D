@@ -9,6 +9,7 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 
@@ -54,6 +55,13 @@ namespace locus::editor {
                 EdgeSlideTool::make_descriptor(),
                 [] {
                     return std::make_unique<EdgeSlideTool>();
+                });
+
+        registeredAll &=
+            registry.register_tool(
+                LoopCutTool::make_descriptor(),
+                [] {
+                    return std::make_unique<LoopCutTool>();
                 });
 
         return registeredAll;

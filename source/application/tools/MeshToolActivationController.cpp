@@ -15,6 +15,7 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/topology/LoopCutTool.h"
 
 #include <iostream>
 #include <string>
@@ -325,6 +326,24 @@ namespace locus::application {
             return true;
         }
 
+        case ShortcutAction::ActivateLoopCutTool: {
+            std::cout << "[shortcut] Loop Cut\n";
+            const ApplicationResult<void> result =
+                activate_edge_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::LoopCutTool::Id } },
+                    "LoopCutTool activation",
+                    "Loop Cut");
+
+            if (!result) {
+                return result.error();
+            }
+
+            return true;
+        }
+
         case ShortcutAction::None:
         case ShortcutAction::ActivateSelectTool:
         case ShortcutAction::ActivateTranslateTool:
@@ -361,7 +380,11 @@ namespace locus::application {
             || document.tool_manager().is_active(
                 editor::ToolId{
                     std::string{
-                        editor::EdgeSlideTool::Id } });
+                        editor::EdgeSlideTool::Id } })
+            || document.tool_manager().is_active(
+                editor::ToolId{
+                    std::string{
+                        editor::LoopCutTool::Id } });
     }
 
 } // namespace locus::application

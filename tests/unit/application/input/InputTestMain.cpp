@@ -13,6 +13,7 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
 
 #include <glm/geometric.hpp>
@@ -91,6 +92,8 @@ using namespace locus::application;
         return "ActivateInsetFaceTool";
     case ShortcutAction::ActivateEdgeSlideTool:
         return "ActivateEdgeSlideTool";
+    case ShortcutAction::ActivateLoopCutTool:
+        return "ActivateLoopCutTool";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -563,6 +566,31 @@ void apply_route(
         return false;
     }
 
+    context.edgeSelectionContext = true;
+    context.objectMode = false;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::R));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateLoopCutTool,
+            "Loop cut shortcut in edge context")) {
+        return false;
+    }
+
+    context.edgeSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Loop cut shortcut blocked without selected edge")) {
+        return false;
+    }
+
     context.objectMode = true;
     state.reset();
     state.begin_frame();
@@ -649,10 +677,14 @@ void apply_route(
     const locus::editor::ToolId edgeSlideId{
         std::string{ locus::editor::EdgeSlideTool::Id }
     };
+    const locus::editor::ToolId loopCutId{
+        std::string{ locus::editor::LoopCutTool::Id }
+    };
 
     if (!document.tool_registry().contains(extrudeId) ||
         !document.tool_registry().contains(insetId) ||
-        !document.tool_registry().contains(edgeSlideId)) {
+        !document.tool_registry().contains(edgeSlideId) ||
+        !document.tool_registry().contains(loopCutId)) {
         std::cerr
             << "DocumentSession should register built-in mesh tools\n";
         return false;
@@ -660,7 +692,8 @@ void apply_route(
 
     if (document.tool_registry().create(extrudeId) == nullptr ||
         document.tool_registry().create(insetId) == nullptr ||
-        document.tool_registry().create(edgeSlideId) == nullptr) {
+        document.tool_registry().create(edgeSlideId) == nullptr ||
+        document.tool_registry().create(loopCutId) == nullptr) {
         std::cerr
             << "Built-in mesh tool factories should create tools\n";
         return false;
@@ -732,10 +765,25 @@ void apply_route(
             ShortcutAction::ActivateEdgeSlideTool,
             document);
 
-    return edgeSlideResult &&
+    if (!edgeSlideResult ||
+        !edgeSlideResult.value() ||
+        !document.tool_manager().is_active(edgeSlideId)) {
+        std::cerr << "Edge slide activation should stay functional\n";
+        return false;
+    }
+
+    const ApplicationResult<bool> loopCutResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateLoopCutTool,
+            document);
+
+    return loopCutResult &&
+        loopCutResult.value() &&
+        document.tool_manager().is_active(loopCutId) &&
+        activation.is_logged_preview_tool(document) &&
+        edgeSlideResult &&
         edgeSlideResult.value() &&
-        document.tool_manager().is_active(edgeSlideId) &&
-        activation.is_logged_preview_tool(document);
+        !document.tool_manager().is_active(edgeSlideId);
 }
 
 } // namespace

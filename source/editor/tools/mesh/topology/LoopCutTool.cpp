@@ -7,6 +7,7 @@
 
 #include "editor/command/CommandResult.h"
 #include "editor/command/mesh/ApplyMeshOperationCommand.h"
+#include "editor/scene/MeshNode.h"
 #include "editor/tools/core/ToolContext.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/modeling/core/OperationContext.h"
@@ -18,6 +19,10 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <glm/geometric.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/vec4.hpp>
 
 namespace locus::editor {
 
@@ -31,6 +36,97 @@ namespace locus::editor {
 
         constexpr float kernelMaximumFactor =
             0.9999f;
+
+        constexpr float axisEpsilon =
+            0.000001f;
+
+        [[nodiscard]]
+        glm::vec3 safe_normalize(
+            const glm::vec3& value,
+            const glm::vec3& fallback)
+        {
+            const float length =
+                glm::length(value);
+
+            if (length <= axisEpsilon) {
+                return fallback;
+            }
+
+            return value / length;
+        }
+
+        [[nodiscard]]
+        glm::vec3 ray_direction(
+            const ToolPointerRay& ray)
+        {
+            return safe_normalize(
+                ray.direction,
+                glm::vec3{ 0.0f, 0.0f, -1.0f });
+        }
+
+        [[nodiscard]]
+        bool closest_point_on_axis_from_ray(
+            const ToolPointerRay& ray,
+            const glm::vec3& axisOrigin,
+            const glm::vec3& axisDirection,
+            glm::vec3& outPoint)
+        {
+            const glm::vec3 direction =
+                ray_direction(ray);
+            const glm::vec3 axis =
+                safe_normalize(
+                    axisDirection,
+                    glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+            const glm::vec3 w =
+                ray.origin - axisOrigin;
+            const float a =
+                glm::dot(direction, direction);
+            const float b =
+                glm::dot(direction, axis);
+            const float c =
+                glm::dot(axis, axis);
+            const float d =
+                glm::dot(direction, w);
+            const float e =
+                glm::dot(axis, w);
+            const float denominator =
+                (a * c) - (b * b);
+
+            if (std::abs(denominator) <= axisEpsilon) {
+                return false;
+            }
+
+            const float axisT =
+                ((a * e) - (b * d)) / denominator;
+
+            outPoint =
+                axisOrigin + axis * axisT;
+
+            return true;
+        }
+
+        [[nodiscard]]
+        glm::vec3 transform_point(
+            const glm::mat4& transform,
+            const glm::vec3& point)
+        {
+            return glm::vec3{
+                transform *
+                glm::vec4{ point, 1.0f }
+            };
+        }
+
+        [[nodiscard]]
+        glm::vec3 transform_vector(
+            const glm::mat4& transform,
+            const glm::vec3& vector)
+        {
+            return glm::vec3{
+                transform *
+                glm::vec4{ vector, 0.0f }
+            };
+        }
 
     } // namespace
 
@@ -108,6 +204,15 @@ namespace locus::editor {
 
         factor_ =
             options_.initialFactor;
+
+        if (uses_interactive_factor() &&
+            !initialize_edge_drag(
+                context,
+                event,
+                target)) {
+            return ToolResult::fail(
+                "Loop cut could not initialize a stable target edge drag.");
+        }
 
         return ToolResult::consumed(
             EditorDirtyFlags::None,
@@ -293,8 +398,26 @@ namespace locus::editor {
         startPosition_ =
             glm::vec2{ 0.0f };
 
+        cutAxisWorld_ =
+            glm::vec3{ 1.0f, 0.0f, 0.0f };
+
+        axisOriginWorld_ =
+            glm::vec3{ 0.0f };
+
+        startAxisPointWorld_ =
+            glm::vec3{ 0.0f };
+
+        fallbackScreenAxis_ =
+            glm::vec2{ 1.0f, 0.0f };
+
         interactionVisualScale_ =
             1.0f;
+
+        worldDistanceToFactor_ =
+            1.0f;
+
+        edgeDragReady_ =
+            false;
 
         factor_ =
             options_.initialFactor;
@@ -362,9 +485,46 @@ namespace locus::editor {
     float LoopCutTool::calculate_factor(
         const ToolEvent& event) const
     {
+        if (edgeDragReady_) {
+            glm::vec3 currentAxisPoint{ 0.0f };
+
+            if (closest_point_on_axis_from_ray(
+                event.pointer.worldRay,
+                axisOriginWorld_,
+                cutAxisWorld_,
+                currentAxisPoint)) {
+                const float worldDistance =
+                    glm::dot(
+                        currentAxisPoint - startAxisPointWorld_,
+                        cutAxisWorld_);
+
+                float rawFactor =
+                    options_.initialFactor +
+                    worldDistance *
+                    worldDistanceToFactor_;
+
+                if (options_.invertDragDirection) {
+                    rawFactor =
+                        options_.initialFactor -
+                        worldDistance *
+                        worldDistanceToFactor_;
+                }
+
+                return std::clamp(
+                    rawFactor,
+                    options_.minimumFactor,
+                    options_.maximumFactor);
+            }
+        }
+
+        const glm::vec2 pointerDelta =
+            event.pointer.viewportPosition -
+            startPosition_;
+
         float pixelDistance =
-            event.pointer.viewportPosition.x -
-            startPosition_.x;
+            glm::dot(
+                pointerDelta,
+                fallbackScreenAxis_);
 
         if (options_.invertDragDirection) {
             pixelDistance =
@@ -381,6 +541,109 @@ namespace locus::editor {
             rawFactor,
             options_.minimumFactor,
             options_.maximumFactor);
+    }
+
+    bool LoopCutTool::initialize_edge_drag(
+        const ToolContext& context,
+        const ToolEvent& event,
+        const MeshToolTarget& target)
+    {
+        const MeshNode* node =
+            context.scene().find_mesh(
+                target.nodeId);
+
+        if (node == nullptr || target.edges.empty()) {
+            return false;
+        }
+
+        const kernel::geometry::LEM& mesh =
+            node->mesh();
+        const kernel::geometry::EdgeHandle edge =
+            target.edges.front();
+
+        if (!mesh.is_valid(edge)) {
+            return false;
+        }
+
+        const kernel::geometry::Edge& edgeElement =
+            mesh.edge(edge);
+
+        if (!mesh.is_valid(edgeElement.vertexA) ||
+            !mesh.is_valid(edgeElement.vertexB)) {
+            return false;
+        }
+
+        const glm::vec3 vertexA =
+            mesh.vertex(edgeElement.vertexA).position;
+        const glm::vec3 vertexB =
+            mesh.vertex(edgeElement.vertexB).position;
+        const glm::vec3 axisLocal =
+            vertexB - vertexA;
+        const float localLength =
+            glm::length(axisLocal);
+
+        if (localLength <= axisEpsilon) {
+            return false;
+        }
+
+        const glm::mat4 nodeTransform =
+            node->transform().matrix();
+
+        const glm::vec3 worldAxisVector =
+            transform_vector(
+                nodeTransform,
+                axisLocal / localLength);
+        const float worldAxisLength =
+            glm::length(worldAxisVector);
+
+        if (worldAxisLength <= axisEpsilon) {
+            return false;
+        }
+
+        cutAxisWorld_ =
+            worldAxisVector / worldAxisLength;
+        axisOriginWorld_ =
+            transform_point(
+                nodeTransform,
+                vertexA + axisLocal * options_.initialFactor);
+        worldDistanceToFactor_ =
+            1.0f / (localLength * worldAxisLength);
+
+        fallbackScreenAxis_ =
+            glm::vec2{
+                glm::dot(
+                    cutAxisWorld_,
+                    event.pointer.viewRight),
+                -glm::dot(
+                    cutAxisWorld_,
+                    event.pointer.viewUp)
+            };
+
+        const float screenAxisLength =
+            glm::length(fallbackScreenAxis_);
+
+        if (screenAxisLength > axisEpsilon) {
+            fallbackScreenAxis_ /=
+                screenAxisLength;
+        }
+        else {
+            fallbackScreenAxis_ =
+                glm::vec2{ 1.0f, 0.0f };
+        }
+
+        edgeDragReady_ =
+            closest_point_on_axis_from_ray(
+                event.pointer.worldRay,
+                axisOriginWorld_,
+                cutAxisWorld_,
+                startAxisPointWorld_);
+
+        if (!edgeDragReady_) {
+            startAxisPointWorld_ =
+                axisOriginWorld_;
+        }
+
+        return true;
     }
 
     bool LoopCutTool::uses_interactive_factor() const
