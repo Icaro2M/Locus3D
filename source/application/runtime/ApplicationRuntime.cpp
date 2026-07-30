@@ -13,6 +13,7 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolState.h"
+#include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
@@ -209,7 +210,11 @@ namespace locus::application {
                 || document.tool_manager().is_active(
                     editor::ToolId{
                         std::string{
-                            editor::InsetFaceTool::Id } });
+                            editor::InsetFaceTool::Id } })
+                || document.tool_manager().is_active(
+                    editor::ToolId{
+                        std::string{
+                            editor::EdgeSlideTool::Id } });
         }
 
         [[nodiscard]] editor::ToolEvent make_pointer_event(
@@ -461,6 +466,49 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> activate_edge_mesh_tool(
+            DocumentSession& document,
+            const editor::ToolId& id,
+            const char* toolName,
+            const char* actionName)
+        {
+            const editor::SelectionState& selection =
+                document.editor().selection();
+
+            if (selection.mesh().active_mesh().is_invalid()
+                || selection.granularity()
+                != editor::SelectionGranularity::Edge
+                || selection.mesh().edges().empty()) {
+                return ApplicationError::make(
+                    ApplicationErrorCode::InvalidState,
+                    std::string{
+                        actionName
+                    } +
+                    " requires an active mesh and at least one selected "
+                    "edge.");
+            }
+
+            editor::ToolContext toolContext = make_tool_context(document);
+            const editor::ToolResult result =
+                document.tool_manager().activate_tool(
+                    toolContext,
+                    id);
+
+            if (result.failed()) {
+                return tool_failure(result);
+            }
+
+            print_tool_result(
+                toolName,
+                result,
+                document);
+            print_selection_summary(
+                "after mesh tool activation",
+                document);
+
+            return {};
+        }
+
         [[nodiscard]] ApplicationResult<void> activate_transform_tool(
             DocumentSession& document,
             editor::GizmoMode mode)
@@ -531,6 +579,16 @@ namespace locus::application {
                             editor::InsetFaceTool::Id } },
                     "InsetFaceTool activation",
                     "Inset");
+
+            case ShortcutAction::ActivateEdgeSlideTool:
+                std::cout << "[shortcut] Edge Slide\n";
+                return activate_edge_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::EdgeSlideTool::Id } },
+                    "EdgeSlideTool activation",
+                    "Edge Slide");
 
             case ShortcutAction::SetObjectGranularity:
                 return set_selection_granularity(
@@ -821,6 +879,15 @@ namespace locus::application {
                 .active_mesh().is_valid() &&
             !activeDocument->editor().selection().mesh()
                 .faces().empty();
+        shortcutContext.edgeSelectionContext =
+            activeDocument->editor().selection().scope()
+            == editor::SelectionScope::ActiveMesh &&
+            activeDocument->editor().selection().granularity()
+            == editor::SelectionGranularity::Edge &&
+            activeDocument->editor().selection().mesh()
+                .active_mesh().is_valid() &&
+            !activeDocument->editor().selection().mesh()
+                .edges().empty();
 
         const ShortcutAction shortcutAction =
             shortcutManager_.resolve(

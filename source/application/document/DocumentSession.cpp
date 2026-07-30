@@ -6,6 +6,7 @@
 #include "application/document/DocumentSession.h"
 
 #include "editor/tools/core/ToolContext.h"
+#include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
@@ -42,6 +43,12 @@ namespace locus::application {
             editor::InsetFaceTool::make_descriptor(),
             [] {
                 return std::make_unique<editor::InsetFaceTool>();
+            });
+
+        (void)toolRegistry_.register_tool(
+            editor::EdgeSlideTool::make_descriptor(),
+            [] {
+                return std::make_unique<editor::EdgeSlideTool>();
             });
 
         editor::ToolContext toolContext(

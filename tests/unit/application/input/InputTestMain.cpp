@@ -5,8 +5,10 @@
 
 #include "application/input/InputRouter.h"
 #include "application/input/InputState.h"
+#include "application/document/DocumentSession.h"
 #include "application/shortcut/ShortcutManager.h"
 #include "application/viewport/EditorViewport.h"
+#include "editor/tools/mesh/edge/EdgeSlideTool.h"
 
 #include <glm/geometric.hpp>
 
@@ -82,6 +84,8 @@ using namespace locus::application;
         return "ActivateExtrudeFaceTool";
     case ShortcutAction::ActivateInsetFaceTool:
         return "ActivateInsetFaceTool";
+    case ShortcutAction::ActivateEdgeSlideTool:
+        return "ActivateEdgeSlideTool";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -530,6 +534,30 @@ void apply_route(
         return false;
     }
 
+    context.edgeSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::G));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateEdgeSlideTool,
+            "Edge slide shortcut in edge context")) {
+        return false;
+    }
+
+    context.edgeSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Edge slide shortcut blocked without selected edge")) {
+        return false;
+    }
+
     context.objectMode = true;
     state.reset();
     state.begin_frame();
@@ -603,6 +631,25 @@ void apply_route(
         "Shortcut blocked while text input is active");
 }
 
+[[nodiscard]] bool test_document_session_registers_edge_slide_tool()
+{
+    DocumentSession document{ DocumentId{ 42u } };
+
+    const locus::editor::ToolId edgeSlideId{
+        std::string{
+            locus::editor::EdgeSlideTool::Id
+        }
+    };
+
+    if (!document.tool_registry().contains(edgeSlideId)) {
+        std::cerr
+            << "DocumentSession should register EdgeSlideTool\n";
+        return false;
+    }
+
+    return document.tool_registry().create(edgeSlideId) != nullptr;
+}
+
 } // namespace
 
 int main()
@@ -618,6 +665,8 @@ int main()
         { "PanZoomAndInvalidGestures", &test_pan_zoom_and_invalid_gestures },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
         { "ShortcutResolution", &test_shortcut_resolution },
+        { "DocumentSessionRegistersEdgeSlideTool",
+            &test_document_session_registers_edge_slide_tool },
     };
 
     for (const TestCase& test : tests) {

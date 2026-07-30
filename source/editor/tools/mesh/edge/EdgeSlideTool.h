@@ -118,6 +118,14 @@ namespace locus::editor {
         [[nodiscard]]
         float distance() const;
 
+        /**
+         * @brief Builds the static tool descriptor.
+         *
+         * @return Edge slide tool descriptor.
+         */
+        [[nodiscard]]
+        static ToolDescriptor make_descriptor();
+
     protected:
         /**
          * @brief Captures initial pointer and scaling data.
@@ -157,14 +165,6 @@ namespace locus::editor {
         void clear_mesh_operation() override;
 
     private:
-        /**
-         * @brief Builds the static tool descriptor.
-         *
-         * @return Edge slide tool descriptor.
-         */
-        [[nodiscard]]
-        static ToolDescriptor make_descriptor();
-
         /**
          * @brief Sanitizes configuration values.
          *

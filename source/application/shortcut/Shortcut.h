@@ -21,6 +21,7 @@ namespace locus::application {
         ActivateUniversalTool,
         ActivateExtrudeFaceTool,
         ActivateInsetFaceTool,
+        ActivateEdgeSlideTool,
         SetObjectGranularity,
         SetVertexGranularity,
         SetEdgeGranularity,
@@ -42,6 +43,7 @@ namespace locus::application {
         bool modalActive = false;
         bool objectMode = true;
         bool faceSelectionContext = false;
+        bool edgeSelectionContext = false;
     };
 
     /**
