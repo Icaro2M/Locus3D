@@ -126,6 +126,19 @@ namespace locus::application {
             return dynamic_cast<const editor::MeshDragOperationTool*>(tool);
         }
 
+        [[nodiscard]] editor::SceneNodeId operation_preview_target(
+            const DocumentSession& document)
+        {
+            const editor::MeshDragOperationTool* tool =
+                active_mesh_drag_tool(document);
+
+            if (tool == nullptr || !tool->has_operation_preview()) {
+                return {};
+            }
+
+            return tool->mesh_session().target().nodeId;
+        }
+
         void append_mesh_component_overlays(
             const editor::Editor& editor,
             const graphics::Shader* shader,
@@ -660,7 +673,16 @@ namespace locus::application {
             + gizmoScene.object_count());
         renderQueue_.add_object(gridRenderer_.render_object());
 
+        const editor::SceneNodeId previewTarget =
+            operation_preview_target(document);
+
         for (const graphics::RenderObject& object : scene.objects()) {
+            if (previewTarget.is_valid() &&
+                object.id == static_cast<graphics::RenderObject::Id>(
+                    previewTarget.value)) {
+                continue;
+            }
+
             renderQueue_.add_object(object);
         }
 
