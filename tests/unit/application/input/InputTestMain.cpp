@@ -7,8 +7,13 @@
 #include "application/input/InputState.h"
 #include "application/document/DocumentSession.h"
 #include "application/shortcut/ShortcutManager.h"
+#include "application/tools/MeshToolActivationController.h"
 #include "application/viewport/EditorViewport.h"
+#include "editor/scene/MeshNode.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
+#include "editor/tools/mesh/face/ExtrudeFaceTool.h"
+#include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "kernel/geometry/topology/TopologyBuilder.h"
 
 #include <glm/geometric.hpp>
 
@@ -631,23 +636,106 @@ void apply_route(
         "Shortcut blocked while text input is active");
 }
 
-[[nodiscard]] bool test_document_session_registers_edge_slide_tool()
+[[nodiscard]] bool test_mesh_tool_registration_and_activation()
 {
     DocumentSession document{ DocumentId{ 42u } };
 
+    const locus::editor::ToolId extrudeId{
+        std::string{ locus::editor::ExtrudeFaceTool::Id }
+    };
+    const locus::editor::ToolId insetId{
+        std::string{ locus::editor::InsetFaceTool::Id }
+    };
     const locus::editor::ToolId edgeSlideId{
-        std::string{
-            locus::editor::EdgeSlideTool::Id
-        }
+        std::string{ locus::editor::EdgeSlideTool::Id }
     };
 
-    if (!document.tool_registry().contains(edgeSlideId)) {
+    if (!document.tool_registry().contains(extrudeId) ||
+        !document.tool_registry().contains(insetId) ||
+        !document.tool_registry().contains(edgeSlideId)) {
         std::cerr
-            << "DocumentSession should register EdgeSlideTool\n";
+            << "DocumentSession should register built-in mesh tools\n";
         return false;
     }
 
-    return document.tool_registry().create(edgeSlideId) != nullptr;
+    if (document.tool_registry().create(extrudeId) == nullptr ||
+        document.tool_registry().create(insetId) == nullptr ||
+        document.tool_registry().create(edgeSlideId) == nullptr) {
+        std::cerr
+            << "Built-in mesh tool factories should create tools\n";
+        return false;
+    }
+
+    const locus::editor::SceneNodeId meshId =
+        document.editor().scene().create_mesh("Mesh");
+    locus::editor::MeshNode* node =
+        document.editor().scene().find_mesh(meshId);
+
+    if (node == nullptr) {
+        return false;
+    }
+
+    const auto buildResult =
+        locus::kernel::geometry::TopologyBuilder::build_box_into(
+            node->mesh());
+
+    if (!buildResult ||
+        buildResult.faces.empty() ||
+        buildResult.edges.empty()) {
+        return false;
+    }
+
+    if (!document.editor().selection_controller().enter_mesh_context(
+            meshId,
+            locus::editor::SelectionGranularity::Face) ||
+        !document.editor().selection_controller().select_face(
+            buildResult.faces.front())) {
+        return false;
+    }
+
+    MeshToolActivationController activation{};
+
+    const ApplicationResult<bool> extrudeResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateExtrudeFaceTool,
+            document);
+
+    if (!extrudeResult ||
+        !extrudeResult.value() ||
+        !document.tool_manager().is_active(extrudeId)) {
+        std::cerr << "Extrude activation should stay functional\n";
+        return false;
+    }
+
+    const ApplicationResult<bool> insetResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateInsetFaceTool,
+            document);
+
+    if (!insetResult ||
+        !insetResult.value() ||
+        !document.tool_manager().is_active(insetId)) {
+        std::cerr << "Inset activation should stay functional\n";
+        return false;
+    }
+
+    if (!document.editor().selection_controller().enter_mesh_context(
+            meshId,
+            locus::editor::SelectionGranularity::Edge) ||
+        !document.editor().selection_controller().select_edge(
+            buildResult.edges.front())) {
+        return false;
+    }
+
+    const ApplicationResult<bool> edgeSlideResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateEdgeSlideTool,
+            document);
+
+    return edgeSlideResult &&
+        edgeSlideResult.value() &&
+        document.tool_manager().is_active(edgeSlideId) &&
+        activation.is_logged_preview_tool(document);
 }
 
 } // namespace
@@ -665,8 +753,8 @@ int main()
         { "PanZoomAndInvalidGestures", &test_pan_zoom_and_invalid_gestures },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
         { "ShortcutResolution", &test_shortcut_resolution },
-        { "DocumentSessionRegistersEdgeSlideTool",
-            &test_document_session_registers_edge_slide_tool },
+        { "MeshToolRegistrationAndActivation",
+            &test_mesh_tool_registration_and_activation },
     };
 
     for (const TestCase& test : tests) {

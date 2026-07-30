@@ -5,6 +5,7 @@
 
 #include "application/runtime/ApplicationRuntime.h"
 
+#include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
@@ -13,9 +14,6 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolState.h"
-#include "editor/tools/mesh/edge/EdgeSlideTool.h"
-#include "editor/tools/mesh/face/ExtrudeFaceTool.h"
-#include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/camera/CameraRayBuilder.h"
@@ -200,23 +198,6 @@ namespace locus::application {
                 << ")\n";
         }
 
-        [[nodiscard]] bool active_tool_is_logged_mesh_preview_tool(
-            const DocumentSession& document)
-        {
-            return document.tool_manager().is_active(
-                    editor::ToolId{
-                        std::string{
-                            editor::ExtrudeFaceTool::Id } })
-                || document.tool_manager().is_active(
-                    editor::ToolId{
-                        std::string{
-                            editor::InsetFaceTool::Id } })
-                || document.tool_manager().is_active(
-                    editor::ToolId{
-                        std::string{
-                            editor::EdgeSlideTool::Id } });
-        }
-
         [[nodiscard]] editor::ToolEvent make_pointer_event(
             editor::ToolEventType type,
             editor::ToolPointerButton button,
@@ -319,7 +300,8 @@ namespace locus::application {
             }
             else if (event.type == editor::ToolEventType::PointerMove
                 && result.code == editor::ToolResultCode::Updated
-                && active_tool_is_logged_mesh_preview_tool(document)) {
+                && MeshToolActivationController{}
+                    .is_logged_preview_tool(document)) {
                 static std::size_t previewLogCounter = 0;
 
                 if ((previewLogCounter % 12u) == 0u) {
@@ -423,92 +405,6 @@ namespace locus::application {
             return {};
         }
 
-        [[nodiscard]] ApplicationResult<void> activate_face_mesh_tool(
-            DocumentSession& document,
-            const editor::ToolId& id,
-            const char* toolName,
-            const char* actionName)
-        {
-            const editor::SelectionState& selection =
-                document.editor().selection();
-
-            if (selection.mesh().active_mesh().is_invalid()
-                || selection.granularity()
-                != editor::SelectionGranularity::Face
-                || selection.mesh().faces().empty()) {
-                return ApplicationError::make(
-                    ApplicationErrorCode::InvalidState,
-                    std::string{
-                        actionName
-                    } +
-                    " requires an active mesh and at least one selected "
-                    "face.");
-            }
-
-            editor::ToolContext toolContext = make_tool_context(document);
-            const editor::ToolResult result =
-                document.tool_manager().activate_tool(
-                    toolContext,
-                    id);
-
-            if (result.failed()) {
-                return tool_failure(result);
-            }
-
-            print_tool_result(
-                toolName,
-                result,
-                document);
-            print_selection_summary(
-                "after mesh tool activation",
-                document);
-
-            return {};
-        }
-
-        [[nodiscard]] ApplicationResult<void> activate_edge_mesh_tool(
-            DocumentSession& document,
-            const editor::ToolId& id,
-            const char* toolName,
-            const char* actionName)
-        {
-            const editor::SelectionState& selection =
-                document.editor().selection();
-
-            if (selection.mesh().active_mesh().is_invalid()
-                || selection.granularity()
-                != editor::SelectionGranularity::Edge
-                || selection.mesh().edges().empty()) {
-                return ApplicationError::make(
-                    ApplicationErrorCode::InvalidState,
-                    std::string{
-                        actionName
-                    } +
-                    " requires an active mesh and at least one selected "
-                    "edge.");
-            }
-
-            editor::ToolContext toolContext = make_tool_context(document);
-            const editor::ToolResult result =
-                document.tool_manager().activate_tool(
-                    toolContext,
-                    id);
-
-            if (result.failed()) {
-                return tool_failure(result);
-            }
-
-            print_tool_result(
-                toolName,
-                result,
-                document);
-            print_selection_summary(
-                "after mesh tool activation",
-                document);
-
-            return {};
-        }
-
         [[nodiscard]] ApplicationResult<void> activate_transform_tool(
             DocumentSession& document,
             editor::GizmoMode mode)
@@ -548,6 +444,20 @@ namespace locus::application {
             ShortcutAction action,
             DocumentSession& document)
         {
+            const ApplicationResult<bool> meshToolActivation =
+                MeshToolActivationController{}
+                    .activate_shortcut(
+                        action,
+                        document);
+
+            if (!meshToolActivation) {
+                return meshToolActivation.error();
+            }
+
+            if (meshToolActivation.value()) {
+                return {};
+            }
+
             switch (action) {
             case ShortcutAction::None:
             case ShortcutAction::Save:
@@ -559,36 +469,6 @@ namespace locus::application {
                 return activate_tool(
                     document,
                     editor::ToolId{ editor::SelectTool::Id });
-
-            case ShortcutAction::ActivateExtrudeFaceTool:
-                std::cout << "[shortcut] Extrude\n";
-                return activate_face_mesh_tool(
-                    document,
-                    editor::ToolId{
-                        std::string{
-                            editor::ExtrudeFaceTool::Id } },
-                    "ExtrudeFaceTool activation",
-                    "Extrude");
-
-            case ShortcutAction::ActivateInsetFaceTool:
-                std::cout << "[shortcut] Inset\n";
-                return activate_face_mesh_tool(
-                    document,
-                    editor::ToolId{
-                        std::string{
-                            editor::InsetFaceTool::Id } },
-                    "InsetFaceTool activation",
-                    "Inset");
-
-            case ShortcutAction::ActivateEdgeSlideTool:
-                std::cout << "[shortcut] Edge Slide\n";
-                return activate_edge_mesh_tool(
-                    document,
-                    editor::ToolId{
-                        std::string{
-                            editor::EdgeSlideTool::Id } },
-                    "EdgeSlideTool activation",
-                    "Edge Slide");
 
             case ShortcutAction::SetObjectGranularity:
                 return set_selection_granularity(

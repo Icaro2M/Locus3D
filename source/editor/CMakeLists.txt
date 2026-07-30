@@ -187,6 +187,8 @@ target_sources(locus3d_editor
          "tools/interaction/DragTool.h"
          "tools/interaction/DragTool.cpp"
          "tools/core/ToolContext.cpp"
+         "tools/RegisterBuiltinTools.h"
+         "tools/RegisterBuiltinTools.cpp"
          "tools/selection/shapes/ISelectionShape.h"
          "tools/selection/shapes/PointSelectionShape.h"
          "tools/selection/shapes/PointSelectionShape.cpp"

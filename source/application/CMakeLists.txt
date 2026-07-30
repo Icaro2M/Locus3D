@@ -24,6 +24,8 @@ target_sources(locus3d_application
         "shortcut/Shortcut.h"
         "shortcut/ShortcutManager.h"
         "shortcut/ShortcutManager.cpp"
+        "tools/MeshToolActivationController.h"
+        "tools/MeshToolActivationController.cpp"
         "viewport/EditorViewport.h"
         "viewport/EditorViewport.cpp"
         "runtime/ApplicationRuntime.h"
