@@ -1,12 +1,16 @@
 #version 450 core
 
-in vec3 vNormal;
+in vec3 v_Normal;
+in vec4 v_Color;
+
+uniform vec4 u_BaseColor;
+uniform int u_UseVertexColor;
 
 out vec4 FragColor;
 
 void main()
 {
-    vec3 normal = normalize(vNormal);
+    vec3 normal = normalize(v_Normal);
 
     vec3 lightA = normalize(vec3(0.6, 0.8, 0.5));
     vec3 lightB = normalize(vec3(-0.5, -0.2, 0.7));
@@ -14,11 +18,14 @@ void main()
     float ambient = 0.38;
     float diffuseA = max(dot(normal, lightA), 0.0);
     float diffuseB = max(dot(normal, lightB), 0.0) * 0.25;
+    float rim = pow(1.0 - abs(normal.z), 2.0) * 0.12;
 
-    float lighting = ambient + diffuseA * 0.55 + diffuseB;
+    float lighting = ambient + diffuseA * 0.55 + diffuseB + rim;
 
-    vec3 baseColor = vec3(0.84, 0.84, 0.82);
+    vec3 clay = vec3(0.84, 0.84, 0.82);
+    vec4 sourceColor = u_UseVertexColor != 0 ? v_Color : u_BaseColor;
+    vec3 baseColor = mix(clay, sourceColor.rgb, 0.18);
     vec3 color = baseColor * lighting;
 
-    FragColor = vec4(color, 1.0);
+    FragColor = vec4(color, sourceColor.a);
 }

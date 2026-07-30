@@ -14,6 +14,7 @@
 #include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/transform/TransformSession.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
@@ -457,9 +458,15 @@ namespace {
     {
         locus::editor::ToolEvent event{};
         event.type = type;
-        event.button = type == locus::editor::ToolEventType::PointerPress
+        event.button =
+            type == locus::editor::ToolEventType::PointerPress ||
+            type == locus::editor::ToolEventType::PointerRelease
             ? locus::editor::ToolPointerButton::Primary
             : locus::editor::ToolPointerButton::None;
+        event.pointer.viewportPosition = glm::vec2{
+            target.x,
+            target.y
+        };
         event.pointer.worldRay.origin = target + glm::vec3{ 0.0f, 0.0f, 4.0f };
         event.pointer.worldRay.direction = glm::vec3{ 0.0f, 0.0f, -1.0f };
         event.pointer.viewDirection = glm::vec3{ 0.0f, 0.0f, -1.0f };
@@ -670,6 +677,219 @@ namespace {
             << "[OK] hovered edge handle=" << edge.id.value << '\n'
             << "[OK] selected edge handle=" << edge.id.value << '\n';
 
+        const auto edgeADataBefore =
+            meshNode->mesh().edge(edge);
+        const glm::vec3 edgeAVertexABefore =
+            meshNode->mesh().vertex(edgeADataBefore.vertexA).position;
+        const glm::vec3 edgeAVertexBBefore =
+            meshNode->mesh().vertex(edgeADataBefore.vertexB).position;
+        const std::size_t historyBeforeEdgeSlide =
+            document.history().undo_size();
+
+        locus::editor::ToolContext edgeSlideActivateContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+
+        locus::editor::ToolResult edgeSlideActivation =
+            document.tool_manager().activate_tool(
+                edgeSlideActivateContext,
+                locus::editor::ToolId{
+                    std::string{
+                        locus::editor::EdgeSlideTool::Id } });
+
+        if (edgeSlideActivation.failed()) {
+            std::cerr
+                << "EdgeSlide activation failed: "
+                << edgeSlideActivation.message << '\n';
+            return false;
+        }
+
+        locus::editor::ToolEvent edgeSlidePress =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                edgePosition);
+        locus::editor::ToolEvent edgeSlideMove =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerMove,
+                edgePosition + glm::vec3{ 0.0f, 0.35f, 0.0f });
+        locus::editor::ToolEvent edgeSlideRelease =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerRelease,
+                edgePosition + glm::vec3{ 0.0f, 0.35f, 0.0f });
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                edgeSlidePress,
+                "EdgeSlide press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                edgeSlideMove,
+                "EdgeSlide preview") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                edgeSlideRelease,
+                "EdgeSlide commit")) {
+            return false;
+        }
+
+        const glm::vec3 edgeAVertexAAfter =
+            meshNode->mesh().vertex(edgeADataBefore.vertexA).position;
+        const glm::vec3 edgeAVertexBAfter =
+            meshNode->mesh().vertex(edgeADataBefore.vertexB).position;
+
+        if (document.history().undo_size() != historyBeforeEdgeSlide + 1u ||
+            (nearly_equal(edgeAVertexABefore, edgeAVertexAAfter) &&
+                nearly_equal(edgeAVertexBBefore, edgeAVertexBAfter)) ||
+            !meshNode->mesh().is_valid(edge) ||
+            !editor.selection().mesh().edges().contains(edge)) {
+            std::cerr << "EdgeSlide commit invariant failed.\n";
+            return false;
+        }
+
+        CommandResult edgeSlideUndoResult =
+            document.history().undo(document.command_dispatcher());
+
+        if (!edgeSlideUndoResult.success ||
+            !nearly_equal(
+                meshNode->mesh().vertex(edgeADataBefore.vertexA).position,
+                edgeAVertexABefore) ||
+            !nearly_equal(
+                meshNode->mesh().vertex(edgeADataBefore.vertexB).position,
+                edgeAVertexBBefore) ||
+            !meshNode->mesh().is_valid(edge) ||
+            !editor.selection().mesh().edges().contains(edge)) {
+            std::cerr << "EdgeSlide undo invariant failed.\n";
+            return false;
+        }
+
+        CommandResult edgeSlideRedoResult =
+            document.history().redo(document.command_dispatcher());
+
+        if (!edgeSlideRedoResult.success ||
+            !nearly_equal(
+                meshNode->mesh().vertex(edgeADataBefore.vertexA).position,
+                edgeAVertexAAfter) ||
+            !nearly_equal(
+                meshNode->mesh().vertex(edgeADataBefore.vertexB).position,
+                edgeAVertexBAfter) ||
+            !meshNode->mesh().is_valid(edge) ||
+            !editor.selection().mesh().edges().contains(edge)) {
+            std::cerr << "EdgeSlide redo invariant failed.\n";
+            return false;
+        }
+
+        const std::vector<EdgeHandle> meshBEdges =
+            TopologyTraversal::edges(meshBNode->mesh());
+        if (meshBEdges.empty()) {
+            std::cerr << "Mesh B has no edge for EdgeSlide cancel smoke.\n";
+            return false;
+        }
+
+        const EdgeHandle meshBEdge =
+            meshBEdges.front();
+        const auto meshBEdgeData =
+            meshBNode->mesh().edge(meshBEdge);
+        const glm::vec3 meshBEdgeAOriginal =
+            meshBNode->mesh().vertex(meshBEdgeData.vertexA).position;
+        const glm::vec3 meshBEdgeBOriginal =
+            meshBNode->mesh().vertex(meshBEdgeData.vertexB).position;
+
+        if (!editor.selection_controller().enter_mesh_context(
+                meshBId,
+                SelectionGranularity::Edge) ||
+            !editor.selection_controller().select_edge(meshBEdge)) {
+            std::cerr << "Failed to switch EdgeSlide smoke to Mesh B.\n";
+            return false;
+        }
+
+        locus::editor::ToolContext edgeSlideBActivateContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+
+        edgeSlideActivation =
+            document.tool_manager().activate_tool(
+                edgeSlideBActivateContext,
+                locus::editor::ToolId{
+                    std::string{
+                        locus::editor::EdgeSlideTool::Id } });
+
+        if (edgeSlideActivation.failed()) {
+            std::cerr
+                << "EdgeSlide Mesh B activation failed: "
+                << edgeSlideActivation.message << '\n';
+            return false;
+        }
+
+        const glm::vec3 meshBEdgePosition =
+            (meshBEdgeAOriginal + meshBEdgeBOriginal) *
+            0.5f +
+            meshBNode->transform().position();
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    meshBEdgePosition),
+                "EdgeSlide Mesh B press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                make_mesh_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    meshBEdgePosition + glm::vec3{ 0.0f, 0.25f, 0.0f }),
+                "EdgeSlide Mesh B preview")) {
+            return false;
+        }
+
+        locus::editor::ToolEvent edgeSlideCancel{};
+        edgeSlideCancel.type =
+            locus::editor::ToolEventType::Cancel;
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                edgeSlideCancel,
+                "EdgeSlide Mesh B cancel") ||
+            document.history().undo_size() != historyBeforeEdgeSlide + 1u ||
+            !nearly_equal(
+                meshBNode->mesh().vertex(meshBEdgeData.vertexA).position,
+                meshBEdgeAOriginal) ||
+            !nearly_equal(
+                meshBNode->mesh().vertex(meshBEdgeData.vertexB).position,
+                meshBEdgeBOriginal) ||
+            !meshBNode->mesh().is_valid(meshBEdge) ||
+            !editor.selection().mesh().edges().contains(meshBEdge)) {
+            std::cerr << "EdgeSlide cancel invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== EdgeSlideTool ===\n";
+        std::cout
+            << "[OK] G activates EdgeSlide in Edge context\n"
+            << "[OK] preview committed one history entry\n"
+            << "[OK] Ctrl+Z/Ctrl+Y equivalent undo/redo restored slide\n"
+            << "[OK] Mesh B cancel preserved mesh and valid edge handle\n";
+
+        locus::editor::ToolContext selectReactivateContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+        (void)document.tool_manager().activate_tool(
+            selectReactivateContext,
+            locus::editor::ToolId{ locus::editor::SelectTool::Id });
+
+        if (!editor.selection_controller().enter_mesh_context(
+                meshId,
+                SelectionGranularity::Face)) {
+            std::cerr
+                << "Failed to restore Mesh A face context after "
+                << "EdgeSlide smoke.\n";
+            return false;
+        }
+
         FaceHandle face = faces.front();
         for (const FaceHandle candidate : faces) {
             if (meshNode->mesh().face(candidate).normal.z > 0.5f) {
@@ -827,6 +1047,7 @@ namespace {
             << " at x=1.4\n"
             << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
             << "Q Select, E Extrude in Face context, "
+            << "G EdgeSlide in Edge context, "
             << "I Inset in Face context, "
             << "W/E/R/T transform gizmo in Object context, "
             << "Esc Cancel, Ctrl+Z Undo, Ctrl+Shift+Z Redo.\n"
@@ -838,7 +1059,11 @@ namespace {
             << "Extrude and press Esc before release. For Inset: keep Face "
             << "granularity, press I, press-drag inward on the selected "
             << "face, release to commit, then use Ctrl+Z/Ctrl+Y or start "
-            << "another Inset and press Esc before release.\n"
+            << "another Inset and press Esc before release. For EdgeSlide: "
+            << "press 3, click an edge on Cube A, press G, press-drag "
+            << "along an adjacent rail, release to commit, then use "
+            << "Ctrl+Z/Ctrl+Y or start another EdgeSlide and press Esc "
+            << "before release.\n"
             << "Watch [selection] logs for activeMesh, component counts, "
             << "stale hover/handle values, and [tool] logs for preview, "
             << "commit, cancel, and history.\n";

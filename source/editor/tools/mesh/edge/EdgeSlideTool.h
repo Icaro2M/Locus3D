@@ -8,6 +8,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <memory>
 #include <string_view>
@@ -176,7 +177,7 @@ namespace locus::editor {
             EdgeSlideToolOptions options);
 
         /**
-         * @brief Calculates distance from horizontal pointer displacement.
+         * @brief Calculates distance from the current pointer ray.
          *
          * @param event Current pointer event.
          * @return Signed object-space distance.
@@ -184,6 +185,15 @@ namespace locus::editor {
         [[nodiscard]]
         float calculate_distance(
             const ToolEvent& event) const;
+
+        /**
+         * @brief Initializes the ray-to-slide-rail drag mapping.
+         */
+        [[nodiscard]]
+        bool initialize_slide_drag(
+            const ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target);
 
         /**
          * @brief Checks whether the current distance produces a change.
@@ -197,7 +207,14 @@ namespace locus::editor {
 
         glm::vec2 startPosition_{ 0.0f };
 
+        glm::vec3 slideAxisWorld_{ 1.0f, 0.0f, 0.0f };
+        glm::vec3 axisOriginWorld_{ 0.0f };
+        glm::vec3 startAxisPointWorld_{ 0.0f };
+        glm::vec2 fallbackScreenAxis_{ 1.0f, 0.0f };
+
         float interactionVisualScale_ = 1.0f;
+        float worldDistanceToLocalDistance_ = 1.0f;
+        bool axisDragReady_ = false;
         float distance_ = 0.0f;
     };
 

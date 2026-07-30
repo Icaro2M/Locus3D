@@ -356,8 +356,8 @@ namespace locus::application {
 
         auto documentShaderResult = shaderManager_.load(
             "viewport/document",
-            "debug/debug_vert.glsl",
-            "debug/debug_frag.glsl");
+            "basic/vertex.glsl",
+            "basic/fragment.glsl");
 
         if (!documentShaderResult) {
             shutdown();
