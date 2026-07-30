@@ -80,6 +80,8 @@ using namespace locus::application;
         return "ActivateUniversalTool";
     case ShortcutAction::ActivateExtrudeFaceTool:
         return "ActivateExtrudeFaceTool";
+    case ShortcutAction::ActivateInsetFaceTool:
+        return "ActivateInsetFaceTool";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -501,6 +503,30 @@ void apply_route(
             context,
             ShortcutAction::None,
             "Extrude shortcut blocked without selected face")) {
+        return false;
+    }
+
+    context.faceSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::I));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateInsetFaceTool,
+            "Inset shortcut in face context")) {
+        return false;
+    }
+
+    context.faceSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Inset shortcut blocked without selected face")) {
         return false;
     }
 

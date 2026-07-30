@@ -14,6 +14,7 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolState.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
+#include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/camera/CameraRayBuilder.h"
@@ -198,6 +199,19 @@ namespace locus::application {
                 << ")\n";
         }
 
+        [[nodiscard]] bool active_tool_is_logged_mesh_preview_tool(
+            const DocumentSession& document)
+        {
+            return document.tool_manager().is_active(
+                    editor::ToolId{
+                        std::string{
+                            editor::ExtrudeFaceTool::Id } })
+                || document.tool_manager().is_active(
+                    editor::ToolId{
+                        std::string{
+                            editor::InsetFaceTool::Id } });
+        }
+
         [[nodiscard]] editor::ToolEvent make_pointer_event(
             editor::ToolEventType type,
             editor::ToolPointerButton button,
@@ -300,10 +314,7 @@ namespace locus::application {
             }
             else if (event.type == editor::ToolEventType::PointerMove
                 && result.code == editor::ToolResultCode::Updated
-                && document.tool_manager().is_active(
-                    editor::ToolId{
-                        std::string{
-                            editor::ExtrudeFaceTool::Id } })) {
+                && active_tool_is_logged_mesh_preview_tool(document)) {
                 static std::size_t previewLogCounter = 0;
 
                 if ((previewLogCounter % 12u) == 0u) {
@@ -407,8 +418,11 @@ namespace locus::application {
             return {};
         }
 
-        [[nodiscard]] ApplicationResult<void> activate_extrude_face_tool(
-            DocumentSession& document)
+        [[nodiscard]] ApplicationResult<void> activate_face_mesh_tool(
+            DocumentSession& document,
+            const editor::ToolId& id,
+            const char* toolName,
+            const char* actionName)
         {
             const editor::SelectionState& selection =
                 document.editor().selection();
@@ -419,28 +433,29 @@ namespace locus::application {
                 || selection.mesh().faces().empty()) {
                 return ApplicationError::make(
                     ApplicationErrorCode::InvalidState,
-                    "Extrude requires an active mesh and at least one "
-                    "selected face.");
+                    std::string{
+                        actionName
+                    } +
+                    " requires an active mesh and at least one selected "
+                    "face.");
             }
 
             editor::ToolContext toolContext = make_tool_context(document);
             const editor::ToolResult result =
                 document.tool_manager().activate_tool(
                     toolContext,
-                    editor::ToolId{
-                        std::string{
-                            editor::ExtrudeFaceTool::Id } });
+                    id);
 
             if (result.failed()) {
                 return tool_failure(result);
             }
 
             print_tool_result(
-                "ExtrudeFaceTool activation",
+                toolName,
                 result,
                 document);
             print_selection_summary(
-                "after Extrude activation",
+                "after mesh tool activation",
                 document);
 
             return {};
@@ -498,7 +513,24 @@ namespace locus::application {
                     editor::ToolId{ editor::SelectTool::Id });
 
             case ShortcutAction::ActivateExtrudeFaceTool:
-                return activate_extrude_face_tool(document);
+                std::cout << "[shortcut] Extrude\n";
+                return activate_face_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::ExtrudeFaceTool::Id } },
+                    "ExtrudeFaceTool activation",
+                    "Extrude");
+
+            case ShortcutAction::ActivateInsetFaceTool:
+                std::cout << "[shortcut] Inset\n";
+                return activate_face_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::InsetFaceTool::Id } },
+                    "InsetFaceTool activation",
+                    "Inset");
 
             case ShortcutAction::SetObjectGranularity:
                 return set_selection_granularity(

@@ -8,6 +8,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <memory>
 #include <string_view>
@@ -118,6 +119,14 @@ namespace locus::editor {
         [[nodiscard]]
         float factor() const;
 
+        /**
+         * @brief Builds the static tool descriptor.
+         *
+         * @return Inset tool descriptor.
+         */
+        [[nodiscard]]
+        static ToolDescriptor make_descriptor();
+
     protected:
         /**
          * @brief Captures initial pointer and scaling data.
@@ -158,14 +167,6 @@ namespace locus::editor {
 
     private:
         /**
-         * @brief Builds the static tool descriptor.
-         *
-         * @return Inset tool descriptor.
-         */
-        [[nodiscard]]
-        static ToolDescriptor make_descriptor();
-
-        /**
          * @brief Sanitizes configuration values.
          *
          * @param options Options to sanitize.
@@ -186,6 +187,15 @@ namespace locus::editor {
             const ToolEvent& event) const;
 
         /**
+         * @brief Initializes the ray-to-face-plane drag mapping.
+         */
+        [[nodiscard]]
+        bool initialize_plane_drag(
+            const ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target);
+
+        /**
          * @brief Checks whether the current factor produces geometry.
          *
          * @return True when the factor is inside the effective inset range.
@@ -197,7 +207,15 @@ namespace locus::editor {
 
         glm::vec2 startPosition_{ 0.0f };
 
+        glm::vec3 planeOriginWorld_{ 0.0f };
+        glm::vec3 planeNormalWorld_{ 0.0f, 0.0f, 1.0f };
+        glm::vec3 startPlanePointWorld_{ 0.0f };
+        glm::vec3 inwardDragDirectionWorld_{ 1.0f, 0.0f, 0.0f };
+        glm::vec2 fallbackScreenDirection_{ 1.0f, 0.0f };
+
         float interactionVisualScale_ = 1.0f;
+        float worldDistanceToFactor_ = 1.0f;
+        bool planeDragReady_ = false;
         float factor_ = 0.0f;
     };
 
