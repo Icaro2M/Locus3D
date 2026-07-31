@@ -18,6 +18,7 @@
 #include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
+#include "editor/tools/mesh/vertex/ShrinkFattenTool.h"
 
 #include <iostream>
 #include <string>
@@ -266,6 +267,49 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> activate_vertex_mesh_tool(
+            DocumentSession& document,
+            const editor::ToolId& id,
+            const char* toolName,
+            const char* actionName)
+        {
+            const editor::SelectionState& selection =
+                document.editor().selection();
+
+            if (selection.mesh().active_mesh().is_invalid()
+                || selection.granularity()
+                != editor::SelectionGranularity::Vertex
+                || selection.mesh().vertices().empty()) {
+                return ApplicationError::make(
+                    ApplicationErrorCode::InvalidState,
+                    std::string{
+                        actionName
+                    } +
+                    " requires an active mesh and at least one selected "
+                    "vertex.");
+            }
+
+            editor::ToolContext toolContext = make_tool_context(document);
+            const editor::ToolResult result =
+                document.tool_manager().activate_tool(
+                    toolContext,
+                    id);
+
+            if (result.failed()) {
+                return tool_failure_error(result);
+            }
+
+            print_tool_result(
+                toolName,
+                result,
+                document);
+            print_selection_summary(
+                "after mesh tool activation",
+                document);
+
+            return {};
+        }
+
     } // namespace
 
     ApplicationResult<bool>
@@ -320,6 +364,24 @@ namespace locus::application {
                             editor::SolidifyTool::Id } },
                     "SolidifyTool activation",
                     "Solidify");
+
+            if (!result) {
+                return result.error();
+            }
+
+            return true;
+        }
+
+        case ShortcutAction::ActivateShrinkFattenTool: {
+            std::cout << "[shortcut] Shrink/Fatten\n";
+            const ApplicationResult<void> result =
+                activate_vertex_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::ShrinkFattenTool::Id } },
+                    "ShrinkFattenTool activation",
+                    "Shrink/Fatten");
 
             if (!result) {
                 return result.error();
@@ -419,6 +481,10 @@ namespace locus::application {
                 editor::ToolId{
                     std::string{
                         editor::SolidifyTool::Id } })
+            || document.tool_manager().is_active(
+                editor::ToolId{
+                    std::string{
+                        editor::ShrinkFattenTool::Id } })
             || document.tool_manager().is_active(
                 editor::ToolId{
                     std::string{

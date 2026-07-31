@@ -12,6 +12,7 @@
 #include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
+#include "editor/tools/mesh/vertex/ShrinkFattenTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 
@@ -57,6 +58,13 @@ namespace locus::editor {
                 SolidifyTool::make_descriptor(),
                 [] {
                     return std::make_unique<SolidifyTool>();
+                });
+
+        registeredAll &=
+            registry.register_tool(
+                ShrinkFattenTool::make_descriptor(),
+                [] {
+                    return std::make_unique<ShrinkFattenTool>();
                 });
 
         registeredAll &=

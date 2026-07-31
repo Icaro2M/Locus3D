@@ -22,6 +22,7 @@ namespace locus::application {
         ActivateExtrudeFaceTool,
         ActivateInsetFaceTool,
         ActivateSolidifyTool,
+        ActivateShrinkFattenTool,
         ActivateEdgeSlideTool,
         ActivateBevelTool,
         ActivateLoopCutTool,
@@ -45,6 +46,7 @@ namespace locus::application {
         bool textInputActive = false;
         bool modalActive = false;
         bool objectMode = true;
+        bool vertexSelectionContext = false;
         bool faceSelectionContext = false;
         bool edgeSelectionContext = false;
     };

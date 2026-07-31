@@ -16,6 +16,11 @@
 #include "editor/tools/mesh/face/InsetFaceTool.h"
 #include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
+#include "editor/tools/mesh/vertex/ShrinkFattenTool.h"
+#include "editor/tools/core/ToolContext.h"
+#include "editor/tools/core/ToolEvent.h"
+#include "kernel/geometry/render/NormalBuilder.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
 
 #include <glm/geometric.hpp>
@@ -72,6 +77,66 @@ using namespace locus::application;
     return std::abs(lhs - rhs) < 0.0001;
 }
 
+[[nodiscard]] bool near_vec3(
+    const glm::vec3& lhs,
+    const glm::vec3& rhs)
+{
+    return glm::length(lhs - rhs) < 0.0001f;
+}
+
+[[nodiscard]] glm::vec3 safe_normalize(
+    const glm::vec3& value,
+    const glm::vec3& fallback)
+{
+    const float length = glm::length(value);
+
+    if (length <= 0.000001f) {
+        return fallback;
+    }
+
+    return value / length;
+}
+
+[[nodiscard]] glm::vec3 vertex_normal(
+    const locus::kernel::geometry::LEM& mesh,
+    locus::kernel::geometry::VertexHandle vertex)
+{
+    glm::vec3 normal{ 0.0f };
+
+    for (const locus::kernel::geometry::FaceHandle face :
+        locus::kernel::geometry::TopologyTraversal::vertex_faces(
+            mesh,
+            vertex)) {
+        if (mesh.is_valid(face)) {
+            normal +=
+                locus::kernel::geometry::NormalBuilder::face_normal(
+                    mesh,
+                    face);
+        }
+    }
+
+    return safe_normalize(
+        normal,
+        glm::vec3{ 0.0f, 1.0f, 0.0f });
+}
+
+[[nodiscard]] locus::editor::ToolEvent shrink_fatten_pointer_event(
+    locus::editor::ToolEventType type,
+    locus::editor::ToolPointerButton button,
+    glm::vec2 position,
+    const glm::vec3& normal)
+{
+    locus::editor::ToolEvent event{};
+    event.type = type;
+    event.button = button;
+    event.pointer.viewportPosition = position;
+    event.pointer.worldRay.direction = normal;
+    event.pointer.viewRight = normal;
+    event.pointer.viewUp = glm::vec3{ 0.0f, 1.0f, 0.0f };
+    event.pointer.visualScale = 1.0f;
+    return event;
+}
+
 [[nodiscard]] const char* shortcut_action_name(
     ShortcutAction action)
 {
@@ -94,6 +159,8 @@ using namespace locus::application;
         return "ActivateInsetFaceTool";
     case ShortcutAction::ActivateSolidifyTool:
         return "ActivateSolidifyTool";
+    case ShortcutAction::ActivateShrinkFattenTool:
+        return "ActivateShrinkFattenTool";
     case ShortcutAction::ActivateEdgeSlideTool:
         return "ActivateEdgeSlideTool";
     case ShortcutAction::ActivateBevelTool:
@@ -572,6 +639,30 @@ void apply_route(
         return false;
     }
 
+    context.vertexSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::S, InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateShrinkFattenTool,
+            "Shrink/fatten shortcut in vertex context")) {
+        return false;
+    }
+
+    context.vertexSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Shrink/fatten shortcut blocked without selected vertex")) {
+        return false;
+    }
+
     context.edgeSelectionContext = true;
     state.reset();
     state.begin_frame();
@@ -707,6 +798,9 @@ void apply_route(
     const locus::editor::ToolId solidifyId{
         std::string{ locus::editor::SolidifyTool::Id }
     };
+    const locus::editor::ToolId shrinkFattenId{
+        std::string{ locus::editor::ShrinkFattenTool::Id }
+    };
     const locus::editor::ToolId edgeSlideId{
         std::string{ locus::editor::EdgeSlideTool::Id }
     };
@@ -720,6 +814,7 @@ void apply_route(
     if (!document.tool_registry().contains(extrudeId) ||
         !document.tool_registry().contains(insetId) ||
         !document.tool_registry().contains(solidifyId) ||
+        !document.tool_registry().contains(shrinkFattenId) ||
         !document.tool_registry().contains(edgeSlideId) ||
         !document.tool_registry().contains(bevelId) ||
         !document.tool_registry().contains(loopCutId)) {
@@ -731,6 +826,7 @@ void apply_route(
     if (document.tool_registry().create(extrudeId) == nullptr ||
         document.tool_registry().create(insetId) == nullptr ||
         document.tool_registry().create(solidifyId) == nullptr ||
+        document.tool_registry().create(shrinkFattenId) == nullptr ||
         document.tool_registry().create(edgeSlideId) == nullptr ||
         document.tool_registry().create(bevelId) == nullptr ||
         document.tool_registry().create(loopCutId) == nullptr) {
@@ -806,6 +902,26 @@ void apply_route(
 
     if (!document.editor().selection_controller().enter_mesh_context(
             meshId,
+            locus::editor::SelectionGranularity::Vertex) ||
+        !document.editor().selection_controller().select_vertex(
+            buildResult.vertices.front())) {
+        return false;
+    }
+
+    const ApplicationResult<bool> shrinkFattenResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateShrinkFattenTool,
+            document);
+
+    if (!shrinkFattenResult ||
+        !shrinkFattenResult.value() ||
+        !document.tool_manager().is_active(shrinkFattenId)) {
+        std::cerr << "Shrink/fatten activation should stay functional\n";
+        return false;
+    }
+
+    if (!document.editor().selection_controller().enter_mesh_context(
+            meshId,
             locus::editor::SelectionGranularity::Edge) ||
         !document.editor().selection_controller().select_edge(
             buildResult.edges.front())) {
@@ -850,6 +966,213 @@ void apply_route(
         !document.tool_manager().is_active(edgeSlideId);
 }
 
+[[nodiscard]] bool test_shrink_fatten_tool_interaction()
+{
+    DocumentSession document{ DocumentId{ 43u } };
+
+    const locus::editor::SceneNodeId meshId =
+        document.editor().scene().create_mesh("Mesh");
+    locus::editor::MeshNode* node =
+        document.editor().scene().find_mesh(meshId);
+
+    if (node == nullptr) {
+        return false;
+    }
+
+    const auto buildResult =
+        locus::kernel::geometry::TopologyBuilder::build_box_into(
+            node->mesh());
+
+    if (!buildResult ||
+        buildResult.vertices.size() < 2u) {
+        return false;
+    }
+
+    const locus::kernel::geometry::VertexHandle firstVertex =
+        buildResult.vertices.front();
+    const locus::kernel::geometry::VertexHandle secondVertex =
+        buildResult.vertices[1u];
+
+    if (!document.editor().selection_controller().enter_mesh_context(
+            meshId,
+            locus::editor::SelectionGranularity::Vertex) ||
+        !document.editor().selection_controller().select_vertex(
+            firstVertex) ||
+        !document.editor().selection_controller().toggle_vertex(
+            secondVertex)) {
+        return false;
+    }
+
+    const glm::vec3 originalPosition =
+        node->mesh().vertex(firstVertex).position;
+    const glm::vec3 normal =
+        safe_normalize(
+            vertex_normal(
+                node->mesh(),
+                firstVertex) +
+            vertex_normal(
+                node->mesh(),
+                secondVertex),
+            glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+    MeshToolActivationController activation{};
+    const ApplicationResult<bool> activationResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateShrinkFattenTool,
+            document);
+
+    const locus::editor::ToolId shrinkFattenId{
+        std::string{ locus::editor::ShrinkFattenTool::Id }
+    };
+
+    if (!activationResult ||
+        !activationResult.value() ||
+        !document.tool_manager().is_active(shrinkFattenId)) {
+        std::cerr << "Shrink/fatten should activate in vertex context\n";
+        return false;
+    }
+
+    locus::editor::ToolContext toolContext{
+        document.editor(),
+        document.command_dispatcher(),
+        document.history(),
+        document.editor_sync().picking_sync()
+    };
+
+    const locus::editor::ToolResult pressResult =
+        document.tool_manager().handle_event(
+            toolContext,
+            shrink_fatten_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                locus::editor::ToolPointerButton::Primary,
+                glm::vec2{ 0.0f, 0.0f },
+                normal));
+
+    if (pressResult.failed() ||
+        !pressResult.was_consumed() ||
+        !near_vec3(
+            node->mesh().vertex(firstVertex).position,
+            originalPosition)) {
+        std::cerr << "Shrink/fatten press should start without mutation\n";
+        return false;
+    }
+
+    const locus::editor::ToolResult moveResult =
+        document.tool_manager().handle_event(
+            toolContext,
+            shrink_fatten_pointer_event(
+                locus::editor::ToolEventType::PointerMove,
+                locus::editor::ToolPointerButton::None,
+                glm::vec2{ 20.0f, 0.0f },
+                normal));
+
+    auto* shrinkFattenTool =
+        dynamic_cast<locus::editor::ShrinkFattenTool*>(
+            document.tool_manager().active_tool());
+
+    if (moveResult.failed() ||
+        shrinkFattenTool == nullptr ||
+        !shrinkFattenTool->has_operation_preview() ||
+        std::abs(shrinkFattenTool->distance()) <= 0.000001f ||
+        !near_vec3(
+            node->mesh().vertex(firstVertex).position,
+            originalPosition)) {
+        std::cerr << "Shrink/fatten move should build preview only\n";
+        return false;
+    }
+
+    const locus::editor::ToolResult releaseResult =
+        document.tool_manager().handle_event(
+            toolContext,
+            shrink_fatten_pointer_event(
+                locus::editor::ToolEventType::PointerRelease,
+                locus::editor::ToolPointerButton::Primary,
+                glm::vec2{ 20.0f, 0.0f },
+                normal));
+
+    const glm::vec3 committedPosition =
+        node->mesh().vertex(firstVertex).position;
+
+    if (releaseResult.failed() ||
+        document.history().undo_size() != 1u ||
+        near_vec3(committedPosition, originalPosition) ||
+        !document.editor().selection().mesh().vertices().contains(
+            firstVertex) ||
+        !document.editor().selection().mesh().vertices().contains(
+            secondVertex)) {
+        std::cerr
+            << "Shrink/fatten release should commit once and preserve "
+            << "selection\n";
+        return false;
+    }
+
+    const locus::editor::CommandResult undoResult =
+        document.history().undo(
+            document.command_dispatcher());
+
+    if (!undoResult.success ||
+        !near_vec3(
+            node->mesh().vertex(firstVertex).position,
+            originalPosition)) {
+        std::cerr << "Shrink/fatten undo should restore the mesh\n";
+        return false;
+    }
+
+    const locus::editor::CommandResult redoResult =
+        document.history().redo(
+            document.command_dispatcher());
+
+    if (!redoResult.success ||
+        !near_vec3(
+            node->mesh().vertex(firstVertex).position,
+            committedPosition)) {
+        std::cerr << "Shrink/fatten redo should restore the commit\n";
+        return false;
+    }
+
+    const std::size_t undoSizeBeforeCancel =
+        document.history().undo_size();
+    const glm::vec3 positionBeforeCancel =
+        node->mesh().vertex(firstVertex).position;
+
+    const ApplicationResult<bool> secondActivationResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateShrinkFattenTool,
+            document);
+
+    if (!secondActivationResult ||
+        !secondActivationResult.value()) {
+        return false;
+    }
+
+    document.tool_manager().handle_event(
+        toolContext,
+        shrink_fatten_pointer_event(
+            locus::editor::ToolEventType::PointerPress,
+            locus::editor::ToolPointerButton::Primary,
+            glm::vec2{ 0.0f, 0.0f },
+            normal));
+    document.tool_manager().handle_event(
+        toolContext,
+        shrink_fatten_pointer_event(
+            locus::editor::ToolEventType::PointerMove,
+            locus::editor::ToolPointerButton::None,
+            glm::vec2{ -20.0f, 0.0f },
+            normal));
+
+    const locus::editor::ToolResult cancelResult =
+        document.tool_manager().handle_event(
+            toolContext,
+            locus::editor::ToolEvent{
+                locus::editor::ToolEventType::Cancel });
+
+    return !cancelResult.failed() &&
+        document.history().undo_size() == undoSizeBeforeCancel &&
+        near_vec3(
+            node->mesh().vertex(firstVertex).position,
+            positionBeforeCancel);
+}
+
 } // namespace
 
 int main()
@@ -867,6 +1190,8 @@ int main()
         { "ShortcutResolution", &test_shortcut_resolution },
         { "MeshToolRegistrationAndActivation",
             &test_mesh_tool_registration_and_activation },
+        { "ShrinkFattenToolInteraction",
+            &test_shrink_fatten_tool_interaction },
     };
 
     for (const TestCase& test : tests) {

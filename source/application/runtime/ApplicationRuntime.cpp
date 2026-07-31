@@ -463,6 +463,7 @@ namespace locus::application {
             case ShortcutAction::Save:
             case ShortcutAction::Open:
             case ShortcutAction::DeleteSelection:
+            case ShortcutAction::ActivateShrinkFattenTool:
                 return {};
 
             case ShortcutAction::ActivateSelectTool:
@@ -750,6 +751,15 @@ namespace locus::application {
             == editor::SelectionScope::Scene &&
             activeDocument->editor().selection().granularity()
             == editor::SelectionGranularity::Object;
+        shortcutContext.vertexSelectionContext =
+            activeDocument->editor().selection().scope()
+            == editor::SelectionScope::ActiveMesh &&
+            activeDocument->editor().selection().granularity()
+            == editor::SelectionGranularity::Vertex &&
+            activeDocument->editor().selection().mesh()
+                .active_mesh().is_valid() &&
+            !activeDocument->editor().selection().mesh()
+                .vertices().empty();
         shortcutContext.faceSelectionContext =
             activeDocument->editor().selection().scope()
             == editor::SelectionScope::ActiveMesh &&

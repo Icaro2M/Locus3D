@@ -38,6 +38,10 @@ namespace locus::application {
                 return context.faceSelectionContext
                     && !context.modalActive;
 
+            case ShortcutAction::ActivateShrinkFattenTool:
+                return context.vertexSelectionContext
+                    && !context.modalActive;
+
             case ShortcutAction::ActivateEdgeSlideTool:
             case ShortcutAction::ActivateBevelTool:
             case ShortcutAction::ActivateLoopCutTool:
@@ -92,6 +96,7 @@ namespace locus::application {
             { Key::G, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateEdgeSlideTool },
             { Key::B, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateBevelTool },
             { Key::F, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateSolidifyTool },
+            { Key::S, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::ActivateShrinkFattenTool },
             { Key::I, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateInsetFaceTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateLoopCutTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
