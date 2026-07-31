@@ -179,6 +179,46 @@ namespace locus::editor {
     };
 
     /**
+     * @brief Input used to start a drag from an explicit world-space pivot.
+     */
+    struct GizmoBeginDragPivotInput {
+        /**
+         * @brief Active gizmo mode.
+         */
+        GizmoMode mode = GizmoMode::Translate;
+
+        /**
+         * @brief World-space gizmo pivot.
+         */
+        glm::vec3 pivot{ 0.0f, 0.0f, 0.0f };
+
+        /**
+         * @brief World-space gizmo orientation.
+         */
+        glm::quat orientation{ 1.0f, 0.0f, 0.0f, 0.0f };
+
+        /**
+         * @brief Transform session options mirrored into gizmo state.
+         */
+        TransformSessionOptions sessionOptions{};
+
+        /**
+         * @brief Pointer/camera input.
+         */
+        GizmoPointerInput pointer{};
+
+        /**
+         * @brief Optional snap settings.
+         */
+        const SnapSettings* snapSettings = nullptr;
+
+        /**
+         * @brief Optional snap solver.
+         */
+        const SnapSolver* snapSolver = nullptr;
+    };
+
+    /**
      * @brief Input used while dragging an active gizmo handle.
      */
     struct GizmoDragInput {
@@ -312,6 +352,18 @@ namespace locus::editor {
         [[nodiscard]] GizmoControllerResult begin_drag(const GizmoBeginDragTargetsInput& input);
 
         /**
+         * @brief Starts a drag at an explicit pivot without creating a node session.
+         *
+         * Mesh component transform sessions use this path to share gizmo hit-test,
+         * constraint, and snapping math while applying previews themselves.
+         *
+         * @param input Begin-drag input.
+         * @return Operation result.
+         */
+        [[nodiscard]] GizmoControllerResult begin_drag_at_pivot(
+            const GizmoBeginDragPivotInput& input);
+
+        /**
          * @brief Updates an active drag and applies an incremental transform preview.
          *
          * @param scene Scene that owns transformed nodes.
@@ -323,11 +375,33 @@ namespace locus::editor {
             const GizmoDragInput& input);
 
         /**
+         * @brief Updates an explicit-pivot drag and returns an absolute constraint.
+         *
+         * This does not modify TransformSession targets. The returned constraint
+         * contains absolute translation, rotation, or scale relative to the drag
+         * start.
+         *
+         * @param scene Scene used by snapping providers.
+         * @param input Drag input.
+         * @return Operation result containing the adjusted absolute constraint.
+         */
+        [[nodiscard]] GizmoControllerResult update_drag_constraint(
+            EditorScene& scene,
+            const GizmoDragInput& input);
+
+        /**
          * @brief Confirms the active transform session.
          *
          * @return True when an active session was confirmed.
          */
         bool end_drag();
+
+        /**
+         * @brief Ends an explicit-pivot drag.
+         *
+         * @return True when a drag was active.
+         */
+        bool end_drag_at_pivot();
 
         /**
          * @brief Cancels the active transform session and restores captured transforms.
@@ -336,6 +410,13 @@ namespace locus::editor {
          * @return True when at least one target was restored.
          */
         bool cancel_drag(EditorScene& scene);
+
+        /**
+         * @brief Cancels an explicit-pivot drag without modifying scene data.
+         *
+         * @return True when a drag was active.
+         */
+        bool cancel_drag_at_pivot();
 
         /**
          * @brief Clears controller state without modifying the scene.
@@ -353,10 +434,20 @@ namespace locus::editor {
             const GizmoHit& hit,
             const GizmoBeginDragTargetsInput& input);
 
+        [[nodiscard]] GizmoControllerResult begin_drag_from_hit(
+            const GizmoHit& hit,
+            const GizmoBeginDragPivotInput& input);
+
         [[nodiscard]] GizmoConstraintInput make_constraint_input(
             const GizmoPointerInput& pointer) const;
 
         [[nodiscard]] GizmoControllerResult apply_constraint(
+            EditorScene& scene,
+            const GizmoConstraintResult& constraint,
+            const SnapSettings* snapSettings,
+            const SnapSolver* snapSolver);
+
+        [[nodiscard]] GizmoControllerResult adjust_constraint(
             EditorScene& scene,
             const GizmoConstraintResult& constraint,
             const SnapSettings* snapSettings,

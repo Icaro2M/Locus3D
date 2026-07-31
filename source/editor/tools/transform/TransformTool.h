@@ -8,6 +8,7 @@
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/tools/interaction/DragTool.h"
 #include "editor/tools/transform/ITransformToolSession.h"
+#include "editor/tools/transform/MeshTransformToolSession.h"
 #include "editor/tools/transform/ObjectTransformToolSession.h"
 #include "editor/transform/TransformSession.h"
 
@@ -23,7 +24,7 @@ namespace locus::editor {
      * interaction is confirmed or cancelled.
      *
      * The current implementation supports complete scene objects through
-     * ObjectTransformToolSession. Mesh component transformation will later use a
+     * ObjectTransformToolSession and mesh components through
      * MeshTransformToolSession without introducing another active tool.
      */
     class TransformTool final : public DragTool {
@@ -129,6 +130,12 @@ namespace locus::editor {
         const ObjectTransformToolSession&
             object_session() const;
 
+        [[nodiscard]]
+        MeshTransformToolSession& mesh_session();
+
+        [[nodiscard]]
+        const MeshTransformToolSession& mesh_session() const;
+
         /**
          * @brief Returns the gizmo state used for rendering.
          *
@@ -136,6 +143,18 @@ namespace locus::editor {
          */
         [[nodiscard]]
         const GizmoState& gizmo_state() const;
+
+        /**
+         * @brief Refreshes render-facing gizmo state from the current selection.
+         *
+         * This exposes the shared transform target presentation without requiring
+         * application code to know whether the target is an object or mesh
+         * component selection.
+         *
+         * @param context Tool context.
+         */
+        void refresh_gizmo_state(
+            const ToolContext& context);
 
     protected:
         /**
@@ -246,7 +265,7 @@ namespace locus::editor {
             const ToolEvent& event);
 
         /**
-         * @brief Resolves the current object selection pivot.
+         * @brief Resolves the current active selection pivot.
          *
          * @param context Tool context.
          * @return World-space pivot.
@@ -254,6 +273,20 @@ namespace locus::editor {
         [[nodiscard]]
         glm::vec3 resolve_object_pivot(
             const ToolContext& context) const;
+
+        [[nodiscard]]
+        bool has_mesh_transform_context(
+            const ToolContext& context) const;
+
+        [[nodiscard]]
+        glm::vec3 resolve_mesh_pivot(
+            const ToolContext& context) const;
+
+        [[nodiscard]]
+        GizmoController& presentation_controller();
+
+        [[nodiscard]]
+        const GizmoController& presentation_controller() const;
 
         /**
          * @brief Refreshes the render-facing gizmo state from current editor state.
@@ -296,6 +329,10 @@ namespace locus::editor {
         };
 
         ObjectTransformToolSession objectSession_{};
+
+        MeshTransformToolSession meshSession_{};
+
+        ITransformToolSession* presentationSession_ = nullptr;
 
         ITransformToolSession* activeSession_ = nullptr;
     };

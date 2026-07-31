@@ -36,16 +36,19 @@ namespace locus::application {
             case ShortcutAction::ActivateInsetFaceTool:
             case ShortcutAction::ActivateSolidifyTool:
                 return context.faceSelectionContext
+                    && !context.transformToolActive
                     && !context.modalActive;
 
             case ShortcutAction::ActivateShrinkFattenTool:
                 return context.vertexSelectionContext
+                    && !context.transformToolActive
                     && !context.modalActive;
 
             case ShortcutAction::ActivateEdgeSlideTool:
             case ShortcutAction::ActivateBevelTool:
             case ShortcutAction::ActivateLoopCutTool:
                 return context.edgeSelectionContext
+                    && !context.transformToolActive
                     && !context.modalActive;
 
             case ShortcutAction::SetObjectGranularity:
@@ -58,7 +61,7 @@ namespace locus::application {
             case ShortcutAction::ActivateRotateTool:
             case ShortcutAction::ActivateScaleTool:
             case ShortcutAction::ActivateUniversalTool:
-                return context.objectMode
+                return context.transformSelectionContext
                     && !context.modalActive;
 
             case ShortcutAction::ActivateSelectTool:

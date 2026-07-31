@@ -49,6 +49,8 @@ namespace locus::application {
         bool vertexSelectionContext = false;
         bool faceSelectionContext = false;
         bool edgeSelectionContext = false;
+        bool transformSelectionContext = false;
+        bool transformToolActive = false;
     };
 
     /**

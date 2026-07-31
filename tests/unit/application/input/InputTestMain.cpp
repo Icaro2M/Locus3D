@@ -19,6 +19,7 @@
 #include "editor/tools/mesh/vertex/ShrinkFattenTool.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/transform/TransformTool.h"
 #include "kernel/geometry/render/NormalBuilder.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
@@ -488,6 +489,8 @@ void apply_route(
     ShortcutContext context{};
     InputState state{};
 
+    context.transformSelectionContext = true;
+
     state.reset();
     state.begin_frame();
     state.consume(key(Key::Z, InputModifiers::Control));
@@ -543,16 +546,18 @@ void apply_route(
     }
 
     context.objectMode = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
             context,
             ShortcutAction::None,
-            "Transform shortcut blocked outside object context")) {
+            "Transform shortcut blocked without transform target")) {
         return false;
     }
 
     context.objectMode = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::T));
@@ -568,6 +573,7 @@ void apply_route(
 
     context.objectMode = false;
     context.faceSelectionContext = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::E));
@@ -582,6 +588,7 @@ void apply_route(
     }
 
     context.faceSelectionContext = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
@@ -616,6 +623,7 @@ void apply_route(
     }
 
     context.faceSelectionContext = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::F));
@@ -630,6 +638,7 @@ void apply_route(
     }
 
     context.faceSelectionContext = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
@@ -640,6 +649,7 @@ void apply_route(
     }
 
     context.vertexSelectionContext = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::S, InputModifiers::Alt));
@@ -654,6 +664,7 @@ void apply_route(
     }
 
     context.vertexSelectionContext = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
@@ -664,6 +675,7 @@ void apply_route(
     }
 
     context.edgeSelectionContext = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::G));
@@ -678,6 +690,7 @@ void apply_route(
     }
 
     context.edgeSelectionContext = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
@@ -689,6 +702,7 @@ void apply_route(
 
     context.edgeSelectionContext = true;
     context.objectMode = false;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::R));
@@ -703,6 +717,7 @@ void apply_route(
     }
 
     context.edgeSelectionContext = false;
+    context.transformSelectionContext = false;
     if (!expect_shortcut(
             shortcuts,
             state,
@@ -713,6 +728,7 @@ void apply_route(
     }
 
     context.objectMode = true;
+    context.transformSelectionContext = true;
     state.reset();
     state.begin_frame();
     state.consume(key(Key::Num1));
@@ -966,6 +982,160 @@ void apply_route(
         !document.tool_manager().is_active(edgeSlideId);
 }
 
+[[nodiscard]] bool test_transform_tool_activation_from_selection_contexts()
+{
+    DocumentSession document{ DocumentId{ 44u } };
+
+    const locus::editor::SceneNodeId meshId =
+        document.editor().scene().create_mesh("Mesh");
+    locus::editor::MeshNode* node =
+        document.editor().scene().find_mesh(meshId);
+
+    if (node == nullptr) {
+        return false;
+    }
+
+    const auto buildResult =
+        locus::kernel::geometry::TopologyBuilder::build_box_into(
+            node->mesh());
+
+    if (!buildResult ||
+        buildResult.vertices.empty() ||
+        buildResult.edges.empty() ||
+        buildResult.faces.empty()) {
+        return false;
+    }
+
+    const locus::editor::ToolId transformId{
+        std::string{ locus::editor::TransformTool::Id }
+    };
+
+    locus::editor::ToolContext toolContext{
+        document.editor(),
+        document.command_dispatcher(),
+        document.history(),
+        document.editor_sync().picking_sync()
+    };
+
+    document.editor().selection_controller().select_object(meshId);
+    locus::editor::ToolResult result =
+        document.tool_manager().activate_tool(
+            toolContext,
+            transformId);
+
+    if (result.failed() ||
+        !document.tool_manager().is_active(transformId)) {
+        std::cerr << "Transform should activate for object selection\n";
+        return false;
+    }
+
+    auto* transform =
+        dynamic_cast<locus::editor::TransformTool*>(
+            document.tool_manager().active_tool());
+
+    if (transform == nullptr ||
+        !transform->set_mode(locus::editor::GizmoMode::Translate)) {
+        return false;
+    }
+
+    transform->refresh_gizmo_state(toolContext);
+    if (!transform->gizmo_state().visible) {
+        std::cerr << "Object transform should present a gizmo\n";
+        return false;
+    }
+
+    const struct ComponentCase {
+        locus::editor::SelectionGranularity granularity;
+        locus::kernel::geometry::VertexHandle vertex;
+        locus::kernel::geometry::EdgeHandle edge;
+        locus::kernel::geometry::FaceHandle face;
+    } cases[] = {
+        {
+            locus::editor::SelectionGranularity::Vertex,
+            buildResult.vertices.front(),
+            {},
+            {}
+        },
+        {
+            locus::editor::SelectionGranularity::Edge,
+            {},
+            buildResult.edges.front(),
+            {}
+        },
+        {
+            locus::editor::SelectionGranularity::Face,
+            {},
+            {},
+            buildResult.faces.front()
+        },
+    };
+
+    for (const ComponentCase& testCase : cases) {
+        if (!document.editor().selection_controller().enter_mesh_context(
+                meshId,
+                testCase.granularity)) {
+            return false;
+        }
+
+        switch (testCase.granularity) {
+        case locus::editor::SelectionGranularity::Vertex:
+            if (!document.editor().selection_controller().select_vertex(
+                    testCase.vertex)) {
+                return false;
+            }
+            break;
+        case locus::editor::SelectionGranularity::Edge:
+            if (!document.editor().selection_controller().select_edge(
+                    testCase.edge)) {
+                return false;
+            }
+            break;
+        case locus::editor::SelectionGranularity::Face:
+            if (!document.editor().selection_controller().select_face(
+                    testCase.face)) {
+                return false;
+            }
+            break;
+        default:
+            return false;
+        }
+
+        result = document.tool_manager().activate_tool(
+            toolContext,
+            transformId);
+
+        if (result.failed() ||
+            !document.tool_manager().is_active(transformId)) {
+            std::cerr << "Transform should activate for component selection\n";
+            return false;
+        }
+
+        transform =
+            dynamic_cast<locus::editor::TransformTool*>(
+                document.tool_manager().active_tool());
+
+        if (transform == nullptr ||
+            !transform->set_mode(locus::editor::GizmoMode::Translate)) {
+            return false;
+        }
+
+        transform->refresh_gizmo_state(toolContext);
+        const bool gizmoVisible = transform->gizmo_state().visible;
+        if (!gizmoVisible) {
+            std::cerr << "Component transform should present a gizmo\n";
+            return false;
+        }
+
+        const locus::editor::ToolResult deactivateResult =
+            document.tool_manager().deactivate_tool(toolContext);
+        if (deactivateResult.failed()) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 [[nodiscard]] bool test_shrink_fatten_tool_interaction()
 {
     DocumentSession document{ DocumentId{ 43u } };
@@ -1190,6 +1360,8 @@ int main()
         { "ShortcutResolution", &test_shortcut_resolution },
         { "MeshToolRegistrationAndActivation",
             &test_mesh_tool_registration_and_activation },
+        { "TransformToolActivationFromSelectionContexts",
+            &test_transform_tool_activation_from_selection_contexts },
         { "ShrinkFattenToolInteraction",
             &test_shrink_fatten_tool_interaction },
     };

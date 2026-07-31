@@ -8,6 +8,7 @@
 #include "editor/selection/ObjectSelection.h"
 #include "editor/selection/SelectionGranularity.h"
 #include "editor/selection/SelectionScope.h"
+#include "editor/tools/transform/MeshTransformTargetResolver.h"
 #include "editor/transform/TransformPivotResolver.h"
 
 #include <glm/geometric.hpp>
@@ -27,6 +28,24 @@ namespace locus::editor {
                 context.selection().granularity() ==
                 SelectionGranularity::Object &&
                 !context.selection().objects().empty();
+        }
+
+        [[nodiscard]] bool has_mesh_transform_context_impl(
+            const ToolContext& context)
+        {
+            const SelectionGranularity granularity =
+                context.selection().granularity();
+
+            if (context.selection().scope() != SelectionScope::ActiveMesh ||
+                (granularity != SelectionGranularity::Vertex &&
+                    granularity != SelectionGranularity::Edge &&
+                    granularity != SelectionGranularity::Face)) {
+                return false;
+            }
+
+            return MeshTransformTargetResolver::resolve(
+                context.scene(),
+                context.selection()).success;
         }
 
     } // namespace
@@ -74,13 +93,10 @@ namespace locus::editor {
 
         mode_ = mode;
 
-        GizmoState& gizmoState =
-            objectSession_
-            .controller()
-            .state();
-
-        gizmoState.mode = mode_;
-        gizmoState.clear_hover();
+        objectSession_.controller().state().mode = mode_;
+        objectSession_.controller().state().clear_hover();
+        meshSession_.controller().state().mode = mode_;
+        meshSession_.controller().state().clear_hover();
 
         return true;
     }
@@ -101,6 +117,11 @@ namespace locus::editor {
         options_ = options;
 
         objectSession_
+            .controller()
+            .state()
+            .space = options_.space;
+
+        meshSession_
             .controller()
             .state()
             .space = options_.space;
@@ -136,6 +157,11 @@ namespace locus::editor {
             .state()
             .orientation = orientation_;
 
+        meshSession_
+            .controller()
+            .state()
+            .orientation = orientation_;
+
         return true;
     }
 
@@ -151,38 +177,44 @@ namespace locus::editor {
         return objectSession_;
     }
 
+    MeshTransformToolSession&
+        TransformTool::mesh_session() {
+
+        return meshSession_;
+    }
+
+    const MeshTransformToolSession&
+        TransformTool::mesh_session() const {
+
+        return meshSession_;
+    }
+
     const GizmoState&
         TransformTool::gizmo_state() const {
 
-        return objectSession_
-            .controller()
+        return presentation_controller()
             .state();
+    }
+
+    void TransformTool::refresh_gizmo_state(
+        const ToolContext& context) {
+
+        if (state() == ToolState::Interacting) {
+            return;
+        }
+
+        refresh_gizmo_presentation(context);
     }
 
     bool TransformTool::can_activate_tool(
         const ToolContext& context) const {
 
-        return context.selection().scope() == SelectionScope::Scene &&
-            context.selection().granularity() == SelectionGranularity::Object;
+        return has_object_transform_context(context) ||
+            has_mesh_transform_context(context);
     }
 
     ToolResult TransformTool::on_activate(
         ToolContext& context) {
-
-        (void)context;
-
-        GizmoState& gizmoState =
-            objectSession_
-            .controller()
-            .state();
-
-        gizmoState.enabled = true;
-        gizmoState.visible = true;
-        gizmoState.mode = mode_;
-        gizmoState.space = options_.space;
-        gizmoState.orientation = orientation_;
-        gizmoState.clear_hover();
-        gizmoState.clear_active();
 
         activeSession_ = nullptr;
         refresh_gizmo_presentation(context);
@@ -198,6 +230,8 @@ namespace locus::editor {
         (void)context;
 
         objectSession_.clear();
+        meshSession_.clear();
+        presentationSession_ = nullptr;
         activeSession_ = nullptr;
 
         return ToolResult::consumed(
@@ -209,13 +243,20 @@ namespace locus::editor {
         ToolContext& context,
         const ToolEvent& event) {
 
+        const bool objectContext =
+            has_object_transform_context(context);
+        const bool meshContext =
+            has_mesh_transform_context(context);
+
+        refresh_gizmo_presentation(context);
+
         GizmoController& controller =
-            objectSession_.controller();
+            presentation_controller();
 
         const GizmoHit previous =
             controller.state().hovered;
 
-        if (!has_object_transform_context(context)) {
+        if (!objectContext && !meshContext) {
 
             controller.state().clear_hover();
 
@@ -231,7 +272,9 @@ namespace locus::editor {
         GizmoHoverInput input{};
         input.mode = mode_;
         input.pivot =
-            resolve_object_pivot(context);
+            objectContext
+            ? resolve_object_pivot(context)
+            : resolve_mesh_pivot(context);
 
         input.orientation = orientation_;
         input.pointer =
@@ -260,18 +303,23 @@ namespace locus::editor {
         ToolContext& context,
         const ToolEvent& event) {
 
-        if (context.selection().scope() != SelectionScope::Scene ||
-            context.selection().granularity() !=
-            SelectionGranularity::Object) {
-            return ToolResult::fail(
-                "Object transform requires object selection context.");
+        if (has_object_transform_context(context)) {
+            presentationSession_ = &objectSession_;
+            activeSession_ = &objectSession_;
         }
-
-        if (context.selection().objects().empty()) {
+        else if (has_mesh_transform_context(context)) {
+            presentationSession_ = &meshSession_;
+            activeSession_ = &meshSession_;
+        }
+        else if (context.selection().scope() == SelectionScope::ActiveMesh) {
+            return ToolResult::fail(
+                "Mesh transform requires a valid component selection context.");
+        }
+        else {
             return ToolResult::ignored();
         }
 
-        activeSession_ = &objectSession_;
+        refresh_gizmo_presentation(context);
 
         TransformToolSessionBeginInput input{};
         input.mode = mode_;
@@ -411,24 +459,81 @@ namespace locus::editor {
             options_.customPivot);
     }
 
+    bool TransformTool::has_mesh_transform_context(
+        const ToolContext& context) const {
+
+        return has_mesh_transform_context_impl(context);
+    }
+
+    glm::vec3 TransformTool::resolve_mesh_pivot(
+        const ToolContext& context) const {
+
+        const MeshTransformTargetResolveResult result =
+            MeshTransformTargetResolver::resolve(
+                context.scene(),
+                context.selection());
+
+        if (!result.success) {
+            return glm::vec3{ 0.0f, 0.0f, 0.0f };
+        }
+
+        return result.target.pivot;
+    }
+
+    GizmoController& TransformTool::presentation_controller() {
+        if (activeSession_ == &meshSession_) {
+            return meshSession_.controller();
+        }
+
+        if (presentationSession_ == &meshSession_) {
+            return meshSession_.controller();
+        }
+
+        return objectSession_.controller();
+    }
+
+    const GizmoController& TransformTool::presentation_controller() const {
+        if (activeSession_ == &meshSession_) {
+            return meshSession_.controller();
+        }
+
+        if (presentationSession_ == &meshSession_) {
+            return meshSession_.controller();
+        }
+
+        return objectSession_.controller();
+    }
+
     void TransformTool::refresh_gizmo_presentation(
         const ToolContext& context) {
 
+        const bool objectContext =
+            has_object_transform_context(context);
+        const bool meshContext =
+            has_mesh_transform_context(context);
+
+        presentationSession_ =
+            meshContext
+            ? static_cast<ITransformToolSession*>(&meshSession_)
+            : objectContext
+                ? static_cast<ITransformToolSession*>(&objectSession_)
+                : nullptr;
+
         GizmoState& gizmoState =
-            objectSession_
-            .controller()
-            .state();
+            presentation_controller().state();
 
         gizmoState.enabled = true;
         gizmoState.visible =
-            has_object_transform_context(context);
+            objectContext || meshContext;
         gizmoState.mode = mode_;
         gizmoState.space = options_.space;
         gizmoState.orientation = orientation_;
 
         if (gizmoState.visible) {
             gizmoState.pivot =
-                resolve_object_pivot(context);
+                objectContext
+                ? resolve_object_pivot(context)
+                : resolve_mesh_pivot(context);
         }
         else {
             gizmoState.clear_hover();

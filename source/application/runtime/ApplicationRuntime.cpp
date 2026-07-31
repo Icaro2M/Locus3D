@@ -435,6 +435,8 @@ namespace locus::application {
                     "Failed to activate transform shortcut.");
             }
 
+            transformTool->refresh_gizmo_state(toolContext);
+
             document.editor().mark_dirty(
                 editor::EditorDirtyFlags::Render);
             return {};
@@ -778,6 +780,13 @@ namespace locus::application {
                 .active_mesh().is_valid() &&
             !activeDocument->editor().selection().mesh()
                 .edges().empty();
+        shortcutContext.transformSelectionContext =
+            shortcutContext.objectMode ||
+            shortcutContext.vertexSelectionContext ||
+            shortcutContext.edgeSelectionContext ||
+            shortcutContext.faceSelectionContext;
+        shortcutContext.transformToolActive =
+            active_tool_is_transform(*activeDocument);
 
         const ShortcutAction shortcutAction =
             shortcutManager_.resolve(

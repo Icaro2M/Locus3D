@@ -17,6 +17,7 @@
 #include "editor/scene/MeshNode.h"
 #include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
+#include "editor/tools/core/ToolContext.h"
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
@@ -107,13 +108,23 @@ namespace locus::application {
                 to_visual_handle(hit.axis));
         }
 
-        [[nodiscard]] const editor::TransformTool* active_transform_tool(
-            const DocumentSession& document)
+        [[nodiscard]] editor::ToolContext make_tool_context(
+            DocumentSession& document)
         {
-            const editor::ITool* tool =
+            return editor::ToolContext(
+                document.editor(),
+                document.command_dispatcher(),
+                document.history(),
+                document.editor_sync().picking_sync());
+        }
+
+        [[nodiscard]] editor::TransformTool* active_transform_tool(
+            DocumentSession& document)
+        {
+            editor::ITool* tool =
                 document.tool_manager().active_tool();
 
-            return dynamic_cast<const editor::TransformTool*>(tool);
+            return dynamic_cast<editor::TransformTool*>(tool);
         }
 
         [[nodiscard]] const editor::MeshDragOperationTool*
@@ -618,13 +629,14 @@ namespace locus::application {
         graphics::GizmoDrawData gizmoData{};
         gizmoData.visible = false;
 
-        if (const editor::TransformTool* transformTool =
+        if (editor::TransformTool* transformTool =
                 active_transform_tool(document)) {
+            editor::ToolContext toolContext =
+                make_tool_context(document);
+            transformTool->refresh_gizmo_state(toolContext);
+
             const editor::GizmoState& gizmoState =
                 transformTool->gizmo_state();
-
-            const bool hasSelection =
-                !document.editor().selection().objects().empty();
 
             gizmoData.mode = to_visual_mode(gizmoState.mode);
             gizmoData.pivot = gizmoState.pivot;
@@ -638,8 +650,7 @@ namespace locus::application {
             gizmoData.active =
                 to_visual_selection(gizmoState.active);
             gizmoData.visible =
-                hasSelection
-                && gizmoState.visible
+                gizmoState.visible
                 && gizmoData.mode != graphics::GizmoVisualMode::None;
             gizmoData.enabled = gizmoState.enabled;
         }

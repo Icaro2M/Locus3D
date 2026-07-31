@@ -167,6 +167,25 @@ namespace locus::editor {
         return begin_drag_from_hit(*input.scene, hit, input);
     }
 
+    GizmoControllerResult GizmoController::begin_drag_at_pivot(
+        const GizmoBeginDragPivotInput& input)
+    {
+        if (!state_.can_interact() || input.mode == GizmoMode::None) {
+            return { false, false, {}, {}, "Gizmo is not interactive." };
+        }
+
+        TransformGizmoHitTestInput hitInput{};
+        hitInput.mode = input.mode;
+        hitInput.pivot = input.pivot;
+        hitInput.orientation = input.orientation;
+        hitInput.ray = input.pointer.ray;
+        hitInput.viewDirection = input.pointer.viewDirection;
+        hitInput.visualScale = input.pointer.visualScale;
+
+        const GizmoHit hit = gizmo_.hit_test(hitInput);
+        return begin_drag_from_hit(hit, input);
+    }
+
     GizmoControllerResult GizmoController::begin_drag_from_hit(
         EditorScene& scene,
         const GizmoHit& hit,
@@ -233,6 +252,35 @@ namespace locus::editor {
         return { true, false, hit, {}, "Gizmo drag started." };
     }
 
+    GizmoControllerResult GizmoController::begin_drag_from_hit(
+        const GizmoHit& hit,
+        const GizmoBeginDragPivotInput& input)
+    {
+        if (!hit.is_valid()) {
+            return { false, false, hit, {}, "No gizmo handle was hit." };
+        }
+
+        state_.mode = hit.mode;
+        state_.space = input.sessionOptions.space;
+        state_.pivot = input.pivot;
+        state_.orientation = input.orientation;
+        state_.visualScale = input.pointer.visualScale;
+        state_.active = hit;
+        state_.hovered = hit;
+        state_.dragging = true;
+
+        startRay_ = input.pointer.ray;
+        startPoint_ = hit.worldPosition;
+        startPivot_ = input.pivot;
+
+        activeSnapSettings_ = input.snapSettings;
+        activeSnapSolver_ = input.snapSolver;
+
+        reset_incremental_state();
+
+        return { true, false, hit, {}, "Gizmo drag started." };
+    }
+
     GizmoControllerResult GizmoController::update_drag(
         EditorScene& scene,
         const GizmoDragInput& input)
@@ -252,6 +300,25 @@ namespace locus::editor {
         return apply_constraint(scene, constraint, snapSettings, snapSolver);
     }
 
+    GizmoControllerResult GizmoController::update_drag_constraint(
+        EditorScene& scene,
+        const GizmoDragInput& input)
+    {
+        if (!state_.dragging || !state_.active.is_valid()) {
+            return { false, false, state_.active, {}, "No active gizmo drag." };
+        }
+
+        const GizmoConstraintResult constraint = solve_constraint(input.pointer);
+        if (!constraint.is_valid()) {
+            return { false, false, state_.active, constraint, "Could not solve gizmo constraint." };
+        }
+
+        const SnapSettings* snapSettings = input.snapSettings ? input.snapSettings : activeSnapSettings_;
+        const SnapSolver* snapSolver = input.snapSolver ? input.snapSolver : activeSnapSolver_;
+
+        return adjust_constraint(scene, constraint, snapSettings, snapSolver);
+    }
+
     bool GizmoController::end_drag()
     {
         if (!state_.dragging) {
@@ -268,6 +335,20 @@ namespace locus::editor {
         return confirmed;
     }
 
+    bool GizmoController::end_drag_at_pivot()
+    {
+        if (!state_.dragging) {
+            return false;
+        }
+
+        state_.clear_active();
+        reset_incremental_state();
+        activeSnapSettings_ = nullptr;
+        activeSnapSolver_ = nullptr;
+
+        return true;
+    }
+
     bool GizmoController::cancel_drag(EditorScene& scene)
     {
         if (!state_.dragging && !session_.is_active()) {
@@ -282,6 +363,20 @@ namespace locus::editor {
         activeSnapSolver_ = nullptr;
 
         return restored;
+    }
+
+    bool GizmoController::cancel_drag_at_pivot()
+    {
+        if (!state_.dragging) {
+            return false;
+        }
+
+        state_.clear_active();
+        reset_incremental_state();
+        activeSnapSettings_ = nullptr;
+        activeSnapSolver_ = nullptr;
+
+        return true;
     }
 
     void GizmoController::clear()
@@ -409,6 +504,76 @@ namespace locus::editor {
             changed,
             state_.active,
             constraint,
+            changed ? "Gizmo drag updated." : "Gizmo drag produced no scene change."
+        };
+    }
+
+    GizmoControllerResult GizmoController::adjust_constraint(
+        EditorScene& scene,
+        const GizmoConstraintResult& constraint,
+        const SnapSettings* snapSettings,
+        const SnapSolver* snapSolver)
+    {
+        GizmoConstraintResult adjusted = constraint;
+        bool changed = false;
+
+        switch (state_.active.mode) {
+        case GizmoMode::Translate: {
+            if (snapSettings && snapSolver) {
+                GizmoSnapRequest request{};
+                request.scene = &scene;
+                request.settings = snapSettings;
+                request.solver = snapSolver;
+                request.originalPosition = startPivot_;
+                request.candidatePosition = startPivot_ + constraint.translation;
+                request.referenceOrigin = startPivot_;
+                request.viewDirection = glm::vec3{ 0.0f, 0.0f, -1.0f };
+                request.activeNode = {};
+                request.space = state_.space;
+
+                const GizmoSnapResult snap = GizmoSnap::snap_position(request);
+                adjusted.translation = snap.delta;
+            }
+
+            changed = glm::length(adjusted.translation - lastTranslation_) > epsilon;
+            lastTranslation_ = adjusted.translation;
+            state_.pivot = startPivot_ + lastTranslation_;
+            break;
+        }
+
+        case GizmoMode::Rotate: {
+            if (snapSettings) {
+                const float snappedAngle = GizmoSnap::snap_angle(constraint.angle, *snapSettings);
+                const glm::vec3 axis = safe_normalize(
+                    rotation_axis_for_hit(state_.active, state_.orientation, glm::vec3{ 0.0f, 0.0f, -1.0f }),
+                    glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+                adjusted.rotation = glm::angleAxis(snappedAngle, axis);
+                adjusted.angle = snappedAngle;
+            }
+
+            const glm::quat delta = glm::normalize(adjusted.rotation * glm::inverse(lastRotation_));
+            changed = std::abs(1.0f - std::abs(glm::dot(delta, glm::quat{ 1.0f, 0.0f, 0.0f, 0.0f }))) > epsilon;
+            lastRotation_ = adjusted.rotation;
+            break;
+        }
+
+        case GizmoMode::Scale:
+            changed = glm::length(adjusted.scale - lastScale_) > epsilon;
+            lastScale_ = adjusted.scale;
+            break;
+
+        case GizmoMode::Universal:
+        case GizmoMode::None:
+        default:
+            return { false, false, state_.active, adjusted, "Unsupported gizmo mode." };
+        }
+
+        return {
+            true,
+            changed,
+            state_.active,
+            adjusted,
             changed ? "Gizmo drag updated." : "Gizmo drag produced no scene change."
         };
     }

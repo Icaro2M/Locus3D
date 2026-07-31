@@ -268,6 +268,7 @@ set_tests_properties(editor.unit.render PROPERTIES
 )
 
 add_executable(Locus3DEditorTransformTests
+    unit/editor/transform/MeshTransformToolSessionTests.cpp
     unit/editor/transform/TransformPivotResolverTests.cpp
     unit/editor/transform/TransformSessionTests.cpp
     unit/editor/transform/TransformTargetTests.cpp

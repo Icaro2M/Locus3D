@@ -27,6 +27,9 @@ int main()
         { "TransformTarget", run_transform_target_tests },
         { "TransformPivotResolver", run_transform_pivot_resolver_tests },
         { "TransformSession", run_transform_session_tests },
+        { "MeshTransformTargetResolver", run_mesh_transform_target_resolver_tests },
+        { "MeshTransformToolSession", run_mesh_transform_tool_session_tests },
+        { "TransformToolSelection", run_transform_tool_selection_tests },
     };
 
     for (const TestCase& test : tests) {
