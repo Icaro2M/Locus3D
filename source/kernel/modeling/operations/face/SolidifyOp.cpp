@@ -15,6 +15,13 @@
 
 namespace locus::kernel::modeling {
 
+    namespace {
+
+        constexpr float solidifyOffsetEpsilon =
+            0.000001f;
+
+    } // namespace
+
     SolidifyOp::SolidifyOp(geometry::FaceHandle face, float thickness)
         : faces_({ face })
         , thickness_(thickness) {
@@ -153,6 +160,19 @@ namespace locus::kernel::modeling {
         if (!createCaps_ && !createRims_) {
             return OperationResult::no_change(
                 "Solidify operation has both caps and rims disabled.");
+        }
+
+        if (directionMode_ == SolidifyDirectionMode::VertexNormals &&
+            std::abs(thickness_) <= solidifyOffsetEpsilon) {
+            return OperationResult::no_change(
+                "Solidify operation has zero thickness.");
+        }
+
+        if (directionMode_ == SolidifyDirectionMode::ExplicitOffset &&
+            glm::dot(offset_, offset_) <=
+            solidifyOffsetEpsilon * solidifyOffsetEpsilon) {
+            return OperationResult::no_change(
+                "Solidify operation has zero offset.");
         }
 
         const std::vector<geometry::VertexHandle> sourceVertices =

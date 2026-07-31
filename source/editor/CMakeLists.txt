@@ -213,6 +213,8 @@ target_sources(locus3d_editor
          "tools/mesh/face/ExtrudeFaceTool.cpp"
          "tools/mesh/face/InsetFaceTool.h"
          "tools/mesh/face/InsetFaceTool.cpp"
+         "tools/mesh/face/SolidifyTool.h"
+         "tools/mesh/face/SolidifyTool.cpp"
          "tools/mesh/edge/EdgeSlideTool.h"
          "tools/mesh/edge/EdgeSlideTool.cpp"
          "tools/mesh/edge/BevelTool.h"

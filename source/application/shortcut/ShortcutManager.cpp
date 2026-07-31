@@ -34,6 +34,7 @@ namespace locus::application {
             switch (action) {
             case ShortcutAction::ActivateExtrudeFaceTool:
             case ShortcutAction::ActivateInsetFaceTool:
+            case ShortcutAction::ActivateSolidifyTool:
                 return context.faceSelectionContext
                     && !context.modalActive;
 
@@ -90,6 +91,7 @@ namespace locus::application {
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateRotateTool },
             { Key::G, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateEdgeSlideTool },
             { Key::B, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateBevelTool },
+            { Key::F, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateSolidifyTool },
             { Key::I, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateInsetFaceTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateLoopCutTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },

@@ -21,6 +21,7 @@ namespace locus::application {
         ActivateUniversalTool,
         ActivateExtrudeFaceTool,
         ActivateInsetFaceTool,
+        ActivateSolidifyTool,
         ActivateEdgeSlideTool,
         ActivateBevelTool,
         ActivateLoopCutTool,

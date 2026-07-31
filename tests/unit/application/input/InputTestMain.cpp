@@ -11,8 +11,10 @@
 #include "application/viewport/EditorViewport.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
+#include "editor/tools/mesh/edge/BevelTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
 
@@ -90,8 +92,12 @@ using namespace locus::application;
         return "ActivateExtrudeFaceTool";
     case ShortcutAction::ActivateInsetFaceTool:
         return "ActivateInsetFaceTool";
+    case ShortcutAction::ActivateSolidifyTool:
+        return "ActivateSolidifyTool";
     case ShortcutAction::ActivateEdgeSlideTool:
         return "ActivateEdgeSlideTool";
+    case ShortcutAction::ActivateBevelTool:
+        return "ActivateBevelTool";
     case ShortcutAction::ActivateLoopCutTool:
         return "ActivateLoopCutTool";
     case ShortcutAction::SetObjectGranularity:
@@ -542,6 +548,30 @@ void apply_route(
         return false;
     }
 
+    context.faceSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::F));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ActivateSolidifyTool,
+            "Solidify shortcut in face context")) {
+        return false;
+    }
+
+    context.faceSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Solidify shortcut blocked without selected face")) {
+        return false;
+    }
+
     context.edgeSelectionContext = true;
     state.reset();
     state.begin_frame();
@@ -674,8 +704,14 @@ void apply_route(
     const locus::editor::ToolId insetId{
         std::string{ locus::editor::InsetFaceTool::Id }
     };
+    const locus::editor::ToolId solidifyId{
+        std::string{ locus::editor::SolidifyTool::Id }
+    };
     const locus::editor::ToolId edgeSlideId{
         std::string{ locus::editor::EdgeSlideTool::Id }
+    };
+    const locus::editor::ToolId bevelId{
+        std::string{ locus::editor::BevelTool::Id }
     };
     const locus::editor::ToolId loopCutId{
         std::string{ locus::editor::LoopCutTool::Id }
@@ -683,7 +719,9 @@ void apply_route(
 
     if (!document.tool_registry().contains(extrudeId) ||
         !document.tool_registry().contains(insetId) ||
+        !document.tool_registry().contains(solidifyId) ||
         !document.tool_registry().contains(edgeSlideId) ||
+        !document.tool_registry().contains(bevelId) ||
         !document.tool_registry().contains(loopCutId)) {
         std::cerr
             << "DocumentSession should register built-in mesh tools\n";
@@ -692,7 +730,9 @@ void apply_route(
 
     if (document.tool_registry().create(extrudeId) == nullptr ||
         document.tool_registry().create(insetId) == nullptr ||
+        document.tool_registry().create(solidifyId) == nullptr ||
         document.tool_registry().create(edgeSlideId) == nullptr ||
+        document.tool_registry().create(bevelId) == nullptr ||
         document.tool_registry().create(loopCutId) == nullptr) {
         std::cerr
             << "Built-in mesh tool factories should create tools\n";
@@ -752,6 +792,18 @@ void apply_route(
         return false;
     }
 
+    const ApplicationResult<bool> solidifyResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateSolidifyTool,
+            document);
+
+    if (!solidifyResult ||
+        !solidifyResult.value() ||
+        !document.tool_manager().is_active(solidifyId)) {
+        std::cerr << "Solidify activation should stay functional\n";
+        return false;
+    }
+
     if (!document.editor().selection_controller().enter_mesh_context(
             meshId,
             locus::editor::SelectionGranularity::Edge) ||
@@ -769,6 +821,18 @@ void apply_route(
         !edgeSlideResult.value() ||
         !document.tool_manager().is_active(edgeSlideId)) {
         std::cerr << "Edge slide activation should stay functional\n";
+        return false;
+    }
+
+    const ApplicationResult<bool> bevelResult =
+        activation.activate_shortcut(
+            ShortcutAction::ActivateBevelTool,
+            document);
+
+    if (!bevelResult ||
+        !bevelResult.value() ||
+        !document.tool_manager().is_active(bevelId)) {
+        std::cerr << "Bevel activation should stay functional\n";
         return false;
     }
 

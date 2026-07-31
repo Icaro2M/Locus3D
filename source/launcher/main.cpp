@@ -17,6 +17,7 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
+#include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/transform/TransformSession.h"
@@ -515,6 +516,27 @@ namespace {
         for (const locus::kernel::geometry::EdgeHandle edge :
             editor.selection().mesh().edges().items()) {
             if (!node->mesh().is_valid(edge)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    [[nodiscard]] bool selected_faces_are_valid(
+        const locus::editor::Editor& editor,
+        SceneNodeId meshId)
+    {
+        const locus::editor::MeshNode* node =
+            editor.scene().find_mesh(meshId);
+
+        if (node == nullptr) {
+            return false;
+        }
+
+        for (const locus::kernel::geometry::FaceHandle face :
+            editor.selection().mesh().faces().items()) {
+            if (!node->mesh().is_valid(face)) {
                 return false;
             }
         }
@@ -1136,6 +1158,200 @@ namespace {
         std::cout << "=== Selection history ===\n";
         std::cout << "[OK] undo\n[OK] redo\n";
 
+        const std::size_t vertexCountBeforeSolidify =
+            TopologyTraversal::vertices(meshNode->mesh()).size();
+        const std::size_t faceCountBeforeSolidify =
+            TopologyTraversal::faces(meshNode->mesh()).size();
+        const std::size_t historyBeforeSolidify =
+            document.history().undo_size();
+
+        const locus::application::ApplicationResult<bool> solidifyActivation =
+            locus::application::MeshToolActivationController{}
+                .activate_shortcut(
+                    locus::application::ShortcutAction::ActivateSolidifyTool,
+                    document);
+
+        if (!solidifyActivation ||
+            !solidifyActivation.value()) {
+            std::cerr << "Solidify shortcut activation failed";
+            if (!solidifyActivation) {
+                std::cerr
+                    << ": "
+                    << solidifyActivation.error().message;
+            }
+            std::cerr << '\n';
+            return false;
+        }
+
+        locus::editor::ToolEvent solidifyPress =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                facePosition);
+        locus::editor::ToolEvent solidifyMove =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerMove,
+                facePosition + glm::vec3{ 0.0f, -0.35f, 0.0f });
+        locus::editor::ToolEvent solidifyRelease =
+            make_mesh_pointer_event(
+                locus::editor::ToolEventType::PointerRelease,
+                facePosition + glm::vec3{ 0.0f, -0.35f, 0.0f });
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                solidifyPress,
+                "Solidify press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                solidifyMove,
+                "Solidify preview") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                solidifyRelease,
+                "Solidify commit")) {
+            return false;
+        }
+
+        const std::size_t vertexCountAfterSolidify =
+            TopologyTraversal::vertices(meshNode->mesh()).size();
+        const std::size_t faceCountAfterSolidify =
+            TopologyTraversal::faces(meshNode->mesh()).size();
+
+        if (document.history().undo_size() != historyBeforeSolidify + 1u ||
+            vertexCountAfterSolidify <= vertexCountBeforeSolidify ||
+            faceCountAfterSolidify <= faceCountBeforeSolidify ||
+            (meshNode->mesh().is_valid(face) &&
+                !editor.selection().mesh().faces().contains(face)) ||
+            !selected_faces_are_valid(editor, meshId)) {
+            std::cerr << "Solidify commit invariant failed.\n";
+            return false;
+        }
+
+        CommandResult solidifyUndoResult =
+            document.history().undo(document.command_dispatcher());
+
+        if (!solidifyUndoResult.success ||
+            TopologyTraversal::vertices(meshNode->mesh()).size() !=
+                vertexCountBeforeSolidify ||
+            TopologyTraversal::faces(meshNode->mesh()).size() !=
+                faceCountBeforeSolidify ||
+            !meshNode->mesh().is_valid(face) ||
+            !editor.selection().mesh().faces().contains(face)) {
+            std::cerr << "Solidify undo invariant failed.\n";
+            return false;
+        }
+
+        CommandResult solidifyRedoResult =
+            document.history().redo(document.command_dispatcher());
+
+        if (!solidifyRedoResult.success ||
+            TopologyTraversal::vertices(meshNode->mesh()).size() !=
+                vertexCountAfterSolidify ||
+            TopologyTraversal::faces(meshNode->mesh()).size() !=
+                faceCountAfterSolidify ||
+            (meshNode->mesh().is_valid(face) &&
+                !editor.selection().mesh().faces().contains(face)) ||
+            !selected_faces_are_valid(editor, meshId)) {
+            std::cerr << "Solidify redo invariant failed.\n";
+            return false;
+        }
+
+        solidifyUndoResult =
+            document.history().undo(document.command_dispatcher());
+
+        if (!solidifyUndoResult.success ||
+            !meshNode->mesh().is_valid(face) ||
+            !editor.selection().mesh().faces().contains(face)) {
+            std::cerr << "Solidify cancel setup undo invariant failed.\n";
+            return false;
+        }
+
+        const std::size_t historyBeforeSolidifyCancel =
+            document.history().undo_size();
+        const std::size_t vertexCountBeforeSolidifyCancel =
+            TopologyTraversal::vertices(meshNode->mesh()).size();
+        const std::size_t faceCountBeforeSolidifyCancel =
+            TopologyTraversal::faces(meshNode->mesh()).size();
+
+        const locus::application::ApplicationResult<bool>
+            solidifyCancelActivation =
+            locus::application::MeshToolActivationController{}
+                .activate_shortcut(
+                    locus::application::ShortcutAction::ActivateSolidifyTool,
+                    document);
+
+        if (!solidifyCancelActivation ||
+            !solidifyCancelActivation.value()) {
+            std::cerr << "Solidify cancel activation failed";
+            if (!solidifyCancelActivation) {
+                std::cerr
+                    << ": "
+                    << solidifyCancelActivation.error().message;
+            }
+            std::cerr << '\n';
+            return false;
+        }
+
+        locus::editor::ToolEvent solidifyCancel{};
+        solidifyCancel.type =
+            locus::editor::ToolEventType::Cancel;
+
+        if (!dispatch_mesh_smoke_event(
+                document,
+                solidifyPress,
+                "Solidify cancel press") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                solidifyMove,
+                "Solidify cancel preview") ||
+            !dispatch_mesh_smoke_event(
+                document,
+                solidifyCancel,
+                "Solidify cancel")) {
+            return false;
+        }
+
+        if (document.history().undo_size() !=
+                historyBeforeSolidifyCancel ||
+            TopologyTraversal::vertices(meshNode->mesh()).size() !=
+                vertexCountBeforeSolidifyCancel ||
+            TopologyTraversal::faces(meshNode->mesh()).size() !=
+                faceCountBeforeSolidifyCancel ||
+            !meshNode->mesh().is_valid(face) ||
+            !editor.selection().mesh().faces().contains(face) ||
+            !selected_faces_are_valid(editor, meshId)) {
+            std::cerr << "Solidify cancel invariant failed.\n";
+            return false;
+        }
+
+        std::cout << "=== SolidifyTool ===\n";
+        std::cout
+            << "[OK] F activates Solidify in Face context\n"
+            << "[OK] preview committed one topological history entry\n"
+            << "[OK] undo/redo restored solidify topology\n"
+            << "[OK] cancel preserved mesh and valid face selection\n";
+
+        locus::editor::ToolContext solidifySelectContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+        const locus::editor::ToolResult selectActivation =
+            document.tool_manager().activate_tool(
+                solidifySelectContext,
+                locus::editor::ToolId{ locus::editor::SelectTool::Id });
+
+        if (selectActivation.code ==
+            locus::editor::ToolResultCode::Failed) {
+            std::cerr << "Select activation before clear click failed";
+            if (!selectActivation.message.empty()) {
+                std::cerr
+                    << ": "
+                    << selectActivation.message;
+            }
+            std::cerr << '\n';
+            return false;
+        }
+
         locus::editor::ToolEvent emptyClick =
             make_mesh_pointer_event(
                 locus::editor::ToolEventType::PointerPress,
@@ -1233,6 +1449,7 @@ namespace {
             << " at x=1.4\n"
             << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
             << "Q Select, E Extrude in Face context, "
+            << "F Solidify in Face context, "
             << "G EdgeSlide in Edge context, "
             << "R LoopCut in Edge context, "
             << "I Inset in Face context, "
@@ -1246,7 +1463,10 @@ namespace {
             << "Extrude and press Esc before release. For Inset: keep Face "
             << "granularity, press I, press-drag inward on the selected "
             << "face, release to commit, then use Ctrl+Z/Ctrl+Y or start "
-            << "another Inset and press Esc before release. For EdgeSlide: "
+            << "another Inset and press Esc before release. For Solidify: "
+            << "keep Face granularity, press F, press-drag along the face "
+            << "normal, release to commit, then use Ctrl+Z/Ctrl+Y or start "
+            << "another Solidify and press Esc before release. For EdgeSlide: "
             << "press 3, click an edge on Cube A, press G, press-drag "
             << "along an adjacent rail, release to commit, then use "
             << "Ctrl+Z/Ctrl+Y or start another EdgeSlide and press Esc "

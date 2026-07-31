@@ -16,6 +16,7 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 
 #include <iostream>
@@ -309,6 +310,24 @@ namespace locus::application {
             return true;
         }
 
+        case ShortcutAction::ActivateSolidifyTool: {
+            std::cout << "[shortcut] Solidify\n";
+            const ApplicationResult<void> result =
+                activate_face_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::SolidifyTool::Id } },
+                    "SolidifyTool activation",
+                    "Solidify");
+
+            if (!result) {
+                return result.error();
+            }
+
+            return true;
+        }
+
         case ShortcutAction::ActivateEdgeSlideTool: {
             std::cout << "[shortcut] Edge Slide\n";
             const ApplicationResult<void> result =
@@ -396,6 +415,10 @@ namespace locus::application {
                 editor::ToolId{
                     std::string{
                         editor::InsetFaceTool::Id } })
+            || document.tool_manager().is_active(
+                editor::ToolId{
+                    std::string{
+                        editor::SolidifyTool::Id } })
             || document.tool_manager().is_active(
                 editor::ToolId{
                     std::string{

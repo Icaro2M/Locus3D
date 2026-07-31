@@ -10,6 +10,7 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
+#include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
@@ -49,6 +50,13 @@ namespace locus::editor {
                 InsetFaceTool::make_descriptor(),
                 [] {
                     return std::make_unique<InsetFaceTool>();
+                });
+
+        registeredAll &=
+            registry.register_tool(
+                SolidifyTool::make_descriptor(),
+                [] {
+                    return std::make_unique<SolidifyTool>();
                 });
 
         registeredAll &=
