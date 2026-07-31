@@ -28,6 +28,7 @@ int main()
         { "LEMEditorDiff", run_lem_editor_diff_tests },
         { "LEMGeometry", run_lem_geometry_tests },
         { "LEMAttributes", run_lem_attribute_tests },
+        { "BevelOperation", run_bevel_operation_tests },
     };
 
     for (const TestCase& test : tests) {

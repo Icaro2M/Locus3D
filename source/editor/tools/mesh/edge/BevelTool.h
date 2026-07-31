@@ -8,6 +8,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 
 #include <glm/vec2.hpp>
+#include <glm/vec3.hpp>
 
 #include <memory>
 #include <string_view>
@@ -121,6 +122,14 @@ namespace locus::editor {
         [[nodiscard]]
         float width() const;
 
+        /**
+         * @brief Builds the static tool descriptor.
+         *
+         * @return Bevel tool descriptor.
+         */
+        [[nodiscard]]
+        static ToolDescriptor make_descriptor();
+
     protected:
         /**
          * @brief Captures initial pointer and visual-scale data.
@@ -161,14 +170,6 @@ namespace locus::editor {
 
     private:
         /**
-         * @brief Builds the static tool descriptor.
-         *
-         * @return Bevel tool descriptor.
-         */
-        [[nodiscard]]
-        static ToolDescriptor make_descriptor();
-
-        /**
          * @brief Sanitizes configuration values.
          *
          * @param options Options to sanitize.
@@ -189,6 +190,15 @@ namespace locus::editor {
             const ToolEvent& event) const;
 
         /**
+         * @brief Initializes the ray-to-bevel-width drag mapping.
+         */
+        [[nodiscard]]
+        bool initialize_width_drag(
+            const ToolContext& context,
+            const ToolEvent& event,
+            const MeshToolTarget& target);
+
+        /**
          * @brief Checks whether the current width produces a change.
          *
          * @return True when width exceeds the configured epsilon.
@@ -200,7 +210,14 @@ namespace locus::editor {
 
         glm::vec2 startPosition_{ 0.0f };
 
+        glm::vec3 widthAxisWorld_{ 1.0f, 0.0f, 0.0f };
+        glm::vec3 axisOriginWorld_{ 0.0f };
+        glm::vec3 startAxisPointWorld_{ 0.0f };
+        glm::vec2 fallbackScreenAxis_{ 1.0f, 0.0f };
+
         float interactionVisualScale_ = 1.0f;
+        float worldDistanceToLocalWidth_ = 1.0f;
+        bool axisDragReady_ = false;
         float width_ = 0.0f;
     };
 

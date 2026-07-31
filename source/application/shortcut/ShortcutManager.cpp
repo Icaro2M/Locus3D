@@ -38,6 +38,7 @@ namespace locus::application {
                     && !context.modalActive;
 
             case ShortcutAction::ActivateEdgeSlideTool:
+            case ShortcutAction::ActivateBevelTool:
             case ShortcutAction::ActivateLoopCutTool:
                 return context.edgeSelectionContext
                     && !context.modalActive;
@@ -88,6 +89,7 @@ namespace locus::application {
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateExtrudeFaceTool },
             { Key::E, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateRotateTool },
             { Key::G, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateEdgeSlideTool },
+            { Key::B, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateBevelTool },
             { Key::I, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateInsetFaceTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateLoopCutTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },

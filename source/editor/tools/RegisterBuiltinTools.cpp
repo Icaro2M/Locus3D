@@ -6,6 +6,7 @@
 #include "editor/tools/RegisterBuiltinTools.h"
 
 #include "editor/tools/management/ToolRegistry.h"
+#include "editor/tools/mesh/edge/BevelTool.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
@@ -55,6 +56,13 @@ namespace locus::editor {
                 EdgeSlideTool::make_descriptor(),
                 [] {
                     return std::make_unique<EdgeSlideTool>();
+                });
+
+        registeredAll &=
+            registry.register_tool(
+                BevelTool::make_descriptor(),
+                [] {
+                    return std::make_unique<BevelTool>();
                 });
 
         registeredAll &=

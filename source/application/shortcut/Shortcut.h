@@ -22,6 +22,7 @@ namespace locus::application {
         ActivateExtrudeFaceTool,
         ActivateInsetFaceTool,
         ActivateEdgeSlideTool,
+        ActivateBevelTool,
         ActivateLoopCutTool,
         SetObjectGranularity,
         SetVertexGranularity,

@@ -66,6 +66,7 @@ set_tests_properties(application.unit.input PROPERTIES
 )
 
 add_executable(Locus3DGeometryTests
+    unit/kernel/geometry/mesh/BevelOpTests.cpp
     unit/kernel/geometry/mesh/LEMAttributeTests.cpp
     unit/kernel/geometry/mesh/LEMEditorDiffTests.cpp
     unit/kernel/geometry/mesh/LEMGeometryTests.cpp

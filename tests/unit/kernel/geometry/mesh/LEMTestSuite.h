@@ -49,5 +49,6 @@ struct QuadMesh {
 [[nodiscard]] TestResult run_lem_editor_diff_tests();
 [[nodiscard]] TestResult run_lem_geometry_tests();
 [[nodiscard]] TestResult run_lem_attribute_tests();
+[[nodiscard]] TestResult run_bevel_operation_tests();
 
 } // namespace locus::tests

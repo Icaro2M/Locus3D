@@ -12,6 +12,7 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolResult.h"
 #include "editor/tools/core/ToolState.h"
+#include "editor/tools/mesh/edge/BevelTool.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/ExtrudeFaceTool.h"
 #include "editor/tools/mesh/face/InsetFaceTool.h"
@@ -326,6 +327,24 @@ namespace locus::application {
             return true;
         }
 
+        case ShortcutAction::ActivateBevelTool: {
+            std::cout << "[shortcut] Bevel\n";
+            const ApplicationResult<void> result =
+                activate_edge_mesh_tool(
+                    document,
+                    editor::ToolId{
+                        std::string{
+                            editor::BevelTool::Id } },
+                    "BevelTool activation",
+                    "Bevel");
+
+            if (!result) {
+                return result.error();
+            }
+
+            return true;
+        }
+
         case ShortcutAction::ActivateLoopCutTool: {
             std::cout << "[shortcut] Loop Cut\n";
             const ApplicationResult<void> result =
@@ -381,6 +400,10 @@ namespace locus::application {
                 editor::ToolId{
                     std::string{
                         editor::EdgeSlideTool::Id } })
+            || document.tool_manager().is_active(
+                editor::ToolId{
+                    std::string{
+                        editor::BevelTool::Id } })
             || document.tool_manager().is_active(
                 editor::ToolId{
                     std::string{
