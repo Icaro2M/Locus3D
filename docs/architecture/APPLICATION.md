@@ -73,7 +73,7 @@ source\application
 |       FrameClock.h
 |       FrameClock.cpp
 |
-+---window [!]
++---window
 |       ApplicationWindow.h
 |       ApplicationWindow.cpp
 |       WindowState.h [!]
@@ -90,6 +90,15 @@ source\application
 +---viewport
 |       EditorViewport.h
 |       EditorViewport.cpp
+|
++---shortcut
+|       Shortcut.h
+|       ShortcutManager.h
+|       ShortcutManager.cpp
+|
++---tools
+|       MeshToolActivationController.h
+|       MeshToolActivationController.cpp
 |
 \---input
         InputEvent.h
