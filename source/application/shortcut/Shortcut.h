@@ -27,6 +27,7 @@ namespace locus::application {
         ActivateBevelTool,
         ActivateLoopCutTool,
         ExecuteBridgeEdgeAction,
+        ExecuteFillHoleAction,
         SetObjectGranularity,
         SetVertexGranularity,
         SetEdgeGranularity,

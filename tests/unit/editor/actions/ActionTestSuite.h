@@ -15,5 +15,6 @@
 namespace locus::tests {
 
 [[nodiscard]] TestResult run_bridge_edge_action_tests();
+[[nodiscard]] TestResult run_fill_hole_action_tests();
 
 } // namespace locus::tests

@@ -68,6 +68,7 @@ set_tests_properties(application.unit.input PROPERTIES
 add_executable(Locus3DGeometryTests
     unit/kernel/geometry/mesh/BevelOpTests.cpp
     unit/kernel/geometry/mesh/BridgeEdgeOpTests.cpp
+    unit/kernel/geometry/mesh/FillHoleOpTests.cpp
     unit/kernel/geometry/mesh/LEMAttributeTests.cpp
     unit/kernel/geometry/mesh/LEMEditorDiffTests.cpp
     unit/kernel/geometry/mesh/LEMGeometryTests.cpp
@@ -244,6 +245,7 @@ set_tests_properties(editor.unit.selection PROPERTIES
 add_executable(Locus3DEditorActionTests
     unit/editor/actions/ActionTestMain.cpp
     unit/editor/actions/BridgeEdgeActionTests.cpp
+    unit/editor/actions/FillHoleActionTests.cpp
 )
 
 target_include_directories(Locus3DEditorActionTests

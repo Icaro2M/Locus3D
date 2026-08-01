@@ -451,6 +451,7 @@ namespace locus::application {
         case ShortcutAction::ActivateScaleTool:
         case ShortcutAction::ActivateUniversalTool:
         case ShortcutAction::ExecuteBridgeEdgeAction:
+        case ShortcutAction::ExecuteFillHoleAction:
         case ShortcutAction::SetObjectGranularity:
         case ShortcutAction::SetVertexGranularity:
         case ShortcutAction::SetEdgeGranularity:

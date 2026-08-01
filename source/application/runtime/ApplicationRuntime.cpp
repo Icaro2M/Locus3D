@@ -9,6 +9,7 @@
 #include "editor/EditorTypes.h"
 #include "editor/actions/core/ActionContext.h"
 #include "editor/actions/mesh/edge/RegisterEdgeActions.h"
+#include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/selection/SelectionGranularity.h"
@@ -532,6 +533,13 @@ namespace locus::application {
                     editor::ActionId{
                         std::string{
                             editor::edge_actions::BridgeId } });
+
+            case ShortcutAction::ExecuteFillHoleAction:
+                return execute_editor_action(
+                    document,
+                    editor::ActionId{
+                        std::string{
+                            editor::topology_actions::FillHoleId } });
 
             case ShortcutAction::ActivateSelectTool:
                 return activate_tool(

@@ -30,6 +30,7 @@ int main()
         { "LEMAttributes", run_lem_attribute_tests },
         { "BevelOperation", run_bevel_operation_tests },
         { "BridgeEdgeOperation", run_bridge_edge_operation_tests },
+        { "FillHoleOperation", run_fill_hole_operation_tests },
     };
 
     for (const TestCase& test : tests) {

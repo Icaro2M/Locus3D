@@ -171,6 +171,8 @@ using namespace locus::application;
         return "ActivateLoopCutTool";
     case ShortcutAction::ExecuteBridgeEdgeAction:
         return "ExecuteBridgeEdgeAction";
+    case ShortcutAction::ExecuteFillHoleAction:
+        return "ExecuteFillHoleAction";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -729,6 +731,19 @@ void apply_route(
             context,
             ShortcutAction::ExecuteBridgeEdgeAction,
             "Bridge Edge shortcut in edge context")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::F));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ExecuteFillHoleAction,
+            "Fill Hole shortcut in edge context")) {
         return false;
     }
 
