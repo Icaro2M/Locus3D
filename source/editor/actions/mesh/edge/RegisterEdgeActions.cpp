@@ -20,6 +20,7 @@
 #include "kernel/modeling/core/OperationResult.h"
 #include "kernel/modeling/operations/edge/CreaseOp.h"
 #include "kernel/modeling/operations/topology/BridgeEdgeOp.h"
+#include "kernel/modeling/operations/topology/DeleteMeshElementsOp.h"
 
 #include <memory>
 #include <string>
@@ -323,6 +324,66 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the built-in Delete Edge action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_delete_edge_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    edge_actions::DeleteId),
+                "Delete Edges",
+                "Deletes selected mesh edges after removing faces that "
+                "depend on them.",
+                ActionCategory::Mesh,
+                {
+                    "delete",
+                    "remove",
+                    "edge",
+                    "edges",
+                    "face",
+                    "faces",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const EdgeList edges =
+                    target.edges;
+
+                return [edges](
+                    kernel::geometry::LEMEditor& editor) {
+                    kernel::modeling::DeleteMeshElementsOp operation =
+                        kernel::modeling::DeleteMeshElementsOp::edges(
+                            edges);
+
+                    kernel::modeling::OperationContext operationContext{};
+                    operationContext.mesh = &editor.mesh();
+                    operationContext.validateAfterExecute = true;
+                    operationContext.rebuildNormals = true;
+                    operationContext.allowNonManifold = true;
+
+                    const kernel::modeling::OperationResult result =
+                        operation.execute(operationContext);
+
+                    return result.is_success()
+                        && result.changed();
+                };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Edge,
+                1u,
+                std::move(operationFactory),
+                "Delete Edges");
+        }
+
+        /**
          * @brief Removes actions inserted by a failed registration.
          *
          * @param registry Registry containing inserted actions.
@@ -343,7 +404,7 @@ namespace locus::editor {
     bool register_edge_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(3u);
+        insertedIds.reserve(4u);
 
         const ActionId markSharpId =
             make_action_id(
@@ -385,6 +446,21 @@ namespace locus::editor {
         }
 
         insertedIds.push_back(bridgeId);
+
+        const ActionId deleteId =
+            make_action_id(
+                edge_actions::DeleteId);
+
+        if (!registry.register_action(
+            make_delete_edge_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(deleteId);
 
         return true;
     }

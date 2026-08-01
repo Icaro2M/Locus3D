@@ -31,6 +31,7 @@ int main()
         { "BevelOperation", run_bevel_operation_tests },
         { "BridgeEdgeOperation", run_bridge_edge_operation_tests },
         { "FillHoleOperation", run_fill_hole_operation_tests },
+        { "DeleteMeshElementsOperation", run_delete_mesh_elements_operation_tests },
     };
 
     for (const TestCase& test : tests) {

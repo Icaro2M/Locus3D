@@ -7,10 +7,12 @@
 
 #include "editor/actions/ActionRegistry.h"
 #include "editor/actions/core/ActionId.h"
+#include "editor/actions/edit/RegisterEditActions.h"
 #include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/actions/mesh/face/RegisterFaceActions.h"
 #include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/actions/mesh/vertex/RegisterVertexActions.h"
+#include "editor/actions/scene/RegisterSceneActions.h"
 
 #include <vector>
 
@@ -54,7 +56,9 @@ namespace locus::editor {
         if (!register_vertex_actions(registry)
             || !register_edge_actions(registry)
             || !register_face_actions(registry)
-            || !register_topology_actions(registry)) {
+            || !register_topology_actions(registry)
+            || !register_scene_actions(registry)
+            || !register_edit_actions(registry)) {
             rollback_to_snapshot(registry, existingIds);
             return false;
         }

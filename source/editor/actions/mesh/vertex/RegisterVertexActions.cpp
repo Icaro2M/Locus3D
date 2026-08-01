@@ -17,6 +17,7 @@
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
 #include "kernel/modeling/operations/topology/MergeVerticesOp.h"
+#include "kernel/modeling/operations/topology/DeleteMeshElementsOp.h"
 
 #include <glm/vec3.hpp>
 
@@ -347,6 +348,68 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the built-in Delete Vertex action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_delete_vertex_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    vertex_actions::DeleteId),
+                "Delete Vertices",
+                "Deletes selected mesh vertices and their incident faces "
+                "and edges.",
+                ActionCategory::Mesh,
+                {
+                    "delete",
+                    "remove",
+                    "vertex",
+                    "vertices",
+                    "edge",
+                    "face",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const VertexList vertices =
+                    target.vertices;
+
+                return [vertices](
+                    kernel::geometry::LEMEditor& editor) {
+                    kernel::modeling::DeleteMeshElementsOp operation =
+                        kernel::modeling::DeleteMeshElementsOp::vertices(
+                            vertices);
+
+                    kernel::modeling::OperationContext
+                        operationContext{};
+
+                    operationContext.mesh = &editor.mesh();
+                    operationContext.validateAfterExecute = true;
+                    operationContext.rebuildNormals = true;
+                    operationContext.allowNonManifold = true;
+
+                    const kernel::modeling::OperationResult result =
+                        operation.execute(operationContext);
+
+                    return result.is_success()
+                        && result.changed();
+                };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Vertex,
+                1u,
+                std::move(operationFactory),
+                "Delete Vertices");
+        }
+
+        /**
          * @brief Removes actions inserted by a failed group registration.
          *
          * @param registry Registry containing the inserted actions.
@@ -367,7 +430,7 @@ namespace locus::editor {
     bool register_vertex_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(3u);
+        insertedIds.reserve(4u);
 
         const ActionId mergeAtCenterId =
             make_action_id(
@@ -409,6 +472,21 @@ namespace locus::editor {
         }
 
         insertedIds.push_back(mergeAtLastId);
+
+        const ActionId deleteId =
+            make_action_id(
+                vertex_actions::DeleteId);
+
+        if (!registry.register_action(
+            make_delete_vertex_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(deleteId);
 
         return true;
     }

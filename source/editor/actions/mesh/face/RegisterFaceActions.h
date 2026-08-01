@@ -28,6 +28,12 @@ namespace locus::editor {
         inline constexpr std::string_view RecalculateNormalsId =
             "mesh.face.recalculate_normals";
 
+        /**
+         * @brief Deletes selected faces while preserving boundary edges.
+         */
+        inline constexpr std::string_view DeleteId =
+            "mesh.face.delete";
+
     } // namespace face_actions
 
     /**

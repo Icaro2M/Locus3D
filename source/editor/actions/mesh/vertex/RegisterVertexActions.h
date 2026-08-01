@@ -34,6 +34,12 @@ namespace locus::editor {
         inline constexpr std::string_view MergeAtLastId =
             "mesh.vertex.merge_at_last";
 
+        /**
+         * @brief Deletes selected vertices and their incident topology.
+         */
+        inline constexpr std::string_view DeleteId =
+            "mesh.vertex.delete";
+
     } // namespace vertex_actions
 
     /**

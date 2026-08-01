@@ -15,6 +15,7 @@
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
 #include "kernel/modeling/operations/face/FlipFaceOp.h"
+#include "kernel/modeling/operations/topology/DeleteMeshElementsOp.h"
 
 #include <memory>
 #include <string>
@@ -180,6 +181,69 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the built-in Delete Face action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_delete_face_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    face_actions::DeleteId),
+                "Delete Faces",
+                "Deletes the selected mesh faces and leaves boundary edges "
+                "available for hole filling.",
+                ActionCategory::Mesh,
+                {
+                    "delete",
+                    "remove",
+                    "face",
+                    "faces",
+                    "hole",
+                    "boundary",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const std::vector<
+                    kernel::geometry::FaceHandle>
+                    faces = target.faces;
+
+                return [faces](
+                    kernel::geometry::LEMEditor& editor) {
+                    kernel::modeling::DeleteMeshElementsOp operation =
+                        kernel::modeling::DeleteMeshElementsOp::faces(
+                            faces);
+
+                    kernel::modeling::OperationContext
+                        operationContext{};
+
+                    operationContext.mesh = &editor.mesh();
+                    operationContext.validateAfterExecute = true;
+                    operationContext.rebuildNormals = true;
+                    operationContext.allowNonManifold = true;
+
+                    const kernel::modeling::OperationResult result =
+                        operation.execute(operationContext);
+
+                    return result.is_success()
+                        && result.changed();
+                };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Face,
+                1u,
+                std::move(operationFactory),
+                "Delete Faces");
+        }
+
+        /**
          * @brief Removes actions inserted during a failed registration.
          *
          * @param registry Registry containing inserted actions.
@@ -198,7 +262,7 @@ namespace locus::editor {
     bool register_face_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(2u);
+        insertedIds.reserve(3u);
 
         const ActionId flipFaceId =
             make_action_id(
@@ -226,6 +290,21 @@ namespace locus::editor {
 
         insertedIds.push_back(
             recalculateNormalsId);
+
+        const ActionId deleteId =
+            make_action_id(
+                face_actions::DeleteId);
+
+        if (!registry.register_action(
+            make_delete_face_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(deleteId);
 
         return true;
     }

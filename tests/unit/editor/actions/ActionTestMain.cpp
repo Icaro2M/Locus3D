@@ -26,6 +26,7 @@ int main()
     const TestCase tests[] = {
         { "BridgeEdgeAction", run_bridge_edge_action_tests },
         { "FillHoleAction", run_fill_hole_action_tests },
+        { "DeleteAction", run_delete_action_tests },
     };
 
     for (const TestCase& test : tests) {

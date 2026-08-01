@@ -8,6 +8,7 @@
 #include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
 #include "editor/actions/core/ActionContext.h"
+#include "editor/actions/edit/RegisterEditActions.h"
 #include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/command/CommandResult.h"
@@ -523,9 +524,15 @@ namespace locus::application {
             case ShortcutAction::None:
             case ShortcutAction::Save:
             case ShortcutAction::Open:
-            case ShortcutAction::DeleteSelection:
             case ShortcutAction::ActivateShrinkFattenTool:
                 return {};
+
+            case ShortcutAction::DeleteSelection:
+                return execute_editor_action(
+                    document,
+                    editor::ActionId{
+                        std::string{
+                            editor::edit_actions::DeleteId } });
 
             case ShortcutAction::ExecuteBridgeEdgeAction:
                 return execute_editor_action(

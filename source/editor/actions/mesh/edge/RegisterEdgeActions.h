@@ -34,6 +34,12 @@ namespace locus::editor {
         inline constexpr std::string_view BridgeId =
             "mesh.edge.bridge";
 
+        /**
+         * @brief Deletes selected edges and required incident faces.
+         */
+        inline constexpr std::string_view DeleteId =
+            "mesh.edge.delete";
+
     } // namespace edge_actions
 
     /**

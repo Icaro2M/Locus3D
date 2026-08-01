@@ -52,5 +52,6 @@ struct QuadMesh {
 [[nodiscard]] TestResult run_bevel_operation_tests();
 [[nodiscard]] TestResult run_bridge_edge_operation_tests();
 [[nodiscard]] TestResult run_fill_hole_operation_tests();
+[[nodiscard]] TestResult run_delete_mesh_elements_operation_tests();
 
 } // namespace locus::tests
