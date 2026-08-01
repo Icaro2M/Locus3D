@@ -276,6 +276,16 @@ namespace locus::kernel::modeling {
         void apply_cycle_options(BridgeCycles& cycles) const;
 
         /**
+         * @brief Reorients two open single-edge cycles to avoid crossed bridge quads.
+         *
+         * @param mesh Mesh used to compare endpoint distances.
+         * @param cycles Mutable bridge cycles.
+         */
+        void orient_open_single_edge_bridge(
+            const geometry::LEM& mesh,
+            BridgeCycles& cycles) const;
+
+        /**
          * @brief Checks whether a vertex handle already exists in a vector.
          *
          * @param handles Handle vector.

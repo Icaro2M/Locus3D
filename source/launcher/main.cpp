@@ -21,6 +21,8 @@
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/selection/SelectTool.h"
 #include "editor/transform/TransformSession.h"
+#include "kernel/geometry/mesh/LEMEditor.h"
+#include "kernel/geometry/mesh/LEMHandles.h"
 #include "kernel/geometry/topology/TopologyBuilder.h"
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
@@ -542,6 +544,54 @@ namespace {
         }
 
         return true;
+    }
+
+    struct OpenCubeBridgeFixture {
+        locus::kernel::geometry::EdgeHandle firstBridgeEdge{};
+        locus::kernel::geometry::EdgeHandle secondBridgeEdge{};
+    };
+
+    [[nodiscard]] OpenCubeBridgeFixture build_open_top_cube_into(
+        locus::kernel::geometry::LEM& mesh)
+    {
+        using locus::kernel::geometry::EdgeHandle;
+        using locus::kernel::geometry::LEMEditor;
+        using locus::kernel::geometry::VertexHandle;
+
+        LEMEditor editor(mesh);
+
+        const VertexHandle v0 =
+            editor.add_vertex(glm::vec3{ -0.5f, -0.5f, -0.5f });
+        const VertexHandle v1 =
+            editor.add_vertex(glm::vec3{ 0.5f, -0.5f, -0.5f });
+        const VertexHandle v2 =
+            editor.add_vertex(glm::vec3{ 0.5f, 0.5f, -0.5f });
+        const VertexHandle v3 =
+            editor.add_vertex(glm::vec3{ -0.5f, 0.5f, -0.5f });
+        const VertexHandle v4 =
+            editor.add_vertex(glm::vec3{ -0.5f, -0.5f, 0.5f });
+        const VertexHandle v5 =
+            editor.add_vertex(glm::vec3{ 0.5f, -0.5f, 0.5f });
+        const VertexHandle v6 =
+            editor.add_vertex(glm::vec3{ 0.5f, 0.5f, 0.5f });
+        const VertexHandle v7 =
+            editor.add_vertex(glm::vec3{ -0.5f, 0.5f, 0.5f });
+
+        (void)editor.add_face({ v0, v1, v2, v3 });
+        (void)editor.add_face({ v0, v4, v5, v1 });
+        (void)editor.add_face({ v1, v5, v6, v2 });
+        (void)editor.add_face({ v2, v6, v7, v3 });
+        (void)editor.add_face({ v3, v7, v4, v0 });
+
+        OpenCubeBridgeFixture fixture{};
+        fixture.firstBridgeEdge = mesh.find_edge(v4, v5);
+        fixture.secondBridgeEdge = mesh.find_edge(v7, v6);
+
+        if (fixture.secondBridgeEdge.is_invalid()) {
+            fixture.secondBridgeEdge = mesh.find_edge(v6, v7);
+        }
+
+        return fixture;
     }
 
     [[nodiscard]] bool run_mesh_edit_smoke_test()
@@ -1418,14 +1468,15 @@ namespace {
             return false;
         }
 
-        const auto cubeAResult =
-            locus::kernel::geometry::TopologyBuilder::build_box_into(
-                cubeA->mesh());
+        const OpenCubeBridgeFixture cubeABridgeFixture =
+            build_open_top_cube_into(cubeA->mesh());
         const auto cubeBResult =
             locus::kernel::geometry::TopologyBuilder::build_box_into(
                 cubeB->mesh());
 
-        if (!cubeAResult || !cubeBResult) {
+        if (cubeABridgeFixture.firstBridgeEdge.is_invalid() ||
+            cubeABridgeFixture.secondBridgeEdge.is_invalid() ||
+            !cubeBResult) {
             std::cerr << "Failed to build demo cubes.\n";
             return false;
         }
@@ -1434,6 +1485,18 @@ namespace {
             glm::vec3{ -1.4f, 0.0f, 0.0f });
         cubeB->transform().set_position(
             glm::vec3{ 1.4f, 0.0f, 0.0f });
+
+        if (!editor.selection_controller().enter_mesh_context(
+                cubeAId,
+                locus::editor::SelectionGranularity::Edge) ||
+            !editor.selection_controller().select_edge(
+                cubeABridgeFixture.firstBridgeEdge) ||
+            !editor.selection_controller().toggle_edge(
+                cubeABridgeFixture.secondBridgeEdge)) {
+            std::cerr
+                << "Failed to preselect Bridge Edge smoke edges.\n";
+            return false;
+        }
 
         editor.mark_dirty(
             locus::editor::EditorDirtyFlags::Scene |
@@ -1444,13 +1507,21 @@ namespace {
         std::cout
             << "Interactive selection/context checkpoint started.\n"
             << "Cube A SceneNodeId=" << cubeAId.value
-            << " at x=-1.4\n"
+            << " at x=-1.4, open top face for Bridge Edge testing\n"
             << "Cube B SceneNodeId=" << cubeBId.value
             << " at x=1.4\n"
+            << "Bridge Edge test is preselected on Cube A: "
+            << "EdgeHandle "
+            << cubeABridgeFixture.firstBridgeEdge.id.value
+            << " + "
+            << cubeABridgeFixture.secondBridgeEdge.id.value
+            << ". Press J to create a bridge across the opening, "
+            << "then Ctrl+Z/Ctrl+Y to undo/redo.\n"
             << "Keys: 1 Object, 2 Vertex, 3 Edge, 4 Face, "
             << "Q Select, E Extrude in Face context, "
             << "F Solidify in Face context, "
             << "G EdgeSlide in Edge context, "
+            << "J Bridge Edge in Edge context, "
             << "R LoopCut in Edge context, "
             << "I Inset in Face context, "
             << "W/E/R/T transform gizmo in Object context, "

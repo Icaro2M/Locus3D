@@ -7,6 +7,8 @@
 
 #include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
+#include "editor/actions/core/ActionContext.h"
+#include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/selection/SelectionGranularity.h"
@@ -442,6 +444,62 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> execute_editor_action(
+            DocumentSession& document,
+            const editor::ActionId& id)
+        {
+            const std::size_t undoSizeBefore =
+                document.history().undo_size();
+
+            editor::ActionContext actionContext(
+                document.editor(),
+                document.command_dispatcher(),
+                document.history());
+
+            const editor::ActionResult result =
+                document.action_executor().execute(
+                    actionContext,
+                    id);
+
+            if (result.failed()) {
+                return ApplicationError::make(
+                    ApplicationErrorCode::RuntimeFailure,
+                    result.message.empty()
+                        ? "Editor action execution failed."
+                        : result.message);
+            }
+
+            if (result.is_unavailable()) {
+                if (!result.message.empty()) {
+                    std::cout
+                        << "[action] unavailable: "
+                        << result.message
+                        << '\n';
+                }
+
+                return {};
+            }
+
+            if (document.history().undo_size() > undoSizeBefore
+                && editor::has_flag(
+                    result.dirtyFlags,
+                    editor::EditorDirtyFlags::Scene |
+                    editor::EditorDirtyFlags::Mesh)) {
+                document.mark_dirty();
+            }
+
+            std::cout
+                << "[action] "
+                << id.value
+                << " success undo="
+                << document.history().undo_size()
+                << " redo="
+                << document.history().redo_size()
+                << '\n';
+
+            return {};
+        }
+
         [[nodiscard]] ApplicationResult<void> execute_shortcut_action(
             ShortcutAction action,
             DocumentSession& document)
@@ -467,6 +525,13 @@ namespace locus::application {
             case ShortcutAction::DeleteSelection:
             case ShortcutAction::ActivateShrinkFattenTool:
                 return {};
+
+            case ShortcutAction::ExecuteBridgeEdgeAction:
+                return execute_editor_action(
+                    document,
+                    editor::ActionId{
+                        std::string{
+                            editor::edge_actions::BridgeId } });
 
             case ShortcutAction::ActivateSelectTool:
                 return activate_tool(

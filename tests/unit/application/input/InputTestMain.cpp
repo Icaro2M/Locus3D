@@ -9,6 +9,7 @@
 #include "application/shortcut/ShortcutManager.h"
 #include "application/tools/MeshToolActivationController.h"
 #include "application/viewport/EditorViewport.h"
+#include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/edge/BevelTool.h"
@@ -168,6 +169,8 @@ using namespace locus::application;
         return "ActivateBevelTool";
     case ShortcutAction::ActivateLoopCutTool:
         return "ActivateLoopCutTool";
+    case ShortcutAction::ExecuteBridgeEdgeAction:
+        return "ExecuteBridgeEdgeAction";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -716,6 +719,19 @@ void apply_route(
         return false;
     }
 
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::J));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ExecuteBridgeEdgeAction,
+            "Bridge Edge shortcut in edge context")) {
+        return false;
+    }
+
     context.edgeSelectionContext = false;
     context.transformSelectionContext = false;
     if (!expect_shortcut(
@@ -723,7 +739,7 @@ void apply_route(
             state,
             context,
             ShortcutAction::None,
-            "Loop cut shortcut blocked without selected edge")) {
+            "Bridge Edge shortcut blocked without selected edge")) {
         return false;
     }
 
@@ -904,6 +920,16 @@ void apply_route(
         return false;
     }
 
+    const locus::editor::ActionId bridgeActionId{
+        std::string{ locus::editor::edge_actions::BridgeId }
+    };
+
+    if (!document.action_registry().contains(bridgeActionId)) {
+        std::cerr
+            << "DocumentSession should register built-in mesh actions\n";
+        return false;
+    }
+
     const ApplicationResult<bool> solidifyResult =
         activation.activate_shortcut(
             ShortcutAction::ActivateSolidifyTool,
@@ -973,10 +999,17 @@ void apply_route(
             ShortcutAction::ActivateLoopCutTool,
             document);
 
+    const ApplicationResult<bool> bridgeToolResult =
+        activation.activate_shortcut(
+            ShortcutAction::ExecuteBridgeEdgeAction,
+            document);
+
     return loopCutResult &&
         loopCutResult.value() &&
         document.tool_manager().is_active(loopCutId) &&
         activation.is_logged_preview_tool(document) &&
+        bridgeToolResult &&
+        !bridgeToolResult.value() &&
         edgeSlideResult &&
         edgeSlideResult.value() &&
         !document.tool_manager().is_active(edgeSlideId);

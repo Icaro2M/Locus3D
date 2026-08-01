@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include "LEMTestSuite.h"
+#include "ActionTestSuite.h"
 
 #include "common/TestLog.h"
 
@@ -24,12 +24,7 @@ int main()
     using namespace locus::tests;
 
     const TestCase tests[] = {
-        { "LEMTopology", run_lem_topology_tests },
-        { "LEMEditorDiff", run_lem_editor_diff_tests },
-        { "LEMGeometry", run_lem_geometry_tests },
-        { "LEMAttributes", run_lem_attribute_tests },
-        { "BevelOperation", run_bevel_operation_tests },
-        { "BridgeEdgeOperation", run_bridge_edge_operation_tests },
+        { "BridgeEdgeAction", run_bridge_edge_action_tests },
     };
 
     for (const TestCase& test : tests) {

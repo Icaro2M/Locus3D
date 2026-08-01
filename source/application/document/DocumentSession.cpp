@@ -5,6 +5,7 @@
 
 #include "application/document/DocumentSession.h"
 
+#include "editor/actions/Actions.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/RegisterBuiltinTools.h"
 #include "editor/tools/selection/SelectTool.h"
@@ -14,8 +15,12 @@ namespace locus::application {
     DocumentSession::DocumentSession(DocumentId id)
         : id_(id)
         , commandDispatcher_(editor_)
+        , actionExecutor_(actionRegistry_)
         , toolManager_(toolRegistry_)
     {
+        (void)editor::register_default_actions(
+            actionRegistry_);
+
         (void)editor::register_builtin_tools(
             toolRegistry_);
 
@@ -65,6 +70,28 @@ namespace locus::application {
     const editor::HistoryStack& DocumentSession::history() const noexcept
     {
         return history_;
+    }
+
+    editor::ActionRegistry& DocumentSession::action_registry() noexcept
+    {
+        return actionRegistry_;
+    }
+
+    const editor::ActionRegistry&
+    DocumentSession::action_registry() const noexcept
+    {
+        return actionRegistry_;
+    }
+
+    editor::ActionExecutor& DocumentSession::action_executor() noexcept
+    {
+        return actionExecutor_;
+    }
+
+    const editor::ActionExecutor&
+    DocumentSession::action_executor() const noexcept
+    {
+        return actionExecutor_;
     }
 
     editor::ToolRegistry& DocumentSession::tool_registry() noexcept

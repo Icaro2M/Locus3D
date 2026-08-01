@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <glm/geometric.hpp>
 #include <utility>
 
 namespace locus::kernel::modeling {
@@ -123,6 +124,8 @@ namespace locus::kernel::modeling {
                 kernel::ErrorCode::InvalidArgument,
                 "BridgeEdge operation received incompatible cycles.");
         }
+
+        orient_open_single_edge_bridge(mesh, cycles);
 
         geometry::LEMEditor editor(mesh);
 
@@ -459,6 +462,35 @@ namespace locus::kernel::modeling {
             cycles.second.begin(),
             cycles.second.begin() + offset,
             cycles.second.end());
+    }
+
+    void BridgeEdgeOp::orient_open_single_edge_bridge(
+        const geometry::LEM& mesh,
+        BridgeCycles& cycles) const {
+        if (closed_ ||
+            mode_ == BridgeEdgeMode::VertexCycles ||
+            flipSecondCycle_ ||
+            twistOffset_ != 0 ||
+            cycles.first.size() != 2u ||
+            cycles.second.size() != 2u) {
+            return;
+        }
+
+        const glm::vec3& firstA = mesh.vertex(cycles.first[0]).position;
+        const glm::vec3& firstB = mesh.vertex(cycles.first[1]).position;
+        const glm::vec3& secondA = mesh.vertex(cycles.second[0]).position;
+        const glm::vec3& secondB = mesh.vertex(cycles.second[1]).position;
+
+        const float currentCost =
+            glm::dot(firstB - secondB, firstB - secondB) +
+            glm::dot(secondA - firstA, secondA - firstA);
+        const float reversedCost =
+            glm::dot(firstB - secondA, firstB - secondA) +
+            glm::dot(secondB - firstA, secondB - firstA);
+
+        if (reversedCost < currentCost) {
+            std::reverse(cycles.second.begin(), cycles.second.end());
+        }
     }
 
     bool BridgeEdgeOp::contains_vertex(

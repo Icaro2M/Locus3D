@@ -10,12 +10,16 @@
 #include "editor/actions/core/ActionDescriptor.h"
 #include "editor/actions/core/ActionId.h"
 #include "editor/actions/mesh/MeshOperationAction.h"
+#include "editor/scene/MeshNode.h"
 #include "editor/tools/mesh/core/MeshToolTarget.h"
+#include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/mesh/LEMHandles.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
 #include "kernel/modeling/operations/edge/CreaseOp.h"
+#include "kernel/modeling/operations/topology/BridgeEdgeOp.h"
 
 #include <memory>
 #include <string>
@@ -75,6 +79,87 @@ namespace locus::editor {
             kernel::modeling::OperationContext
                 operationContext{};
 
+            operationContext.mesh = &editor.mesh();
+            operationContext.validateAfterExecute = true;
+            operationContext.rebuildNormals = true;
+            operationContext.allowNonManifold = true;
+
+            const kernel::modeling::OperationResult result =
+                operation.execute(operationContext);
+
+            return result.is_success()
+                && result.changed();
+        }
+
+        /**
+         * @brief Checks the cheap Bridge Edge preconditions.
+         *
+         * Deep topology validation remains in BridgeEdgeOp. Availability only
+         * verifies the contextual requirements that can be checked without
+         * mutating the mesh.
+         *
+         * @param node Active mesh node.
+         * @param target Captured edge target.
+         * @return True when Bridge Edge should be available.
+         */
+        bool can_bridge_edges(
+            const MeshNode& node,
+            const MeshToolTarget& target) {
+            if (target.edges.size() != 2u) {
+                return false;
+            }
+
+            const EdgeHandle firstEdge = target.edges[0];
+            const EdgeHandle secondEdge = target.edges[1];
+
+            if (firstEdge == secondEdge) {
+                return false;
+            }
+
+            const kernel::geometry::LEM& mesh =
+                node.mesh();
+
+            return mesh.is_valid(firstEdge)
+                && mesh.is_valid(secondEdge)
+                && kernel::geometry::TopologyTraversal::is_boundary_edge(
+                    mesh,
+                    firstEdge)
+                && kernel::geometry::TopologyTraversal::is_boundary_edge(
+                    mesh,
+                    secondEdge);
+        }
+
+        /**
+         * @brief Applies Bridge Edge to the two captured boundary edges.
+         *
+         * @param editor Editable mesh facade.
+         * @param edges Captured selected edge handles.
+         * @return True when the kernel operation changed the mesh.
+         */
+        bool execute_bridge(
+            kernel::geometry::LEMEditor& editor,
+            const EdgeList& edges) {
+            if (edges.size() != 2u) {
+                return false;
+            }
+
+            const EdgeHandle firstEdge = edges[0];
+            const EdgeHandle secondEdge = edges[1];
+
+            if (firstEdge == secondEdge
+                || !editor.mesh().is_valid(firstEdge)
+                || !editor.mesh().is_valid(secondEdge)) {
+                return false;
+            }
+
+            kernel::modeling::BridgeEdgeOp operation =
+                kernel::modeling::BridgeEdgeOp::edges(
+                    EdgeList{ firstEdge },
+                    EdgeList{ secondEdge });
+
+            operation.set_closed(false);
+
+            kernel::modeling::OperationContext operationContext{};
             operationContext.mesh = &editor.mesh();
             operationContext.validateAfterExecute = true;
             operationContext.rebuildNormals = true;
@@ -189,6 +274,55 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the Bridge Edge action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_bridge_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    edge_actions::BridgeId),
+                "Bridge Edge",
+                "Creates one face bridge between exactly two selected "
+                "boundary edges.",
+                ActionCategory::Mesh,
+                {
+                    "bridge",
+                    "edge",
+                    "edges",
+                    "boundary",
+                    "connect",
+                    "face",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const EdgeList edges =
+                    target.edges;
+
+                return [edges](
+                    kernel::geometry::LEMEditor& editor) {
+                        return execute_bridge(
+                            editor,
+                            edges);
+                    };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Edge,
+                2u,
+                std::move(operationFactory),
+                "Bridge Edge",
+                can_bridge_edges);
+        }
+
+        /**
          * @brief Removes actions inserted by a failed registration.
          *
          * @param registry Registry containing inserted actions.
@@ -209,7 +343,7 @@ namespace locus::editor {
     bool register_edge_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(2u);
+        insertedIds.reserve(3u);
 
         const ActionId markSharpId =
             make_action_id(
@@ -236,6 +370,21 @@ namespace locus::editor {
         }
 
         insertedIds.push_back(clearSharpId);
+
+        const ActionId bridgeId =
+            make_action_id(
+                edge_actions::BridgeId);
+
+        if (!registry.register_action(
+            make_bridge_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(bridgeId);
 
         return true;
     }

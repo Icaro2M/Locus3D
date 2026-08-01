@@ -28,6 +28,12 @@ namespace locus::editor {
         inline constexpr std::string_view ClearSharpId =
             "mesh.edge.clear_sharp";
 
+        /**
+         * @brief Bridges exactly two selected boundary edges.
+         */
+        inline constexpr std::string_view BridgeId =
+            "mesh.edge.bridge";
+
     } // namespace edge_actions
 
     /**

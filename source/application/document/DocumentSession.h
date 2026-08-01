@@ -7,6 +7,8 @@
 
 #include "application/document/DocumentId.h"
 #include "editor/Editor.h"
+#include "editor/actions/ActionExecutor.h"
+#include "editor/actions/ActionRegistry.h"
 #include "editor/command/CommandDispatcher.h"
 #include "editor/history/HistoryStack.h"
 #include "editor/sync/EditorSync.h"
@@ -88,6 +90,36 @@ namespace locus::application {
          * @return Read-only history reference.
          */
         [[nodiscard]] const editor::HistoryStack& history() const noexcept;
+
+        /**
+         * @brief Returns the registry owning immediate editor actions.
+         *
+         * @return Mutable action registry reference.
+         */
+        [[nodiscard]] editor::ActionRegistry& action_registry() noexcept;
+
+        /**
+         * @brief Returns the registry owning immediate editor actions.
+         *
+         * @return Read-only action registry reference.
+         */
+        [[nodiscard]] const editor::ActionRegistry&
+            action_registry() const noexcept;
+
+        /**
+         * @brief Returns the immediate editor action executor.
+         *
+         * @return Mutable action executor reference.
+         */
+        [[nodiscard]] editor::ActionExecutor& action_executor() noexcept;
+
+        /**
+         * @brief Returns the immediate editor action executor.
+         *
+         * @return Read-only action executor reference.
+         */
+        [[nodiscard]] const editor::ActionExecutor&
+            action_executor() const noexcept;
 
         /**
          * @brief Returns the registry that owns document tool factories.
@@ -184,6 +216,8 @@ namespace locus::application {
         editor::Editor editor_{};
         editor::CommandDispatcher commandDispatcher_;
         editor::HistoryStack history_{};
+        editor::ActionRegistry actionRegistry_{};
+        editor::ActionExecutor actionExecutor_;
         editor::ToolRegistry toolRegistry_{};
         editor::ToolManager toolManager_;
         editor::EditorSync editorSync_{};
