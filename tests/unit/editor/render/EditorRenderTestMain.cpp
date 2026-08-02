@@ -29,6 +29,7 @@ int main()
         { "SceneRenderAdapter", run_scene_render_adapter_tests },
         { "SelectionRenderAdapter", run_selection_render_adapter_tests },
         { "TopologyOverlayAdapter", run_topology_overlay_adapter_tests },
+        { "TopologyOverlayVertexMarkers", run_topology_overlay_vertex_marker_tests },
     };
 
     for (const TestCase& test : tests) {

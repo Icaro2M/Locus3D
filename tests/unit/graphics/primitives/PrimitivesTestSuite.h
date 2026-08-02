@@ -18,5 +18,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_primitive_builder_tests();
 [[nodiscard]] TestResult run_primitive_mesh_converter_tests();
 [[nodiscard]] TestResult run_screen_space_line_tests();
+[[nodiscard]] TestResult run_point_marker_tests();
 
 } // namespace locus::tests

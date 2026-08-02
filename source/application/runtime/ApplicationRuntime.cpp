@@ -24,6 +24,7 @@
 #include "graphics/camera/CameraRayBuilder.h"
 
 #include <cstddef>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <glm/vec2.hpp>
@@ -31,6 +32,17 @@
 namespace locus::application {
 
     namespace {
+
+        void append_startup_log(const char* message)
+        {
+            std::ofstream stream(
+                "locus3d_startup.log",
+                std::ios::app);
+
+            if (stream.is_open()) {
+                stream << message << '\n';
+            }
+        }
 
         [[nodiscard]] editor::ToolModifiers to_tool_modifiers(
             InputModifiers modifiers) noexcept
@@ -753,9 +765,11 @@ namespace locus::application {
             state_.exitCode = 1;
             return windowResult.error();
         }
+        append_startup_log("ApplicationRuntime: window initialized");
 
         window_.connect_input(inputState_);
         (void)documents_.create_document();
+        append_startup_log("ApplicationRuntime: document created");
 
         ApplicationResult<void> viewportResult =
             editorViewport_.initialize(
@@ -763,15 +777,18 @@ namespace locus::application {
                 window_.framebuffer_height());
 
         if (!viewportResult) {
+            append_startup_log("ApplicationRuntime: viewport initialization failed");
             documents_ = DocumentManager{};
             window_.shutdown();
             state_.phase = ApplicationPhase::Failed;
             state_.exitCode = 1;
             return viewportResult.error();
         }
+        append_startup_log("ApplicationRuntime: viewport initialized");
 
         frameClock_.reset();
         state_.phase = ApplicationPhase::Running;
+        append_startup_log("ApplicationRuntime: running");
         return {};
     }
 
@@ -817,6 +834,7 @@ namespace locus::application {
 
         inputState_.begin_frame();
         window_.process_events();
+        append_startup_log("ApplicationRuntime: frame events processed");
 
         const FrameContext context = frameClock_.tick();
         state_.frameIndex = frameClock_.next_frame_index();
@@ -904,9 +922,11 @@ namespace locus::application {
             editorViewport_.render(*activeDocument);
 
         if (!renderResult) {
+            append_startup_log("ApplicationRuntime: render failed");
             inputState_.end_frame();
             return renderResult.error();
         }
+        append_startup_log("ApplicationRuntime: render completed");
 
         const bool cameraCaptured =
             routeResult.owner == InputCaptureOwner::ViewportCamera;

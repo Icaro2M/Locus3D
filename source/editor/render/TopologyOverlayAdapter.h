@@ -7,6 +7,7 @@
 
 #include "editor/scene/SceneNodeId.h"
 #include "graphics/appearance/ViewportPalette.h"
+#include "graphics/primitives/PointMarker.h"
 #include "graphics/primitives/ScreenSpaceLine.h"
 
 #include <cstddef>
@@ -41,6 +42,10 @@ namespace locus::editor {
         std::size_t wireframeEdgeCount = 0;
         std::size_t hoveredEdgeCount = 0;
         std::size_t selectedEdgeCount = 0;
+        std::size_t visitedVertexCount = 0;
+        std::size_t normalVertexCount = 0;
+        std::size_t hoveredVertexCount = 0;
+        std::size_t selectedVertexCount = 0;
         std::size_t invalidHandleCount = 0;
         std::string message;
 
@@ -51,7 +56,8 @@ namespace locus::editor {
          */
         [[nodiscard]] bool has_geometry() const noexcept
         {
-            return wireframeEdgeCount + hoveredEdgeCount + selectedEdgeCount > 0;
+            return wireframeEdgeCount + hoveredEdgeCount + selectedEdgeCount +
+                normalVertexCount + hoveredVertexCount + selectedVertexCount > 0;
         }
     };
 
@@ -70,6 +76,21 @@ namespace locus::editor {
          * @return Generic graphics line batch.
          */
         [[nodiscard]] static graphics::ScreenSpaceLineBatch build_active_mesh_lines(
+            const EditorScene& scene,
+            const SelectionState& selection,
+            const TopologyOverlayOptions& options = {},
+            TopologyOverlayResult* result = nullptr);
+
+        /**
+         * @brief Builds a world-space point marker batch for the active editable mesh.
+         *
+         * @param scene Editor scene containing the active mesh node.
+         * @param selection Editor selection and hover state.
+         * @param options Overlay conversion options.
+         * @param result Optional diagnostic output.
+         * @return Generic graphics point marker batch.
+         */
+        [[nodiscard]] static graphics::PointMarkerBatch build_active_mesh_vertex_markers(
             const EditorScene& scene,
             const SelectionState& selection,
             const TopologyOverlayOptions& options = {},

@@ -23,4 +23,5 @@
 #include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/overlay/renderers/MeasurementRenderer.h"
 #include "graphics/overlay/renderers/NormalRenderer.h"
+#include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"

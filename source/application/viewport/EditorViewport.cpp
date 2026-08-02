@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <fstream>
+#include <system_error>
 #include <string>
 #include <utility>
 #include <vector>
@@ -49,6 +51,66 @@ namespace locus::application {
             }
 
             return ApplicationError::make(code, std::move(message));
+        }
+
+        void append_startup_log(const char* message)
+        {
+            std::ofstream stream(
+                "locus3d_startup.log",
+                std::ios::app);
+
+            if (stream.is_open()) {
+                stream << message << '\n';
+            }
+        }
+
+        [[nodiscard]] bool shader_root_has_viewport_assets(
+            const std::filesystem::path& shaderRoot)
+        {
+            std::error_code error;
+            return std::filesystem::exists(
+                shaderRoot / "viewport" / "grid_vert.glsl",
+                error) &&
+                std::filesystem::exists(
+                    shaderRoot / "viewport" / "point_marker_vert.glsl",
+                    error);
+        }
+
+        [[nodiscard]] std::filesystem::path resolve_shader_root(
+            const std::filesystem::path& shaderRoot)
+        {
+            if (shaderRoot.is_absolute() &&
+                shader_root_has_viewport_assets(shaderRoot)) {
+                return shaderRoot;
+            }
+
+            std::error_code error;
+            std::filesystem::path current =
+                std::filesystem::current_path(error);
+
+            if (error) {
+                return shaderRoot;
+            }
+
+            for (;;) {
+                const std::filesystem::path candidate =
+                    shaderRoot.is_absolute()
+                    ? shaderRoot
+                    : current / shaderRoot;
+
+                if (shader_root_has_viewport_assets(candidate)) {
+                    return candidate;
+                }
+
+                if (!current.has_parent_path() ||
+                    current.parent_path() == current) {
+                    break;
+                }
+
+                current = current.parent_path();
+            }
+
+            return shaderRoot;
         }
 
         [[nodiscard]] graphics::GizmoVisualMode to_visual_mode(
@@ -344,7 +406,8 @@ namespace locus::application {
         viewport_.resize(framebufferWidth, framebufferHeight);
         orbitRig_.apply(viewport_.camera());
 
-        shaderManager_.set_shader_root(shaderRoot);
+        shaderManager_.set_shader_root(resolve_shader_root(shaderRoot));
+        append_startup_log("EditorViewport: shader root resolved");
 
         auto gridShaderResult = shaderManager_.load(
             "viewport/grid",
@@ -358,6 +421,7 @@ namespace locus::application {
                 "Failed to load the viewport grid shader",
                 gridShaderResult.error());
         }
+        append_startup_log("EditorViewport: grid shader loaded");
 
         auto axisShaderResult = shaderManager_.load(
             "viewport/axis",
@@ -371,6 +435,7 @@ namespace locus::application {
                 "Failed to load the viewport axis shader",
                 axisShaderResult.error());
         }
+        append_startup_log("EditorViewport: axis shader loaded");
 
         auto documentShaderResult = shaderManager_.load(
             "viewport/document",
@@ -386,6 +451,7 @@ namespace locus::application {
         }
 
         documentShader_ = documentShaderResult.value();
+        append_startup_log("EditorViewport: document shader loaded");
 
         auto topologyShaderResult = shaderManager_.load(
             "viewport/screen_space_line",
@@ -399,6 +465,7 @@ namespace locus::application {
                 "Failed to load the topology overlay line shader",
                 topologyShaderResult.error());
         }
+        append_startup_log("EditorViewport: line shader loaded");
 
         const auto topologyLineResult =
             topologyLineRenderer_.create(shaderManager_);
@@ -410,6 +477,23 @@ namespace locus::application {
                 "Failed to create the topology overlay line renderer",
                 topologyLineResult.error());
         }
+        append_startup_log("EditorViewport: line renderer created");
+
+        auto pointMarkerShaderResult = shaderManager_.load(
+            "viewport/point_marker",
+            "viewport/point_marker_vert.glsl",
+            "viewport/point_marker_frag.glsl");
+
+        if (!pointMarkerShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the topology overlay point marker shader",
+                pointMarkerShaderResult.error());
+        }
+        append_startup_log("EditorViewport: point marker shader loaded");
+
+        append_startup_log("EditorViewport: point marker renderer deferred");
 
         auto pickingShaderResult = shaderManager_.load(
             "picking/object",
@@ -423,6 +507,7 @@ namespace locus::application {
                 "Failed to load the viewport picking shader",
                 pickingShaderResult.error());
         }
+        append_startup_log("EditorViewport: picking shader loaded");
 
         const auto pickingRendererResult =
             pickingRenderer_.create(shaderManager_);
@@ -434,6 +519,7 @@ namespace locus::application {
                 "Failed to create the viewport picking renderer",
                 pickingRendererResult.error());
         }
+        append_startup_log("EditorViewport: picking renderer created");
 
         framebufferWidth_ = framebufferWidth;
         framebufferHeight_ = framebufferHeight;
@@ -465,6 +551,7 @@ namespace locus::application {
                 "Failed to create the viewport grid",
                 gridResult.error());
         }
+        append_startup_log("EditorViewport: grid renderer created");
 
         const auto axisResult = axisRenderer_.create(
             meshUploader_,
@@ -478,6 +565,7 @@ namespace locus::application {
                 "Failed to create the viewport axes",
                 axisResult.error());
         }
+        append_startup_log("EditorViewport: axis renderer created");
 
         const auto gizmoResult = gizmoRenderer_.create(
             meshUploader_,
@@ -491,8 +579,10 @@ namespace locus::application {
                 "Failed to create the transform gizmo renderer",
                 gizmoResult.error());
         }
+        append_startup_log("EditorViewport: gizmo renderer created");
 
         initialized_ = true;
+        append_startup_log("EditorViewport: initialized");
         return {};
     }
 
@@ -513,6 +603,7 @@ namespace locus::application {
 
         axisRenderer_.destroy();
         gizmoRenderer_.destroy();
+        topologyVertexRenderer_.destroy();
         topologyLineRenderer_.destroy();
         gridRenderer_.destroy();
         meshCache_.clear();
@@ -715,6 +806,12 @@ namespace locus::application {
                 document.editor().selection(),
                 topologyOptions);
 
+        const graphics::PointMarkerBatch topologyVertices =
+            editor::TopologyOverlayAdapter::build_active_mesh_vertex_markers(
+                document.editor().scene(),
+                document.editor().selection(),
+                topologyOptions);
+
         if (topologyLineRenderer_.is_valid()) {
             const auto topologyUploadResult =
                 topologyLineRenderer_.set_lines(topologyLines);
@@ -724,6 +821,36 @@ namespace locus::application {
                     ApplicationErrorCode::RuntimeFailure,
                     "Failed to upload topology overlay lines",
                     topologyUploadResult.error());
+            }
+        }
+
+        if (!topologyVertices.empty() &&
+            !topologyVertexRenderer_.is_valid()) {
+            append_startup_log("EditorViewport: lazy point marker renderer create begin");
+            graphics::PointMarkerRendererConfig pointMarkerConfig{};
+            const auto createVertexRendererResult =
+                topologyVertexRenderer_.create(
+                    shaderManager_,
+                    pointMarkerConfig);
+
+            if (!createVertexRendererResult) {
+                append_startup_log("EditorViewport: lazy point marker renderer create failed");
+                topologyVertexRenderer_.destroy();
+            }
+            else {
+                append_startup_log("EditorViewport: lazy point marker renderer created");
+            }
+        }
+
+        if (topologyVertexRenderer_.is_valid()) {
+            const auto topologyVertexUploadResult =
+                topologyVertexRenderer_.set_markers(topologyVertices);
+
+            if (!topologyVertexUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload topology overlay vertex markers",
+                    topologyVertexUploadResult.error());
             }
         }
 
@@ -755,6 +882,10 @@ namespace locus::application {
         renderer_.render(renderQueue_);
 
         topologyLineRenderer_.render(
+            viewport_.camera().view_projection_matrix(),
+            viewport_.state().rect);
+
+        topologyVertexRenderer_.render(
             viewport_.camera().view_projection_matrix(),
             viewport_.state().rect);
 

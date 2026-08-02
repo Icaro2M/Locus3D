@@ -261,4 +261,5 @@ When changing graphics code:
 - Treat render passes, picking, overlays, and debug helpers as graphics services that receive explicit state from higher layers.
 - `ScreenSpaceLineRenderer` receives generic world-space segments only; editor topology, selection handles, and LEM details stay outside `source/graphics/`.
 - Screen-space topology lines are `VisibleOnly`: they render after opaque scene geometry into the same framebuffer, keep depth testing enabled with depth writes disabled, and do not apply clip/NDC depth bias. The scene depth buffer remains the authority for occlusion, while `GL_LEQUAL` handles only coplanar numeric equality.
+- `PointMarkerRenderer` follows the same overlay contract for generic world-space point markers. Markers are instanced screen-space billboards, keep the center point depth as the semantic depth for every fragment, and rely on the scene depth buffer with `GL_LEQUAL` for `VisibleOnly` occlusion.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

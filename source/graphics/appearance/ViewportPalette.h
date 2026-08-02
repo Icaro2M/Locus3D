@@ -43,6 +43,46 @@ namespace locus::graphics
          * @brief Width used for selected editable mesh edges.
          */
         float selectedEdgeWidthPixels = 4.0f;
+
+        /**
+         * @brief Fill color used for normal editable mesh vertices.
+         */
+        ColorRGBA vertexColor{ 0.95f, 0.96f, 0.98f, 1.0f };
+
+        /**
+         * @brief Radius used for normal editable mesh vertices.
+         */
+        float vertexRadiusPixels = 4.5f;
+
+        /**
+         * @brief Fill color used for the hovered editable mesh vertex.
+         */
+        ColorRGBA hoveredVertexColor{ 1.0f, 0.85f, 0.20f, 1.0f };
+
+        /**
+         * @brief Radius used for the hovered editable mesh vertex.
+         */
+        float hoveredVertexRadiusPixels = 6.0f;
+
+        /**
+         * @brief Fill color used for selected editable mesh vertices.
+         */
+        ColorRGBA selectedVertexColor{ 1.0f, 0.55f, 0.05f, 1.0f };
+
+        /**
+         * @brief Radius used for selected editable mesh vertices.
+         */
+        float selectedVertexRadiusPixels = 7.0f;
+
+        /**
+         * @brief Border color used for editable mesh vertices.
+         */
+        ColorRGBA vertexBorderColor{ 0.02f, 0.02f, 0.02f, 1.0f };
+
+        /**
+         * @brief Border width used for editable mesh vertices.
+         */
+        float vertexBorderWidthPixels = 1.25f;
     };
 
     /**

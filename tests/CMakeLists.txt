@@ -175,6 +175,7 @@ add_executable(Locus3DGraphicsPrimitivesTests
     unit/graphics/primitives/PrimitiveMeshTests.cpp
     unit/graphics/primitives/PrimitivesTestMain.cpp
     unit/graphics/primitives/ScreenSpaceLineTests.cpp
+    unit/graphics/primitives/PointMarkerTests.cpp
 )
 
 target_include_directories(Locus3DGraphicsPrimitivesTests
