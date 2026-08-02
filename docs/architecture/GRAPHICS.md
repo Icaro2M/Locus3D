@@ -146,6 +146,7 @@ source\graphics
 |       ShadingMode.h
 |
 +---primitives
+|       ObjectHighlight.h
 |       PrimitiveVertex.h
 |       PrimitiveMesh.h
 |       PrimitiveBuilder.h
@@ -186,10 +187,12 @@ source\graphics
 |       GeometryPass.cpp
 |       GeometryPass.h
 |       IRenderPass.h
-|       OutlinePass.h [!]
+|       ObjectOutlinePass.cpp
+|       ObjectOutlinePass.h
 |       OverlayPass.h [!]
 |       RenderPassContext.h
-|       SelectionPass.h [!]
+|       SelectionMaskPass.cpp
+|       SelectionMaskPass.h
 |       WireframePass.h [!]
 |
 +---picking
@@ -242,12 +245,15 @@ source\graphics
 The files marked with `[!]` in the tree are likely next pieces for the graphics layer, but they are not present in the current `source/graphics/` tree yet.
 
 - [!] `passes/WireframePass.h`
-- [!] `passes/SelectionPass.h`
-- [!] `passes/OutlinePass.h`
 - [!] `passes/OverlayPass.h`
 - [!] `passes/DebugPass.h`
 
 They should be added only when the higher-level state they depend on becomes clear. Gizmo rendering is implemented as a graphics-only renderer that receives explicit visual state from higher layers, keeping editor concepts outside the low-level graphics layer.
+Object outline rendering is implemented by `primitives/ObjectHighlight.h`,
+`passes/SelectionMaskPass.*`, and `passes/ObjectOutlinePass.*`: higher layers
+submit generic highlight objects, graphics renders a depth-aware offscreen mask,
+and a fullscreen pass composes constant-pixel outlines without knowing editor
+selection types.
 
 ---
 

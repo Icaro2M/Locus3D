@@ -126,6 +126,51 @@ namespace locus::editor {
         return output;
     }
 
+    graphics::ObjectHighlightBatch SelectionRenderAdapter::build_object_highlights(
+        const graphics::RenderScene& scene,
+        const SelectionState& selection
+    ) {
+        graphics::ObjectHighlightBatch batch;
+
+        if (selection.scope() != SelectionScope::Scene ||
+            selection.granularity() != SelectionGranularity::Object) {
+            return batch;
+        }
+
+        batch.highlights.reserve(scene.object_count());
+
+        graphics::u32 nextMaskId = 1;
+        for (const graphics::RenderObject& object : scene.objects()) {
+            const SceneNodeId id = to_scene_node_id(object.id);
+            const bool selected = selection.objects().contains(id)
+                || selection.objects().active() == id;
+            const bool hovered = selection.objects().hovered() == id;
+
+            if (!selected && !hovered) {
+                continue;
+            }
+
+            if (!object.visibility.visible || !object.visibility.selectable) {
+                continue;
+            }
+
+            if (object.mesh == nullptr) {
+                continue;
+            }
+
+            graphics::ObjectHighlight highlight{};
+            highlight.object = &object;
+            highlight.maskId = nextMaskId++;
+            highlight.category = selected
+                ? graphics::ObjectHighlightCategory::Selected
+                : graphics::ObjectHighlightCategory::Hovered;
+
+            batch.highlights.push_back(highlight);
+        }
+
+        return batch;
+    }
+
     SceneNodeId SelectionRenderAdapter::to_scene_node_id(graphics::RenderObject::Id objectId)
     {
         return SceneNodeId{ static_cast<SceneNodeIdValue>(objectId) };

@@ -7,6 +7,7 @@
 
 #include "editor/scene/SceneNodeId.h"
 #include "editor/selection/SelectionState.h"
+#include "graphics/primitives/ObjectHighlight.h"
 #include "graphics/scene/RenderObject.h"
 #include "graphics/scene/RenderScene.h"
 
@@ -183,6 +184,18 @@ namespace locus::editor {
             const SelectionState& selection,
             const SelectionRenderOptions& options = {},
             SelectionRenderObjectResult* result = nullptr
+        );
+
+        /**
+         * @brief Builds object outline submissions from object-level selection.
+         *
+         * @param scene Render scene to scan for drawable objects.
+         * @param selection Editor selection state.
+         * @return Generic graphics highlight batch.
+         */
+        [[nodiscard]] static graphics::ObjectHighlightBatch build_object_highlights(
+            const graphics::RenderScene& scene,
+            const SelectionState& selection
         );
 
     private:

@@ -48,6 +48,13 @@
 #include "graphics/mesh/MeshUploader.h"
 
 /*
+ * Render passes.
+ */
+#include "graphics/passes/GeometryPass.h"
+#include "graphics/passes/ObjectOutlinePass.h"
+#include "graphics/passes/SelectionMaskPass.h"
+
+/*
  * Render queue, pipeline, and renderer execution.
  */
 #include "graphics/renderer/DrawList.h"

@@ -14,6 +14,7 @@
 #include "editor/render/MeshNodeRenderAdapter.h"
 #include "editor/render/OverlayRenderAdapter.h"
 #include "editor/render/PreviewRenderAdapter.h"
+#include "editor/render/SelectionRenderAdapter.h"
 #include "editor/render/TopologyOverlayAdapter.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/selection/SelectionState.h"
@@ -576,6 +577,58 @@ namespace locus::application {
         }
         append_startup_log("EditorViewport: picking renderer created");
 
+        auto selectionMaskShaderResult = shaderManager_.load(
+            "viewport/selection_mask",
+            "viewport/selection_mask_vert.glsl",
+            "viewport/selection_mask_frag.glsl");
+
+        if (!selectionMaskShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the object selection mask shader",
+                selectionMaskShaderResult.error());
+        }
+        append_startup_log("EditorViewport: selection mask shader loaded");
+
+        const auto selectionMaskPassResult =
+            selectionMaskPass_.create(shaderManager_);
+
+        if (!selectionMaskPassResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the object selection mask pass",
+                selectionMaskPassResult.error());
+        }
+        append_startup_log("EditorViewport: selection mask pass created");
+
+        auto objectOutlineShaderResult = shaderManager_.load(
+            "viewport/object_outline",
+            "viewport/object_outline_vert.glsl",
+            "viewport/object_outline_frag.glsl");
+
+        if (!objectOutlineShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the object outline shader",
+                objectOutlineShaderResult.error());
+        }
+        append_startup_log("EditorViewport: object outline shader loaded");
+
+        const auto objectOutlinePassResult =
+            objectOutlinePass_.create(shaderManager_);
+
+        if (!objectOutlinePassResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the object outline pass",
+                objectOutlinePassResult.error());
+        }
+        append_startup_log("EditorViewport: object outline pass created");
+
         framebufferWidth_ = framebufferWidth;
         framebufferHeight_ = framebufferHeight;
 
@@ -591,6 +644,19 @@ namespace locus::application {
                     ApplicationErrorCode::InitializationFailed,
                     "Failed to create the viewport picking buffer",
                     pickingBufferResult.error());
+            }
+
+            const auto selectionMaskResizeResult =
+                selectionMaskPass_.resize(
+                    framebufferWidth_,
+                    framebufferHeight_);
+
+            if (!selectionMaskResizeResult) {
+                shutdown();
+                return graphics_failure(
+                    ApplicationErrorCode::InitializationFailed,
+                    "Failed to create the object selection mask buffer",
+                    selectionMaskResizeResult.error());
             }
         }
 
@@ -646,6 +712,8 @@ namespace locus::application {
         renderQueue_.clear();
         pickingBuffer_.destroy();
         pickingRenderer_ = graphics::PickingRenderer{};
+        objectOutlinePass_.destroy();
+        selectionMaskPass_.destroy();
         activeDocumentId_ = {};
         documentShader_ = nullptr;
         lastPickingResult_ = {};
@@ -682,6 +750,12 @@ namespace locus::application {
             framebufferWidth_ = framebufferWidth;
             framebufferHeight_ = framebufferHeight;
             invalidate_picking();
+            if (initialized_) {
+                static_cast<void>(
+                    selectionMaskPass_.resize(
+                        framebufferWidth_,
+                        framebufferHeight_));
+            }
         }
 
         viewport_.resize(framebufferWidth, framebufferHeight);
@@ -931,6 +1005,9 @@ namespace locus::application {
         }
 
         renderQueue_.clear();
+        graphics::RenderScene outlineScene{};
+        outlineScene.reserve(scene.object_count());
+
         renderQueue_.reserve(
             scene.object_count()
             + overlayObjects.size()
@@ -948,6 +1025,7 @@ namespace locus::application {
             }
 
             renderQueue_.add_object(object);
+            outlineScene.add_object(object);
         }
 
         for (const graphics::RenderObject& object : overlayObjects) {
@@ -956,6 +1034,50 @@ namespace locus::application {
 
         renderQueue_.sort();
         renderer_.render(renderQueue_);
+
+        const auto selectionMaskResizeResult =
+            selectionMaskPass_.resize(
+                viewport_.state().rect.width,
+                viewport_.state().rect.height);
+
+        if (!selectionMaskResizeResult) {
+            return graphics_failure(
+                ApplicationErrorCode::RuntimeFailure,
+                "Failed to resize the object selection mask buffer",
+                selectionMaskResizeResult.error());
+        }
+
+        const graphics::ObjectHighlightBatch objectHighlights =
+            editor::SelectionRenderAdapter::build_object_highlights(
+                outlineScene,
+                document.editor().selection());
+
+        if (!objectHighlights.empty()) {
+            graphics::ViewportPalette palette{};
+            graphics::ObjectOutlinePassConfig outlineConfig{};
+            outlineConfig.hoveredColor =
+                palette.hoveredObjectOutlineColor;
+            outlineConfig.hoveredWidthPixels =
+                palette.hoveredObjectOutlineWidthPixels;
+            outlineConfig.selectedColor =
+                palette.selectedObjectOutlineColor;
+            outlineConfig.selectedWidthPixels =
+                palette.selectedObjectOutlineWidthPixels;
+            objectOutlinePass_.set_config(outlineConfig);
+
+            selectionMaskPass_.render(
+                outlineScene,
+                objectHighlights,
+                viewport_.camera().view_matrix(),
+                viewport_.camera().projection_matrix());
+
+            if (const graphics::Texture* maskTexture =
+                    selectionMaskPass_.mask_texture()) {
+                objectOutlinePass_.render(
+                    *maskTexture,
+                    viewport_.state().rect);
+            }
+        }
 
         topologySurfaceRenderer_.render(
             viewport_.camera().view_projection_matrix());

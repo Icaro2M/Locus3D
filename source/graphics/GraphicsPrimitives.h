@@ -21,6 +21,7 @@
    * Primitive geometry representation and construction.
    */
 #include "graphics/primitives/PrimitiveVertex.h"
+#include "graphics/primitives/ObjectHighlight.h"
 #include "graphics/primitives/PrimitiveMesh.h"
 #include "graphics/primitives/PrimitiveBuilder.h"
 #include "graphics/primitives/PointMarker.h"

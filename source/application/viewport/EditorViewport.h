@@ -19,6 +19,8 @@
 #include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
 #include "graphics/overlay/renderers/SurfaceOverlayRenderer.h"
+#include "graphics/passes/ObjectOutlinePass.h"
+#include "graphics/passes/SelectionMaskPass.h"
 #include "graphics/picking/PickingBuffer.h"
 #include "graphics/picking/PickingRenderer.h"
 #include "graphics/renderer/RenderQueue.h"
@@ -257,6 +259,8 @@ namespace locus::application {
         graphics::OrbitCameraRig orbitRig_{};
         graphics::Renderer renderer_{};
         graphics::RenderQueue renderQueue_{};
+        graphics::SelectionMaskPass selectionMaskPass_{};
+        graphics::ObjectOutlinePass objectOutlinePass_{};
         graphics::PickingBuffer pickingBuffer_{};
         graphics::PickingRenderer pickingRenderer_{};
         const graphics::Shader* documentShader_ = nullptr;

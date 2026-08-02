@@ -131,6 +131,26 @@ namespace locus::graphics
         ColorRGBA objectHovered{ 0.45f, 0.72f, 1.0f, 1.0f };
 
         /**
+         * @brief Screen-space outline color used for hovered objects.
+         */
+        ColorRGBA hoveredObjectOutlineColor{ 1.0f, 0.85f, 0.20f, 0.70f };
+
+        /**
+         * @brief Screen-space outline width used for hovered objects.
+         */
+        float hoveredObjectOutlineWidthPixels = 2.0f;
+
+        /**
+         * @brief Screen-space outline color used for selected objects.
+         */
+        ColorRGBA selectedObjectOutlineColor{ 1.0f, 0.55f, 0.05f, 0.95f };
+
+        /**
+         * @brief Screen-space outline width used for selected objects.
+         */
+        float selectedObjectOutlineWidthPixels = 2.5f;
+
+        /**
          * @brief Wireframe line color.
          */
         ColorRGBA wireframe{ 0.02f, 0.02f, 0.02f, 1.0f };
