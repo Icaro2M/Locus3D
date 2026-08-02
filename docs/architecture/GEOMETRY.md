@@ -224,6 +224,8 @@ source\kernel
 |   |   |       BridgeEdgeOp.cpp
 |   |   |       FillHoleOp.h
 |   |   |       FillHoleOp.cpp
+|   |   |       DissolveMeshElementsOp.h
+|   |   |       DissolveMeshElementsOp.cpp
 |   |   |
 |   |   \---transform
 |   |           TransformOp.h
