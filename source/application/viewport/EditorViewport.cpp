@@ -14,6 +14,7 @@
 #include "editor/render/MeshNodeRenderAdapter.h"
 #include "editor/render/OverlayRenderAdapter.h"
 #include "editor/render/PreviewRenderAdapter.h"
+#include "editor/render/TopologyOverlayAdapter.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/selection/SelectionState.h"
 #include "editor/sync/EditorSync.h"
@@ -171,10 +172,16 @@ namespace locus::application {
                 return;
             }
 
+            editor::OverlayRenderOptions overlayOptions{};
+            overlayOptions.includeWireframe = false;
+            overlayOptions.includeSelectedEdges = false;
+            overlayOptions.includeHoveredEdge = false;
+
             editor::OverlayGeometry overlay =
                 editor::OverlayRenderAdapter::build_mesh_overlay(
                     *meshNode,
-                    editor.selection().mesh());
+                    editor.selection().mesh(),
+                    overlayOptions);
 
             if (!overlay.has_geometry()) {
                 return;
@@ -380,6 +387,30 @@ namespace locus::application {
 
         documentShader_ = documentShaderResult.value();
 
+        auto topologyShaderResult = shaderManager_.load(
+            "viewport/screen_space_line",
+            "viewport/screen_space_line_vert.glsl",
+            "viewport/screen_space_line_frag.glsl");
+
+        if (!topologyShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the topology overlay line shader",
+                topologyShaderResult.error());
+        }
+
+        const auto topologyLineResult =
+            topologyLineRenderer_.create(shaderManager_);
+
+        if (!topologyLineResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the topology overlay line renderer",
+                topologyLineResult.error());
+        }
+
         auto pickingShaderResult = shaderManager_.load(
             "picking/object",
             "picking/picking_vert.glsl",
@@ -482,6 +513,7 @@ namespace locus::application {
 
         axisRenderer_.destroy();
         gizmoRenderer_.destroy();
+        topologyLineRenderer_.destroy();
         gridRenderer_.destroy();
         meshCache_.clear();
         shaderManager_.clear();
@@ -676,12 +708,30 @@ namespace locus::application {
             overlayMeshes,
             overlayObjects);
 
+        editor::TopologyOverlayOptions topologyOptions{};
+        const graphics::ScreenSpaceLineBatch topologyLines =
+            editor::TopologyOverlayAdapter::build_active_mesh_lines(
+                document.editor().scene(),
+                document.editor().selection(),
+                topologyOptions);
+
+        if (topologyLineRenderer_.is_valid()) {
+            const auto topologyUploadResult =
+                topologyLineRenderer_.set_lines(topologyLines);
+
+            if (!topologyUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload topology overlay lines",
+                    topologyUploadResult.error());
+            }
+        }
+
         renderQueue_.clear();
         renderQueue_.reserve(
             scene.object_count()
             + overlayObjects.size()
-            + 2
-            + gizmoScene.object_count());
+            + 1);
         renderQueue_.add_object(gridRenderer_.render_object());
 
         const editor::SceneNodeId previewTarget =
@@ -701,13 +751,23 @@ namespace locus::application {
             renderQueue_.add_object(object);
         }
 
-        for (const graphics::RenderObject& object : gizmoScene.objects()) {
-            renderQueue_.add_object(object);
-        }
-
-        renderQueue_.add_object(axisRenderer_.render_object());
         renderQueue_.sort();
         renderer_.render(renderQueue_);
+
+        topologyLineRenderer_.render(
+            viewport_.camera().view_projection_matrix(),
+            viewport_.state().rect);
+
+        graphics::RenderQueue foregroundQueue;
+        foregroundQueue.reserve(gizmoScene.object_count() + 1);
+
+        for (const graphics::RenderObject& object : gizmoScene.objects()) {
+            foregroundQueue.add_object(object);
+        }
+
+        foregroundQueue.add_object(axisRenderer_.render_object());
+        foregroundQueue.sort();
+        renderer_.render(foregroundQueue);
 
         return {};
     }

@@ -10,6 +10,42 @@
 namespace locus::graphics
 {
     /**
+     * @brief Visual metrics used by editable topology overlays.
+     */
+    struct TopologyOverlayStyle
+    {
+        /**
+         * @brief Color used for normal editable mesh edges.
+         */
+        ColorRGBA wireframeColor{ 0.10f, 0.11f, 0.12f, 1.0f };
+
+        /**
+         * @brief Width used for normal editable mesh edges.
+         */
+        float wireframeWidthPixels = 1.35f;
+
+        /**
+         * @brief Color used for the hovered editable mesh edge.
+         */
+        ColorRGBA hoveredEdgeColor{ 1.0f, 0.85f, 0.20f, 1.0f };
+
+        /**
+         * @brief Width used for the hovered editable mesh edge.
+         */
+        float hoveredEdgeWidthPixels = 2.6f;
+
+        /**
+         * @brief Color used for selected editable mesh edges.
+         */
+        ColorRGBA selectedEdgeColor{ 1.0f, 0.55f, 0.05f, 1.0f };
+
+        /**
+         * @brief Width used for selected editable mesh edges.
+         */
+        float selectedEdgeWidthPixels = 4.0f;
+    };
+
+    /**
      * @brief Default color palette for viewport drawing and overlays.
      */
     struct ViewportPalette
@@ -48,6 +84,11 @@ namespace locus::graphics
          * @brief Wireframe line color.
          */
         ColorRGBA wireframe{ 0.02f, 0.02f, 0.02f, 1.0f };
+
+        /**
+         * @brief Editable topology overlay colors and widths.
+         */
+        TopologyOverlayStyle topology{};
 
         /**
          * @brief Selection outline color.

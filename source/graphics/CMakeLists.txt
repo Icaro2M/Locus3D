@@ -31,6 +31,7 @@ target_sources(locus3d_graphics PRIVATE
     "overlay/renderers/GridRenderer.cpp"
     "overlay/renderers/MeasurementRenderer.cpp"
     "overlay/renderers/NormalRenderer.cpp"
+    "overlay/renderers/ScreenSpaceLineRenderer.cpp"
     "passes/GeometryPass.cpp"
     "picking/PickingBuffer.cpp"
     "picking/PickingRenderer.cpp"
@@ -44,11 +45,13 @@ target_sources(locus3d_graphics PRIVATE
     "viewport/Viewport.cpp"
     "window/Window.cpp"
     "primitives/PrimitiveVertex.h"
+    "primitives/ScreenSpaceLine.h"
     "primitives/PrimitiveMesh.h"
     "primitives/PrimitiveBuilder.h"
     "primitives/PrimitiveBuilder.cpp"
     "primitives/PrimitiveMeshConverter.h"
-    "primitives/PrimitiveMeshConverter.cpp" "GraphicsPrimitives.h")
+    "primitives/PrimitiveMeshConverter.cpp"
+    "GraphicsPrimitives.h")
 
 target_include_directories(locus3d_graphics PUBLIC
     ${LOCUS3D_SOURCE_DIR}

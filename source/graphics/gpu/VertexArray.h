@@ -111,6 +111,14 @@ namespace locus::graphics
         [[nodiscard]] GraphicsResult<void> set_attribute(const VertexAttribute& attribute);
 
         /**
+         * @brief Sets how often one vertex attribute advances during instanced draws.
+         *
+         * @param index Attribute location index in the shader.
+         * @param divisor Instance divisor. Zero advances per vertex.
+         */
+        void set_attribute_divisor(u32 index, u32 divisor);
+
+        /**
          * @brief Checks whether this wrapper owns a vertex array object.
          *
          * @return True when the OpenGL object ID is non-zero.

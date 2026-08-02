@@ -23,6 +23,7 @@
 #include "graphics/primitives/PrimitiveVertex.h"
 #include "graphics/primitives/PrimitiveMesh.h"
 #include "graphics/primitives/PrimitiveBuilder.h"
+#include "graphics/primitives/ScreenSpaceLine.h"
 
    /*
 	* Conversion into the standard graphics upload representation.

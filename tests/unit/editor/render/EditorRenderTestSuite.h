@@ -18,5 +18,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_mesh_node_render_adapter_tests();
 [[nodiscard]] TestResult run_scene_render_adapter_tests();
 [[nodiscard]] TestResult run_selection_render_adapter_tests();
+[[nodiscard]] TestResult run_topology_overlay_adapter_tests();
 
 } // namespace locus::tests

@@ -174,6 +174,7 @@ add_executable(Locus3DGraphicsPrimitivesTests
     unit/graphics/primitives/PrimitiveMeshConverterTests.cpp
     unit/graphics/primitives/PrimitiveMeshTests.cpp
     unit/graphics/primitives/PrimitivesTestMain.cpp
+    unit/graphics/primitives/ScreenSpaceLineTests.cpp
 )
 
 target_include_directories(Locus3DGraphicsPrimitivesTests
@@ -278,6 +279,7 @@ add_executable(Locus3DEditorRenderTests
     unit/editor/render/RenderMeshUploadAdapterTests.cpp
     unit/editor/render/SceneRenderAdapterTests.cpp
     unit/editor/render/SelectionRenderAdapterTests.cpp
+    unit/editor/render/TopologyOverlayAdapterTests.cpp
 )
 
 target_include_directories(Locus3DEditorRenderTests

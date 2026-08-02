@@ -372,6 +372,8 @@ source\editor
 |       SelectionRenderAdapter.cpp 
 |       OverlayRenderAdapter.h
 |       OverlayRenderAdapter.cpp
+|       TopologyOverlayAdapter.h
+|       TopologyOverlayAdapter.cpp
 |       PreviewRenderAdapter.h
 |       PreviewRenderAdapter.cpp
 |       PickingRenderAdapter.h
@@ -444,5 +446,6 @@ When changing future editor code:
 - Keep selection state separate from geometry topology and render highlighting.
 - Treat snapping and gizmo manipulation as editor interaction systems that consume geometry queries and graphics picking results through explicit APIs.
 - Keep render and picking synchronization one-way from editor state into graphics-owned scene/picking data.
+- Keep editable topology visualization conversion in editor adapters such as `TopologyOverlayAdapter`, which resolves LEM handles, selection state, and scene transforms into generic graphics primitives.
 - Keep manufacturing synchronization separate from viewport interaction; fabrication analysis should remain owned by the kernel manufacturing module when it exists.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

@@ -27,6 +27,7 @@ int main()
         { "PrimitiveMesh", run_primitive_mesh_tests },
         { "PrimitiveBuilder", run_primitive_builder_tests },
         { "PrimitiveMeshConverter", run_primitive_mesh_converter_tests },
+        { "ScreenSpaceLine", run_screen_space_line_tests },
     };
 
     for (const TestCase& test : tests) {

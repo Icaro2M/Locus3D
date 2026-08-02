@@ -130,6 +130,17 @@ namespace locus::graphics
         return {};
     }
 
+    void VertexArray::set_attribute_divisor(u32 index, u32 divisor)
+    {
+        if (id_ == 0)
+        {
+            return;
+        }
+
+        bind();
+        glVertexAttribDivisor(index, divisor);
+    }
+
     bool VertexArray::is_valid() const
     {
         return id_ != 0;

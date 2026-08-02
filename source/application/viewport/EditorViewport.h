@@ -16,6 +16,7 @@
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/GizmoRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
 #include "graphics/picking/PickingBuffer.h"
 #include "graphics/picking/PickingRenderer.h"
 #include "graphics/renderer/RenderQueue.h"
@@ -245,6 +246,7 @@ namespace locus::application {
         graphics::GridRenderer gridRenderer_{};
         graphics::AxisRenderer axisRenderer_{};
         graphics::GizmoRenderer gizmoRenderer_{};
+        graphics::ScreenSpaceLineRenderer topologyLineRenderer_{};
         graphics::Viewport viewport_{};
         graphics::OrbitCameraRig orbitRig_{};
         graphics::Renderer renderer_{};

@@ -28,6 +28,7 @@ int main()
         { "MeshNodeRenderAdapter", run_mesh_node_render_adapter_tests },
         { "SceneRenderAdapter", run_scene_render_adapter_tests },
         { "SelectionRenderAdapter", run_selection_render_adapter_tests },
+        { "TopologyOverlayAdapter", run_topology_overlay_adapter_tests },
     };
 
     for (const TestCase& test : tests) {
