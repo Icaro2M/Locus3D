@@ -21,6 +21,7 @@
 #include "kernel/modeling/operations/edge/CreaseOp.h"
 #include "kernel/modeling/operations/topology/BridgeEdgeOp.h"
 #include "kernel/modeling/operations/topology/DeleteMeshElementsOp.h"
+#include "kernel/modeling/operations/topology/DissolveMeshElementsOp.h"
 
 #include <memory>
 #include <string>
@@ -165,6 +166,40 @@ namespace locus::editor {
             operationContext.validateAfterExecute = true;
             operationContext.rebuildNormals = true;
             operationContext.allowNonManifold = true;
+
+            const kernel::modeling::OperationResult result =
+                operation.execute(operationContext);
+
+            return result.is_success()
+                && result.changed();
+        }
+
+        /**
+         * @brief Checks whether Dissolve Edge can run without mutating the document.
+         *
+         * @param node Active mesh node.
+         * @param target Captured edge target.
+         * @return True when the kernel accepts the selected topology.
+         */
+        bool can_dissolve_edges(
+            const MeshNode& node,
+            const MeshToolTarget& target) {
+            if (target.edges.empty()) {
+                return false;
+            }
+
+            kernel::geometry::LEM candidate =
+                node.mesh();
+
+            kernel::modeling::DissolveMeshElementsOp operation =
+                kernel::modeling::DissolveMeshElementsOp::edges(
+                    target.edges);
+
+            kernel::modeling::OperationContext operationContext{};
+            operationContext.mesh = &candidate;
+            operationContext.validateAfterExecute = true;
+            operationContext.rebuildNormals = false;
+            operationContext.allowNonManifold = false;
 
             const kernel::modeling::OperationResult result =
                 operation.execute(operationContext);
@@ -324,6 +359,67 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the built-in Dissolve Edge action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_dissolve_edge_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    edge_actions::DissolveId),
+                "Dissolve Edges",
+                "Dissolves selected manifold edges by merging their "
+                "adjacent faces into polygonal faces.",
+                ActionCategory::Mesh,
+                {
+                    "dissolve",
+                    "edge",
+                    "edges",
+                    "merge",
+                    "face",
+                    "faces",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const EdgeList edges =
+                    target.edges;
+
+                return [edges](
+                    kernel::geometry::LEMEditor& editor) {
+                    kernel::modeling::DissolveMeshElementsOp operation =
+                        kernel::modeling::DissolveMeshElementsOp::edges(
+                            edges);
+
+                    kernel::modeling::OperationContext operationContext{};
+                    operationContext.mesh = &editor.mesh();
+                    operationContext.validateAfterExecute = true;
+                    operationContext.rebuildNormals = true;
+                    operationContext.allowNonManifold = false;
+
+                    const kernel::modeling::OperationResult result =
+                        operation.execute(operationContext);
+
+                    return result.is_success()
+                        && result.changed();
+                };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Edge,
+                1u,
+                std::move(operationFactory),
+                "Dissolve Edges",
+                can_dissolve_edges);
+        }
+
+        /**
          * @brief Creates the built-in Delete Edge action.
          *
          * @return Owned action instance.
@@ -404,7 +500,7 @@ namespace locus::editor {
     bool register_edge_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(4u);
+        insertedIds.reserve(5u);
 
         const ActionId markSharpId =
             make_action_id(
@@ -446,6 +542,21 @@ namespace locus::editor {
         }
 
         insertedIds.push_back(bridgeId);
+
+        const ActionId dissolveId =
+            make_action_id(
+                edge_actions::DissolveId);
+
+        if (!registry.register_action(
+            make_dissolve_edge_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(dissolveId);
 
         const ActionId deleteId =
             make_action_id(

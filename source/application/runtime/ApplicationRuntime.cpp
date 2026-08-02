@@ -10,6 +10,7 @@
 #include "editor/actions/core/ActionContext.h"
 #include "editor/actions/edit/RegisterEditActions.h"
 #include "editor/actions/mesh/edge/RegisterEdgeActions.h"
+#include "editor/actions/mesh/face/RegisterFaceActions.h"
 #include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
@@ -547,6 +548,20 @@ namespace locus::application {
                     editor::ActionId{
                         std::string{
                             editor::topology_actions::FillHoleId } });
+
+            case ShortcutAction::ExecuteFlipFacesAction:
+                return execute_editor_action(
+                    document,
+                    editor::ActionId{
+                        std::string{
+                            editor::face_actions::FlipFaceId } });
+
+            case ShortcutAction::ExecuteDissolveAction:
+                return execute_editor_action(
+                    document,
+                    editor::ActionId{
+                        std::string{
+                            editor::edit_actions::DissolveId } });
 
             case ShortcutAction::ActivateSelectTool:
                 return activate_tool(

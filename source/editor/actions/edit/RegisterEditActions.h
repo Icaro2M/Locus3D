@@ -22,6 +22,12 @@ namespace locus::editor {
         inline constexpr std::string_view DeleteId =
             "edit.delete";
 
+        /**
+         * @brief Contextual Dissolve intent.
+         */
+        inline constexpr std::string_view DissolveId =
+            "edit.dissolve";
+
     } // namespace edit_actions
 
     /**

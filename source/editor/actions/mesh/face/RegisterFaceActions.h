@@ -29,6 +29,12 @@ namespace locus::editor {
             "mesh.face.recalculate_normals";
 
         /**
+         * @brief Dissolves selected faces when a preserving policy exists.
+         */
+        inline constexpr std::string_view DissolveId =
+            "mesh.face.dissolve";
+
+        /**
          * @brief Deletes selected faces while preserving boundary edges.
          */
         inline constexpr std::string_view DeleteId =

@@ -35,6 +35,12 @@ namespace locus::editor {
             "mesh.edge.bridge";
 
         /**
+         * @brief Dissolves selected manifold edges while preserving surfaces.
+         */
+        inline constexpr std::string_view DissolveId =
+            "mesh.edge.dissolve";
+
+        /**
          * @brief Deletes selected edges and required incident faces.
          */
         inline constexpr std::string_view DeleteId =

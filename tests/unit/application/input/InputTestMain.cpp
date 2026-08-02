@@ -173,6 +173,10 @@ using namespace locus::application;
         return "ExecuteBridgeEdgeAction";
     case ShortcutAction::ExecuteFillHoleAction:
         return "ExecuteFillHoleAction";
+    case ShortcutAction::ExecuteFlipFacesAction:
+        return "ExecuteFlipFacesAction";
+    case ShortcutAction::ExecuteDissolveAction:
+        return "ExecuteDissolveAction";
     case ShortcutAction::SetObjectGranularity:
         return "SetObjectGranularity";
     case ShortcutAction::SetVertexGranularity:
@@ -524,6 +528,23 @@ void apply_route(
         return false;
     }
 
+    context.vertexSelectionContext = true;
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::X));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ExecuteDissolveAction,
+            "Dissolve shortcut")) {
+        return false;
+    }
+
+    context.vertexSelectionContext = false;
+
     state.reset();
     state.begin_frame();
     state.consume(key(Key::W));
@@ -650,6 +671,30 @@ void apply_route(
             context,
             ShortcutAction::None,
             "Solidify shortcut blocked without selected face")) {
+        return false;
+    }
+
+    context.faceSelectionContext = true;
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::F, InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ExecuteFlipFacesAction,
+            "Flip Faces shortcut in face context")) {
+        return false;
+    }
+
+    context.faceSelectionContext = false;
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::None,
+            "Flip Faces shortcut blocked without selected face")) {
         return false;
     }
 

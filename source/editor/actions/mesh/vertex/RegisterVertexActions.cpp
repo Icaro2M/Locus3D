@@ -16,6 +16,7 @@
 #include "kernel/geometry/mesh/LEMHandles.h"
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/core/OperationResult.h"
+#include "kernel/modeling/operations/topology/DissolveMeshElementsOp.h"
 #include "kernel/modeling/operations/topology/MergeVerticesOp.h"
 #include "kernel/modeling/operations/topology/DeleteMeshElementsOp.h"
 
@@ -221,6 +222,40 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Checks whether Dissolve Vertex can run without mutating the document.
+         *
+         * @param node Active mesh node.
+         * @param target Captured vertex target.
+         * @return True when the kernel accepts the selected topology.
+         */
+        bool can_dissolve_vertices(
+            const MeshNode& node,
+            const MeshToolTarget& target) {
+            if (target.vertices.empty()) {
+                return false;
+            }
+
+            kernel::geometry::LEM candidate =
+                node.mesh();
+
+            kernel::modeling::DissolveMeshElementsOp operation =
+                kernel::modeling::DissolveMeshElementsOp::vertices(
+                    target.vertices);
+
+            kernel::modeling::OperationContext operationContext{};
+            operationContext.mesh = &candidate;
+            operationContext.validateAfterExecute = true;
+            operationContext.rebuildNormals = false;
+            operationContext.allowNonManifold = false;
+
+            const kernel::modeling::OperationResult result =
+                operation.execute(operationContext);
+
+            return result.is_success()
+                && result.changed();
+        }
+
+        /**
          * @brief Creates one merge vertex action.
          *
          * @param id Stable action identifier.
@@ -348,6 +383,69 @@ namespace locus::editor {
         }
 
         /**
+         * @brief Creates the built-in Dissolve Vertex action.
+         *
+         * @return Owned action instance.
+         */
+        std::unique_ptr<IEditorAction>
+            make_dissolve_vertex_action() {
+            ActionDescriptor descriptor{
+                make_action_id(
+                    vertex_actions::DissolveId),
+                "Dissolve Vertices",
+                "Dissolves selected loose chain vertices while preserving "
+                "their surrounding connectivity.",
+                ActionCategory::Mesh,
+                {
+                    "dissolve",
+                    "vertex",
+                    "vertices",
+                    "remove",
+                    "chain",
+                    "edge",
+                    "topology"
+                }
+            };
+
+            MeshOperationAction::OperationFactory operationFactory =
+                [](
+                    const MeshToolTarget& target)
+                -> ApplyMeshOperationCommand::MeshOperation {
+                const VertexList vertices =
+                    target.vertices;
+
+                return [vertices](
+                    kernel::geometry::LEMEditor& editor) {
+                    kernel::modeling::DissolveMeshElementsOp operation =
+                        kernel::modeling::DissolveMeshElementsOp::vertices(
+                            vertices);
+
+                    kernel::modeling::OperationContext
+                        operationContext{};
+
+                    operationContext.mesh = &editor.mesh();
+                    operationContext.validateAfterExecute = true;
+                    operationContext.rebuildNormals = true;
+                    operationContext.allowNonManifold = false;
+
+                    const kernel::modeling::OperationResult result =
+                        operation.execute(operationContext);
+
+                    return result.is_success()
+                        && result.changed();
+                };
+                };
+
+            return std::make_unique<MeshOperationAction>(
+                std::move(descriptor),
+                SelectionGranularity::Vertex,
+                1u,
+                std::move(operationFactory),
+                "Dissolve Vertices",
+                can_dissolve_vertices);
+        }
+
+        /**
          * @brief Creates the built-in Delete Vertex action.
          *
          * @return Owned action instance.
@@ -430,7 +528,7 @@ namespace locus::editor {
     bool register_vertex_actions(
         ActionRegistry& registry) {
         std::vector<ActionId> insertedIds{};
-        insertedIds.reserve(4u);
+        insertedIds.reserve(5u);
 
         const ActionId mergeAtCenterId =
             make_action_id(
@@ -472,6 +570,21 @@ namespace locus::editor {
         }
 
         insertedIds.push_back(mergeAtLastId);
+
+        const ActionId dissolveId =
+            make_action_id(
+                vertex_actions::DissolveId);
+
+        if (!registry.register_action(
+            make_dissolve_vertex_action())) {
+            rollback_registration(
+                registry,
+                insertedIds);
+
+            return false;
+        }
+
+        insertedIds.push_back(dissolveId);
 
         const ActionId deleteId =
             make_action_id(

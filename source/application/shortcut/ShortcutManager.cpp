@@ -35,6 +35,7 @@ namespace locus::application {
             case ShortcutAction::ActivateExtrudeFaceTool:
             case ShortcutAction::ActivateInsetFaceTool:
             case ShortcutAction::ActivateSolidifyTool:
+            case ShortcutAction::ExecuteFlipFacesAction:
                 return context.faceSelectionContext
                     && !context.transformToolActive
                     && !context.modalActive;
@@ -50,6 +51,13 @@ namespace locus::application {
             case ShortcutAction::ExecuteBridgeEdgeAction:
             case ShortcutAction::ExecuteFillHoleAction:
                 return context.edgeSelectionContext
+                    && !context.transformToolActive
+                    && !context.modalActive;
+
+            case ShortcutAction::ExecuteDissolveAction:
+                return (context.vertexSelectionContext
+                    || context.edgeSelectionContext
+                    || context.faceSelectionContext)
                     && !context.transformToolActive
                     && !context.modalActive;
 
@@ -102,6 +110,8 @@ namespace locus::application {
             { Key::B, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateBevelTool },
             { Key::J, InputModifiers::None, InputModifiers::Control, ShortcutAction::ExecuteBridgeEdgeAction },
             { Key::F, InputModifiers::None, InputModifiers::Control, ShortcutAction::ExecuteFillHoleAction },
+            { Key::F, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::ExecuteFlipFacesAction },
+            { Key::X, InputModifiers::None, InputModifiers::Control, ShortcutAction::ExecuteDissolveAction },
             { Key::F, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateSolidifyTool },
             { Key::S, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::ActivateShrinkFattenTool },
             { Key::I, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateInsetFaceTool },

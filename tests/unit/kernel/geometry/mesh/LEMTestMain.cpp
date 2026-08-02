@@ -30,8 +30,10 @@ int main()
         { "LEMAttributes", run_lem_attribute_tests },
         { "BevelOperation", run_bevel_operation_tests },
         { "BridgeEdgeOperation", run_bridge_edge_operation_tests },
+        { "FlipFaceOperation", run_flip_face_operation_tests },
         { "FillHoleOperation", run_fill_hole_operation_tests },
         { "DeleteMeshElementsOperation", run_delete_mesh_elements_operation_tests },
+        { "DissolveMeshElementsOperation", run_dissolve_mesh_elements_operation_tests },
     };
 
     for (const TestCase& test : tests) {

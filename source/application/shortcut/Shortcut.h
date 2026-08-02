@@ -28,6 +28,8 @@ namespace locus::application {
         ActivateLoopCutTool,
         ExecuteBridgeEdgeAction,
         ExecuteFillHoleAction,
+        ExecuteFlipFacesAction,
+        ExecuteDissolveAction,
         SetObjectGranularity,
         SetVertexGranularity,
         SetEdgeGranularity,

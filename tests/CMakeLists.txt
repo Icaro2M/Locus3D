@@ -69,7 +69,9 @@ add_executable(Locus3DGeometryTests
     unit/kernel/geometry/mesh/BevelOpTests.cpp
     unit/kernel/geometry/mesh/BridgeEdgeOpTests.cpp
     unit/kernel/geometry/mesh/DeleteMeshElementsOpTests.cpp
+    unit/kernel/geometry/mesh/DissolveMeshElementsOpTests.cpp
     unit/kernel/geometry/mesh/FillHoleOpTests.cpp
+    unit/kernel/geometry/mesh/FlipFaceOpTests.cpp
     unit/kernel/geometry/mesh/LEMAttributeTests.cpp
     unit/kernel/geometry/mesh/LEMEditorDiffTests.cpp
     unit/kernel/geometry/mesh/LEMGeometryTests.cpp
@@ -247,7 +249,9 @@ add_executable(Locus3DEditorActionTests
     unit/editor/actions/ActionTestMain.cpp
     unit/editor/actions/BridgeEdgeActionTests.cpp
     unit/editor/actions/DeleteActionTests.cpp
+    unit/editor/actions/DissolveActionTests.cpp
     unit/editor/actions/FillHoleActionTests.cpp
+    unit/editor/actions/FlipFaceActionTests.cpp
 )
 
 target_include_directories(Locus3DEditorActionTests

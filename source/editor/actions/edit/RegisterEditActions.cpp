@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace locus::editor {
 
@@ -40,23 +41,26 @@ namespace locus::editor {
             };
         }
 
-        class ContextualDeleteAction final : public IEditorAction {
+        [[nodiscard]] std::array<ActionId, 3> dissolve_candidates()
+        {
+            return {
+                make_action_id(vertex_actions::DissolveId),
+                make_action_id(edge_actions::DissolveId),
+                make_action_id(face_actions::DissolveId)
+            };
+        }
+
+        class ContextualRegistryAction final : public IEditorAction {
         public:
-            explicit ContextualDeleteAction(ActionRegistry& registry)
+            ContextualRegistryAction(
+                ActionRegistry& registry,
+                ActionDescriptor descriptor,
+                std::vector<ActionId> candidates,
+                std::string unavailableMessage)
                 : registry_(&registry)
-                , descriptor_(
-                    make_action_id(edit_actions::DeleteId),
-                    "Delete",
-                    "Deletes the current object or mesh component selection.",
-                    ActionCategory::Selection,
-                    {
-                        "delete",
-                        "remove",
-                        "object",
-                        "vertex",
-                        "edge",
-                        "face"
-                    })
+                , descriptor_(std::move(descriptor))
+                , candidates_(std::move(candidates))
+                , unavailableMessage_(std::move(unavailableMessage))
             {
             }
 
@@ -78,7 +82,7 @@ namespace locus::editor {
 
                 if (!action) {
                     return ActionResult::unavailable(
-                        "Delete is not available for the current selection.");
+                        unavailableMessage_);
                 }
 
                 return action->execute(context);
@@ -92,7 +96,7 @@ namespace locus::editor {
                     return nullptr;
                 }
 
-                for (const ActionId& id : delete_candidates()) {
+                for (const ActionId& id : candidates_) {
                     IEditorAction* action = registry_->find(id);
 
                     if (action && action->can_execute(context)) {
@@ -105,14 +109,83 @@ namespace locus::editor {
 
             ActionRegistry* registry_ = nullptr;
             ActionDescriptor descriptor_{};
+            std::vector<ActionId> candidates_{};
+            std::string unavailableMessage_{};
         };
+
+        [[nodiscard]] std::unique_ptr<IEditorAction> make_contextual_delete(
+            ActionRegistry& registry)
+        {
+            const std::array<ActionId, 4> candidates =
+                delete_candidates();
+
+            return std::make_unique<ContextualRegistryAction>(
+                registry,
+                ActionDescriptor{
+                    make_action_id(edit_actions::DeleteId),
+                    "Delete",
+                    "Deletes the current object or mesh component selection.",
+                    ActionCategory::Selection,
+                    {
+                        "delete",
+                        "remove",
+                        "object",
+                        "vertex",
+                        "edge",
+                        "face"
+                    }
+                },
+                std::vector<ActionId>{
+                    candidates.begin(),
+                    candidates.end()
+                },
+                "Delete is not available for the current selection.");
+        }
+
+        [[nodiscard]] std::unique_ptr<IEditorAction> make_contextual_dissolve(
+            ActionRegistry& registry)
+        {
+            const std::array<ActionId, 3> meshCandidates =
+                dissolve_candidates();
+
+            return std::make_unique<ContextualRegistryAction>(
+                registry,
+                ActionDescriptor{
+                    make_action_id(edit_actions::DissolveId),
+                    "Dissolve",
+                    "Dissolves the current mesh component selection when "
+                    "the surface can be preserved.",
+                    ActionCategory::Mesh,
+                    {
+                        "dissolve",
+                        "vertex",
+                        "edge",
+                        "face",
+                        "topology"
+                    }
+                },
+                std::vector<ActionId>{
+                    meshCandidates[0],
+                    meshCandidates[1],
+                    meshCandidates[2]
+                },
+                "Dissolve is not available for the current selection.");
+        }
 
     } // namespace
 
     bool register_edit_actions(ActionRegistry& registry)
     {
-        return registry.register_action(
-            std::make_unique<ContextualDeleteAction>(registry));
+        if (!registry.register_action(make_contextual_delete(registry))) {
+            return false;
+        }
+
+        if (!registry.register_action(make_contextual_dissolve(registry))) {
+            registry.unregister_action(make_action_id(edit_actions::DeleteId));
+            return false;
+        }
+
+        return true;
     }
 
 } // namespace locus::editor

@@ -98,6 +98,8 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/operations/topology/FillHoleOp.cpp"
     "modeling/operations/topology/DeleteMeshElementsOp.h"
     "modeling/operations/topology/DeleteMeshElementsOp.cpp"
+    "modeling/operations/topology/DissolveMeshElementsOp.h"
+    "modeling/operations/topology/DissolveMeshElementsOp.cpp"
     "modeling/operations/topology/BridgeEdgeOp.h"
     "modeling/operations/topology/BridgeEdgeOp.cpp"
     "modeling/operations/face/SolidifyOp.h"

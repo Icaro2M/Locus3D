@@ -35,6 +35,12 @@ namespace locus::editor {
             "mesh.vertex.merge_at_last";
 
         /**
+         * @brief Dissolves selected vertices when connectivity can be preserved.
+         */
+        inline constexpr std::string_view DissolveId =
+            "mesh.vertex.dissolve";
+
+        /**
          * @brief Deletes selected vertices and their incident topology.
          */
         inline constexpr std::string_view DeleteId =
