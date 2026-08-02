@@ -930,6 +930,8 @@ namespace locus::application {
 
         const bool cameraCaptured =
             routeResult.owner == InputCaptureOwner::ViewportCamera;
+        const bool editorToolCaptured =
+            routeResult.owner == InputCaptureOwner::EditorTool;
 
         const auto pickingResult = editorViewport_.update_hover(
             *activeDocument,
@@ -937,7 +939,8 @@ namespace locus::application {
             window_.width(),
             window_.height(),
             inputState_.focused(),
-            cameraCaptured);
+            cameraCaptured,
+            !editorToolCaptured);
 
         if (!pickingResult) {
             inputState_.end_frame();
@@ -948,6 +951,7 @@ namespace locus::application {
             pickingResult.value();
 
         if (!cameraCaptured
+            && !editorToolCaptured
             && can_route_hover_to_tool(picking)) {
             editor::ToolEvent hoverEvent =
                 make_pointer_event(
@@ -1008,8 +1012,7 @@ namespace locus::application {
                 }
             }
 
-            if (routeResult.editorPointerMove
-                && !can_route_hover_to_tool(picking)) {
+            if (routeResult.editorPointerMove) {
                 editor::ToolEvent moveEvent =
                     make_pointer_event(
                         editor::ToolEventType::PointerMove,
@@ -1072,6 +1075,24 @@ namespace locus::application {
             if (!renderResult) {
                 inputState_.end_frame();
                 return renderResult.error();
+            }
+
+            if (routeResult.captureEnded &&
+                routeResult.owner == InputCaptureOwner::EditorTool) {
+                const auto refreshedPickingResult =
+                    editorViewport_.update_hover(
+                        *activeDocument,
+                        inputState_.cursor_position(),
+                        window_.width(),
+                        window_.height(),
+                        inputState_.focused(),
+                        false,
+                        false);
+
+                if (!refreshedPickingResult) {
+                    inputState_.end_frame();
+                    return refreshedPickingResult.error();
+                }
             }
         }
 

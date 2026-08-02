@@ -19,6 +19,7 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_transform_session_tests();
 [[nodiscard]] TestResult run_mesh_transform_target_resolver_tests();
 [[nodiscard]] TestResult run_mesh_transform_tool_session_tests();
+[[nodiscard]] TestResult run_mesh_drag_operation_tool_hover_tests();
 [[nodiscard]] TestResult run_transform_tool_selection_tests();
 
 } // namespace locus::tests

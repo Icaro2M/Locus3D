@@ -29,6 +29,7 @@ int main()
         { "PrimitiveMeshConverter", run_primitive_mesh_converter_tests },
         { "ScreenSpaceLine", run_screen_space_line_tests },
         { "PointMarker", run_point_marker_tests },
+        { "SurfaceOverlay", run_surface_overlay_tests },
     };
 
     for (const TestCase& test : tests) {

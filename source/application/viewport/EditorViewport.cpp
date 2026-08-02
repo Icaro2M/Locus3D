@@ -23,6 +23,7 @@
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/primitives/PrimitiveMeshConverter.h"
+#include "graphics/primitives/SurfaceOverlay.h"
 #include "graphics/scene/RenderObject.h"
 
 #include <algorithm>
@@ -74,6 +75,34 @@ namespace locus::application {
                 std::filesystem::exists(
                     shaderRoot / "viewport" / "point_marker_vert.glsl",
                     error);
+        }
+
+        void append_surface_overlay_batch(
+            graphics::SurfaceOverlayBatch& output,
+            const graphics::SurfaceOverlayBatch& input)
+        {
+            if (input.empty()) {
+                return;
+            }
+
+            if (output.vertices.empty() && output.indices.empty()) {
+                output.modelMatrix = input.modelMatrix;
+            }
+
+            const std::uint32_t base =
+                static_cast<std::uint32_t>(output.vertices.size());
+
+            output.vertices.reserve(output.vertices.size() + input.vertices.size());
+            output.indices.reserve(output.indices.size() + input.indices.size());
+
+            output.vertices.insert(
+                output.vertices.end(),
+                input.vertices.begin(),
+                input.vertices.end());
+
+            for (const std::uint32_t index : input.indices) {
+                output.indices.push_back(base + index);
+            }
         }
 
         [[nodiscard]] std::filesystem::path resolve_shader_root(
@@ -495,6 +524,32 @@ namespace locus::application {
 
         append_startup_log("EditorViewport: point marker renderer deferred");
 
+        auto surfaceOverlayShaderResult = shaderManager_.load(
+            "viewport/surface_overlay",
+            "viewport/surface_overlay_vert.glsl",
+            "viewport/surface_overlay_frag.glsl");
+
+        if (!surfaceOverlayShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the topology surface overlay shader",
+                surfaceOverlayShaderResult.error());
+        }
+        append_startup_log("EditorViewport: surface overlay shader loaded");
+
+        const auto surfaceOverlayRendererResult =
+            topologySurfaceRenderer_.create(shaderManager_);
+
+        if (!surfaceOverlayRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the topology surface overlay renderer",
+                surfaceOverlayRendererResult.error());
+        }
+        append_startup_log("EditorViewport: surface overlay renderer created");
+
         auto pickingShaderResult = shaderManager_.load(
             "picking/object",
             "picking/picking_vert.glsl",
@@ -605,6 +660,7 @@ namespace locus::application {
         gizmoRenderer_.destroy();
         topologyVertexRenderer_.destroy();
         topologyLineRenderer_.destroy();
+        topologySurfaceRenderer_.destroy();
         gridRenderer_.destroy();
         meshCache_.clear();
         shaderManager_.clear();
@@ -786,12 +842,6 @@ namespace locus::application {
 
         std::deque<graphics::GpuMesh> overlayMeshes;
         std::vector<graphics::RenderObject> overlayObjects;
-        append_mesh_component_overlays(
-            document.editor(),
-            documentShader_,
-            meshUploader_,
-            overlayMeshes,
-            overlayObjects);
         append_operation_preview(
             document,
             documentShader_,
@@ -811,6 +861,32 @@ namespace locus::application {
                 document.editor().scene(),
                 document.editor().selection(),
                 topologyOptions);
+
+        const editor::TopologySurfaceOverlayBatches topologySurfaces =
+            editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+                document.editor().scene(),
+                document.editor().selection(),
+                topologyOptions);
+
+        graphics::SurfaceOverlayBatch topologySurfaceBatch{};
+        append_surface_overlay_batch(
+            topologySurfaceBatch,
+            topologySurfaces.hovered);
+        append_surface_overlay_batch(
+            topologySurfaceBatch,
+            topologySurfaces.selected);
+
+        if (topologySurfaceRenderer_.is_valid()) {
+            const auto topologySurfaceUploadResult =
+                topologySurfaceRenderer_.set_batch(topologySurfaceBatch);
+
+            if (!topologySurfaceUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload topology face surface overlays",
+                    topologySurfaceUploadResult.error());
+            }
+        }
 
         if (topologyLineRenderer_.is_valid()) {
             const auto topologyUploadResult =
@@ -881,6 +957,9 @@ namespace locus::application {
         renderQueue_.sort();
         renderer_.render(renderQueue_);
 
+        topologySurfaceRenderer_.render(
+            viewport_.camera().view_projection_matrix());
+
         topologyLineRenderer_.render(
             viewport_.camera().view_projection_matrix(),
             viewport_.state().rect);
@@ -910,7 +989,8 @@ namespace locus::application {
         std::int32_t logicalWidth,
         std::int32_t logicalHeight,
         bool focused,
-        bool cameraCaptured)
+        bool cameraCaptured,
+        bool publishHover)
     {
         if (!initialized_) {
             return ApplicationError::make(
@@ -919,21 +999,48 @@ namespace locus::application {
         }
 
         if (!focused) {
-            clear_hover(document, ViewportPickingStatus::FocusLost);
+            if (publishHover) {
+                clear_hover(document, ViewportPickingStatus::FocusLost);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::FocusLost;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
         if (cameraCaptured) {
-            clear_hover(
-                document,
-                ViewportPickingStatus::CameraCapture);
+            if (publishHover) {
+                clear_hover(
+                    document,
+                    ViewportPickingStatus::CameraCapture);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::CameraCapture;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
         if (framebufferWidth_ <= 0 || framebufferHeight_ <= 0) {
-            clear_hover(
-                document,
-                ViewportPickingStatus::EmptyFramebuffer);
+            if (publishHover) {
+                clear_hover(
+                    document,
+                    ViewportPickingStatus::EmptyFramebuffer);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::EmptyFramebuffer;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
@@ -941,16 +1048,34 @@ namespace locus::application {
             || cursor.x < 0.0 || cursor.y < 0.0
             || cursor.x >= static_cast<double>(logicalWidth)
             || cursor.y >= static_cast<double>(logicalHeight)) {
-            clear_hover(
-                document,
-                ViewportPickingStatus::OutsideViewport);
+            if (publishHover) {
+                clear_hover(
+                    document,
+                    ViewportPickingStatus::OutsideViewport);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::OutsideViewport;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
         if (activeDocumentId_ != document.id()) {
-            clear_hover(
-                document,
-                ViewportPickingStatus::Unavailable);
+            if (publishHover) {
+                clear_hover(
+                    document,
+                    ViewportPickingStatus::Unavailable);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::Unavailable;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
@@ -972,9 +1097,18 @@ namespace locus::application {
         if (globalX < rect.x || globalY < rect.y
             || globalX >= rect.x + rect.width
             || globalY >= rect.y + rect.height) {
-            clear_hover(
-                document,
-                ViewportPickingStatus::OutsideViewport);
+            if (publishHover) {
+                clear_hover(
+                    document,
+                    ViewportPickingStatus::OutsideViewport);
+            }
+            else {
+                lastPickingResult_ = {};
+                lastPickingResult_.status = ViewportPickingStatus::OutsideViewport;
+                lastPickingX_ = -1;
+                lastPickingY_ = -1;
+                pickingQueryValid_ = false;
+            }
             return lastPickingResult_;
         }
 
@@ -1007,6 +1141,11 @@ namespace locus::application {
             ViewportPickingResult cached = lastPickingResult_;
             cached.bufferRendered = bufferRendered;
             cached.pixelRead = false;
+
+            if (publishHover) {
+                set_hover(document, cached.sceneNodeId);
+            }
+
             return cached;
         }
 
@@ -1031,6 +1170,10 @@ namespace locus::application {
         lastPickingX_ = localX;
         lastPickingY_ = localY;
         pickingQueryValid_ = true;
+
+        if (publishHover) {
+            set_hover(document, sceneNodeId);
+        }
 
         return lastPickingResult_;
     }

@@ -9,6 +9,7 @@
 #include "graphics/appearance/ViewportPalette.h"
 #include "graphics/primitives/PointMarker.h"
 #include "graphics/primitives/ScreenSpaceLine.h"
+#include "graphics/primitives/SurfaceOverlay.h"
 
 #include <cstddef>
 #include <string>
@@ -46,6 +47,10 @@ namespace locus::editor {
         std::size_t normalVertexCount = 0;
         std::size_t hoveredVertexCount = 0;
         std::size_t selectedVertexCount = 0;
+        std::size_t visitedFaceCount = 0;
+        std::size_t hoveredFaceCount = 0;
+        std::size_t selectedFaceCount = 0;
+        std::size_t surfaceTriangleCount = 0;
         std::size_t invalidHandleCount = 0;
         std::string message;
 
@@ -57,7 +62,33 @@ namespace locus::editor {
         [[nodiscard]] bool has_geometry() const noexcept
         {
             return wireframeEdgeCount + hoveredEdgeCount + selectedEdgeCount +
-                normalVertexCount + hoveredVertexCount + selectedVertexCount > 0;
+                normalVertexCount + hoveredVertexCount + selectedVertexCount +
+                hoveredFaceCount + selectedFaceCount + surfaceTriangleCount > 0;
+        }
+    };
+
+    /**
+     * @brief Surface overlay batches for editable face states.
+     */
+    struct TopologySurfaceOverlayBatches {
+        /**
+         * @brief Hovered faces not already selected.
+         */
+        graphics::SurfaceOverlayBatch hovered;
+
+        /**
+         * @brief Selected faces.
+         */
+        graphics::SurfaceOverlayBatch selected;
+
+        /**
+         * @brief Checks whether any face surface overlay exists.
+         *
+         * @return True when at least one batch contains indexed triangles.
+         */
+        [[nodiscard]] bool empty() const noexcept
+        {
+            return hovered.empty() && selected.empty();
         }
     };
 
@@ -91,6 +122,21 @@ namespace locus::editor {
          * @return Generic graphics point marker batch.
          */
         [[nodiscard]] static graphics::PointMarkerBatch build_active_mesh_vertex_markers(
+            const EditorScene& scene,
+            const SelectionState& selection,
+            const TopologyOverlayOptions& options = {},
+            TopologyOverlayResult* result = nullptr);
+
+        /**
+         * @brief Builds local-space translucent surface batches for active editable mesh faces.
+         *
+         * @param scene Editor scene containing the active mesh node.
+         * @param selection Editor selection and hover state.
+         * @param options Overlay conversion options.
+         * @param result Optional diagnostic output.
+         * @return Generic graphics surface overlay batches.
+         */
+        [[nodiscard]] static TopologySurfaceOverlayBatches build_active_mesh_face_surfaces(
             const EditorScene& scene,
             const SelectionState& selection,
             const TopologyOverlayOptions& options = {},

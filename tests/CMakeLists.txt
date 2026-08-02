@@ -176,6 +176,7 @@ add_executable(Locus3DGraphicsPrimitivesTests
     unit/graphics/primitives/PrimitivesTestMain.cpp
     unit/graphics/primitives/ScreenSpaceLineTests.cpp
     unit/graphics/primitives/PointMarkerTests.cpp
+    unit/graphics/primitives/SurfaceOverlayTests.cpp
 )
 
 target_include_directories(Locus3DGraphicsPrimitivesTests
@@ -302,6 +303,7 @@ set_tests_properties(editor.unit.render PROPERTIES
 )
 
 add_executable(Locus3DEditorTransformTests
+    unit/editor/transform/MeshDragOperationToolHoverTests.cpp
     unit/editor/transform/MeshTransformToolSessionTests.cpp
     unit/editor/transform/TransformPivotResolverTests.cpp
     unit/editor/transform/TransformSessionTests.cpp

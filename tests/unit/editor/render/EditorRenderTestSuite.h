@@ -20,5 +20,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_selection_render_adapter_tests();
 [[nodiscard]] TestResult run_topology_overlay_adapter_tests();
 [[nodiscard]] TestResult run_topology_overlay_vertex_marker_tests();
+[[nodiscard]] TestResult run_topology_overlay_face_surface_tests();
 
 } // namespace locus::tests

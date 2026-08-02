@@ -29,6 +29,7 @@ int main()
         { "TransformSession", run_transform_session_tests },
         { "MeshTransformTargetResolver", run_mesh_transform_target_resolver_tests },
         { "MeshTransformToolSession", run_mesh_transform_tool_session_tests },
+        { "MeshDragOperationToolHover", run_mesh_drag_operation_tool_hover_tests },
         { "TransformToolSelection", run_transform_tool_selection_tests },
     };
 

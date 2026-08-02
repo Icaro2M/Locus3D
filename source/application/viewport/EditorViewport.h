@@ -18,6 +18,7 @@
 #include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
+#include "graphics/overlay/renderers/SurfaceOverlayRenderer.h"
 #include "graphics/picking/PickingBuffer.h"
 #include "graphics/picking/PickingRenderer.h"
 #include "graphics/renderer/RenderQueue.h"
@@ -170,6 +171,7 @@ namespace locus::application {
          * @param logicalHeight Logical window height.
          * @param focused True while the application window has focus.
          * @param cameraCaptured True during viewport camera pointer capture.
+         * @param publishHover True when picking should update common hover state.
          * @return Picking query diagnostics or a runtime graphics error.
          */
         [[nodiscard]] ApplicationResult<ViewportPickingResult> update_hover(
@@ -178,7 +180,8 @@ namespace locus::application {
             std::int32_t logicalWidth,
             std::int32_t logicalHeight,
             bool focused,
-            bool cameraCaptured);
+            bool cameraCaptured,
+            bool publishHover = true);
 
         /**
          * @brief Returns diagnostics from the latest picking query.
@@ -247,6 +250,7 @@ namespace locus::application {
         graphics::GridRenderer gridRenderer_{};
         graphics::AxisRenderer axisRenderer_{};
         graphics::GizmoRenderer gizmoRenderer_{};
+        graphics::SurfaceOverlayRenderer topologySurfaceRenderer_{};
         graphics::ScreenSpaceLineRenderer topologyLineRenderer_{};
         graphics::PointMarkerRenderer topologyVertexRenderer_{};
         graphics::Viewport viewport_{};

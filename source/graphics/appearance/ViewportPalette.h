@@ -83,6 +83,16 @@ namespace locus::graphics
          * @brief Border width used for editable mesh vertices.
          */
         float vertexBorderWidthPixels = 1.25f;
+
+        /**
+         * @brief Translucent color used for the hovered editable mesh face.
+         */
+        ColorRGBA hoveredFaceColor{ 0.36f, 0.70f, 1.0f, 0.24f };
+
+        /**
+         * @brief Translucent color used for selected editable mesh faces.
+         */
+        ColorRGBA selectedFaceColor{ 0.16f, 0.48f, 1.0f, 0.38f };
     };
 
     /**

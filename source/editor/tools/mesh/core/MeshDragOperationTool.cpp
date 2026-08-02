@@ -62,20 +62,19 @@ namespace locus::editor {
     ToolResult MeshDragOperationTool::on_mesh_tool_activate(
         ToolContext& context)
     {
-        (void)context;
+        const EditorDirtyFlags dirtyFlags =
+            clear_common_hover(context);
 
         return ToolResult::consumed(
-            EditorDirtyFlags::None,
+            dirtyFlags,
             "Mesh operation tool activated.");
     }
 
     ToolResult MeshDragOperationTool::on_mesh_tool_deactivate(
         ToolContext& context)
     {
-        (void)context;
-
         return ToolResult::consumed(
-            EditorDirtyFlags::None,
+            clear_common_hover(context),
             "Mesh operation tool deactivated.");
     }
 
@@ -180,6 +179,9 @@ namespace locus::editor {
             return ToolResult::ignored();
         }
 
+        const EditorDirtyFlags hoverDirty =
+            clear_common_hover(context);
+
         ToolResult sessionResult =
             meshSession_.begin(
                 context,
@@ -226,6 +228,8 @@ namespace locus::editor {
             combine_results(
                 std::move(beginResult),
                 sessionResult);
+
+        result.dirtyFlags |= hoverDirty;
 
         result =
             combine_results(
@@ -292,10 +296,13 @@ namespace locus::editor {
          * an unnecessary history entry.
          */
         if (!meshSession_.has_ready_preview()) {
+            const EditorDirtyFlags hoverDirty =
+                clear_common_hover(context);
+
             clear_operation_state();
 
             return ToolResult::confirmed(
-                EditorDirtyFlags::Render,
+                hoverDirty | EditorDirtyFlags::Render,
                 "Mesh operation completed without changes.");
         }
 
@@ -314,6 +321,9 @@ namespace locus::editor {
         clear_operation_state();
 
         result.dirtyFlags |=
+            clear_common_hover(context);
+
+        result.dirtyFlags |=
             EditorDirtyFlags::Render;
 
         if (result.message.empty()) {
@@ -328,11 +338,17 @@ namespace locus::editor {
         ToolContext& context,
         ToolCancelReason reason)
     {
-        (void)context;
-
         if (!meshSession_.is_active()) {
+            const EditorDirtyFlags hoverDirty =
+                clear_common_hover(context);
+
             clear_mesh_operation();
-            return ToolResult::ignored();
+
+            return hoverDirty == EditorDirtyFlags::None
+                ? ToolResult::ignored()
+                : ToolResult::consumed(
+                    hoverDirty,
+                    "Mesh operation hover cleared.");
         }
 
         ToolResult result =
@@ -340,6 +356,9 @@ namespace locus::editor {
                 cancellation_message(reason));
 
         clear_mesh_operation();
+
+        result.dirtyFlags |=
+            clear_common_hover(context);
 
         return result;
     }
@@ -373,6 +392,29 @@ namespace locus::editor {
     {
         meshSession_.clear();
         clear_mesh_operation();
+    }
+
+    EditorDirtyFlags MeshDragOperationTool::clear_common_hover(
+        ToolContext& context)
+    {
+        EditorDirtyFlags dirtyFlags = EditorDirtyFlags::None;
+
+        if (context.selection_controller()
+            .clear_hovered_mesh_component()) {
+            dirtyFlags |=
+                EditorDirtyFlags::Selection |
+                EditorDirtyFlags::Render;
+        }
+
+        if (context.selection().objects().hovered().is_valid() &&
+            context.selection_controller()
+            .set_hovered_object(SceneNodeId{})) {
+            dirtyFlags |=
+                EditorDirtyFlags::Selection |
+                EditorDirtyFlags::Render;
+        }
+
+        return dirtyFlags;
     }
 
     ToolResult MeshDragOperationTool::combine_results(

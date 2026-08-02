@@ -289,6 +289,16 @@ namespace locus::editor {
         void clear_operation_state();
 
         /**
+         * @brief Clears common selection hover while mesh operation tools own feedback.
+         *
+         * @param context Tool context.
+         * @return Dirty flags produced by hover clearing.
+         */
+        [[nodiscard]]
+        EditorDirtyFlags clear_common_hover(
+            ToolContext& context);
+
+        /**
          * @brief Combines dirty flags and diagnostics from two results.
          *
          * The result code from primary is preserved.

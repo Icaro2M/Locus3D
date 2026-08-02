@@ -25,6 +25,7 @@
 #include "graphics/primitives/PrimitiveBuilder.h"
 #include "graphics/primitives/PointMarker.h"
 #include "graphics/primitives/ScreenSpaceLine.h"
+#include "graphics/primitives/SurfaceOverlay.h"
 
    /*
 	* Conversion into the standard graphics upload representation.

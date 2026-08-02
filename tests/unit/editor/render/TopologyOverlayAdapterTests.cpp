@@ -8,10 +8,13 @@
 #include "editor/render/TopologyOverlayAdapter.h"
 #include "editor/scene/EditorScene.h"
 #include "editor/selection/SelectionState.h"
+#include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
 
 #include <cmath>
+#include <vector>
 
 namespace {
 
@@ -36,6 +39,15 @@ struct QuadHandles {
 [[nodiscard]] bool near_vec3(const glm::vec3& lhs, const glm::vec3& rhs)
 {
     return near(lhs.x, rhs.x) && near(lhs.y, rhs.y) && near(lhs.z, rhs.z);
+}
+
+[[nodiscard]] bool near_mat4_translation(
+    const glm::mat4& matrix,
+    const glm::vec3& expected)
+{
+    const glm::vec4 transformed =
+        matrix * glm::vec4{ 0.0f, 0.0f, 0.0f, 1.0f };
+    return near_vec3(glm::vec3{ transformed }, expected);
 }
 
 [[nodiscard]] bool near_color(
@@ -69,6 +81,43 @@ struct QuadHandles {
         mesh.find_edge(v2, v3),
         mesh.find_edge(v3, v0)
     };
+}
+
+[[nodiscard]] locus::kernel::geometry::FaceHandle first_face(
+    const locus::kernel::geometry::LEM& mesh)
+{
+    const std::vector<locus::kernel::geometry::FaceHandle> faces =
+        locus::kernel::geometry::TopologyTraversal::faces(mesh);
+
+    return faces.empty()
+        ? locus::kernel::geometry::FaceHandle{}
+        : faces.front();
+}
+
+[[nodiscard]] locus::kernel::geometry::FaceHandle add_triangle(
+    locus::kernel::geometry::LEM& mesh)
+{
+    using namespace locus::kernel::geometry;
+
+    const VertexHandle v0 = mesh.add_vertex({ 0.0f, 0.0f, 0.0f });
+    const VertexHandle v1 = mesh.add_vertex({ 1.0f, 0.0f, 0.0f });
+    const VertexHandle v2 = mesh.add_vertex({ 0.0f, 1.0f, 0.0f });
+
+    return mesh.add_face({ v0, v1, v2 });
+}
+
+[[nodiscard]] locus::kernel::geometry::FaceHandle add_ngon(
+    locus::kernel::geometry::LEM& mesh)
+{
+    using namespace locus::kernel::geometry;
+
+    const VertexHandle v0 = mesh.add_vertex({ 0.0f, 0.0f, 0.0f });
+    const VertexHandle v1 = mesh.add_vertex({ 1.0f, 0.0f, 0.0f });
+    const VertexHandle v2 = mesh.add_vertex({ 1.25f, 0.75f, 0.0f });
+    const VertexHandle v3 = mesh.add_vertex({ 0.5f, 1.25f, 0.0f });
+    const VertexHandle v4 = mesh.add_vertex({ -0.25f, 0.75f, 0.0f });
+
+    return mesh.add_face({ v0, v1, v2, v3, v4 });
 }
 
 [[nodiscard]] locus::editor::SceneNodeId make_quad_scene(
@@ -334,6 +383,227 @@ TestResult run_topology_overlay_vertex_marker_tests()
     batch = editor::TopologyOverlayAdapter::build_active_mesh_vertex_markers(emptyScene, emptySelection, options, &result);
     if (!batch.empty() || result.has_geometry()) {
         return TestResult::fail("vertex overlay should reflect topology removals");
+    }
+
+    return TestResult::pass();
+}
+
+TestResult run_topology_overlay_face_surface_tests()
+{
+    editor::EditorScene scene;
+    QuadHandles handles{};
+    const editor::SceneNodeId meshId = make_quad_scene(scene, handles);
+    const locus::kernel::geometry::FaceHandle quadFace =
+        first_face(scene.find_mesh(meshId)->mesh());
+
+    editor::SelectionState selection;
+    selection.set_scope(editor::SelectionScope::ActiveMesh);
+    selection.set_granularity(editor::SelectionGranularity::Face);
+    selection.mesh().set_active_mesh(meshId);
+
+    graphics::TopologyOverlayStyle style{};
+    style.hoveredFaceColor = { 0.1f, 0.2f, 0.8f, 0.25f };
+    style.selectedFaceColor = { 0.2f, 0.4f, 1.0f, 0.40f };
+
+    editor::TopologyOverlayOptions options;
+    options.style = style;
+
+    editor::TopologyOverlayResult result;
+    editor::TopologySurfaceOverlayBatches batches =
+        editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+            scene,
+            selection,
+            options,
+            &result);
+
+    if (!batches.empty() ||
+        result.visitedFaceCount != 1u ||
+        result.hoveredFaceCount != 0u ||
+        result.selectedFaceCount != 0u) {
+        return TestResult::fail("face surface overlay should not emit normal faces");
+    }
+
+    selection.mesh().set_hovered_face(quadFace);
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (batches.hovered.triangle_count() != 2u ||
+        !batches.selected.empty() ||
+        result.hoveredFaceCount != 1u ||
+        result.surfaceTriangleCount != 2u) {
+        return TestResult::fail("hovered quad face should produce two surface overlay triangles");
+    }
+
+    if (!near_color(batches.hovered.vertices.front().color, style.hoveredFaceColor)) {
+        return TestResult::fail("hovered face surface should use the hovered face style");
+    }
+
+    selection.mesh().add_face(quadFace);
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (!batches.hovered.empty() ||
+        batches.selected.triangle_count() != 2u ||
+        result.hoveredFaceCount != 0u ||
+        result.selectedFaceCount != 1u) {
+        return TestResult::fail("selected face should take precedence over hover");
+    }
+
+    if (!near_color(batches.selected.vertices.front().color, style.selectedFaceColor)) {
+        return TestResult::fail("selected face surface should use the selected face style");
+    }
+
+    const editor::SceneNodeId triangleMesh = scene.create_mesh("Triangle");
+    const locus::kernel::geometry::FaceHandle triangleFace =
+        add_triangle(scene.find_mesh(triangleMesh)->mesh());
+    selection.mesh().set_active_mesh(triangleMesh);
+    selection.mesh().clear_components();
+    selection.mesh().add_face(triangleFace);
+
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (batches.selected.triangle_count() != 1u ||
+        result.selectedFaceCount != 1u) {
+        return TestResult::fail("selected triangular face should produce one overlay triangle");
+    }
+
+    const editor::SceneNodeId ngonMesh = scene.create_mesh("Ngon");
+    const locus::kernel::geometry::FaceHandle ngonFace =
+        add_ngon(scene.find_mesh(ngonMesh)->mesh());
+    selection.mesh().set_active_mesh(ngonMesh);
+    selection.mesh().clear_components();
+    selection.mesh().add_face(ngonFace);
+
+    const std::size_t faceCountBefore =
+        locus::kernel::geometry::TopologyTraversal::faces(
+            scene.find_mesh(ngonMesh)->mesh()).size();
+
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    const std::size_t faceCountAfter =
+        locus::kernel::geometry::TopologyTraversal::faces(
+            scene.find_mesh(ngonMesh)->mesh()).size();
+
+    if (batches.selected.triangle_count() != 3u ||
+        faceCountBefore != faceCountAfter) {
+        return TestResult::fail("selected n-gon should triangulate temporarily without altering LEM topology");
+    }
+
+    const editor::SceneNodeId multiMesh = scene.create_mesh("Multi");
+    locus::kernel::geometry::LEM& multi = scene.find_mesh(multiMesh)->mesh();
+    const locus::kernel::geometry::FaceHandle first = add_triangle(multi);
+    const locus::kernel::geometry::FaceHandle second = add_ngon(multi);
+    selection.mesh().set_active_mesh(multiMesh);
+    selection.mesh().clear_components();
+    selection.mesh().add_face(first);
+    selection.mesh().add_face(second);
+
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (batches.selected.triangle_count() != 4u ||
+        result.selectedFaceCount != 2u) {
+        return TestResult::fail("face surface overlay should batch multiple selected faces");
+    }
+
+    selection.mesh().add_face(locus::kernel::geometry::FaceHandle{ 500 });
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (result.invalidHandleCount != 1u ||
+        batches.selected.triangle_count() != 4u) {
+        return TestResult::fail("invalid selected face handles should be diagnosed without emitting triangles");
+    }
+
+    selection.mesh().clear_components();
+    selection.mesh().set_hovered_face(locus::kernel::geometry::FaceHandle{ 501 });
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (!batches.empty() ||
+        result.invalidHandleCount != 1u ||
+        result.hoveredFaceCount != 0u ||
+        result.selectedFaceCount != 0u) {
+        return TestResult::fail("invalid hovered face handles should be diagnosed without emitting stale surfaces");
+    }
+
+    selection.mesh().set_active_mesh(meshId);
+    selection.mesh().clear_components();
+    selection.mesh().set_hovered_face(locus::kernel::geometry::FaceHandle{});
+    selection.mesh().add_face(quadFace);
+
+    const editor::SceneNodeId parent = scene.create_empty("Parent");
+    scene.find_node(parent)->transform().set_position({ 2.0f, 0.0f, 0.0f });
+    scene.find_node(meshId)->transform().set_position({ 0.0f, 3.0f, 0.0f });
+    scene.reparent(meshId, parent);
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+
+    if (batches.selected.empty() ||
+        !near_vec3(batches.selected.vertices.front().position, { 0.0f, 0.0f, 0.0f }) ||
+        !near_mat4_translation(batches.selected.modelMatrix, { 0.0f, 3.0f, 0.0f })) {
+        return TestResult::fail("face surface overlay should keep local vertices and provide the render model transform");
+    }
+
+    selection.set_granularity(editor::SelectionGranularity::Edge);
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        selection,
+        options,
+        &result);
+    if (!batches.empty() || result.has_geometry()) {
+        return TestResult::fail("face surface overlay should not leave stale surfaces outside face granularity");
+    }
+
+    editor::SelectionState noActiveMesh;
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        scene,
+        noActiveMesh,
+        options,
+        &result);
+    if (!batches.empty() || result.has_geometry()) {
+        return TestResult::fail("face surface overlay should return empty batches without an active mesh");
+    }
+
+    editor::EditorScene emptyScene;
+    const editor::SceneNodeId emptyMesh = emptyScene.create_mesh("Empty");
+    editor::SelectionState emptySelection;
+    emptySelection.set_scope(editor::SelectionScope::ActiveMesh);
+    emptySelection.set_granularity(editor::SelectionGranularity::Face);
+    emptySelection.mesh().set_active_mesh(emptyMesh);
+    batches = editor::TopologyOverlayAdapter::build_active_mesh_face_surfaces(
+        emptyScene,
+        emptySelection,
+        options,
+        &result);
+    if (!batches.empty() || result.has_geometry()) {
+        return TestResult::fail("face surface overlay should return empty batches for an empty mesh");
     }
 
     return TestResult::pass();

@@ -25,3 +25,4 @@
 #include "graphics/overlay/renderers/NormalRenderer.h"
 #include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
+#include "graphics/overlay/renderers/SurfaceOverlayRenderer.h"
