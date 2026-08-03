@@ -11,12 +11,18 @@
 
 namespace locus::graphics
 {
+    namespace {
+        constexpr float MinAspectRatio = 0.0001f;
+        constexpr float MinOrthographicHeight = 0.0001f;
+        constexpr float MaxOrthographicHeight = 100000.0f;
+    }
+
     void Projection::set_perspective(float verticalFovRadians, float aspectRatio, float nearPlane, float farPlane)
     {
         type_ = ProjectionType::Perspective;
         verticalFovRadians_ = verticalFovRadians;
         // Avoid degenerate projection matrices when the viewport is minimized.
-        aspectRatio_ = std::max(aspectRatio, 0.0001f);
+        aspectRatio_ = std::max(aspectRatio, MinAspectRatio);
         nearPlane_ = nearPlane;
         farPlane_ = farPlane;
     }
@@ -25,15 +31,18 @@ namespace locus::graphics
     {
         type_ = ProjectionType::Orthographic;
         // Keep the view volume positive so glm::ortho receives valid bounds.
-        orthographicHeight_ = std::max(height, 0.0001f);
-        aspectRatio_ = std::max(aspectRatio, 0.0001f);
+        orthographicHeight_ = std::clamp(
+            height,
+            MinOrthographicHeight,
+            MaxOrthographicHeight);
+        aspectRatio_ = std::max(aspectRatio, MinAspectRatio);
         nearPlane_ = nearPlane;
         farPlane_ = farPlane;
     }
 
     void Projection::set_aspect_ratio(float aspectRatio)
     {
-        aspectRatio_ = std::max(aspectRatio, 0.0001f);
+        aspectRatio_ = std::max(aspectRatio, MinAspectRatio);
     }
 
     ProjectionType Projection::type() const
@@ -64,6 +73,16 @@ namespace locus::graphics
     float Projection::orthographic_height() const
     {
         return orthographicHeight_;
+    }
+
+    float Projection::min_orthographic_height() noexcept
+    {
+        return MinOrthographicHeight;
+    }
+
+    float Projection::max_orthographic_height() noexcept
+    {
+        return MaxOrthographicHeight;
     }
 
     glm::mat4 Projection::matrix() const

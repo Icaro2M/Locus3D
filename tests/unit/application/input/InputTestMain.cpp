@@ -185,6 +185,20 @@ using namespace locus::application;
         return "SetEdgeGranularity";
     case ShortcutAction::SetFaceGranularity:
         return "SetFaceGranularity";
+    case ShortcutAction::ToggleProjection:
+        return "ToggleProjection";
+    case ShortcutAction::FrontView:
+        return "FrontView";
+    case ShortcutAction::BackView:
+        return "BackView";
+    case ShortcutAction::LeftView:
+        return "LeftView";
+    case ShortcutAction::RightView:
+        return "RightView";
+    case ShortcutAction::TopView:
+        return "TopView";
+    case ShortcutAction::BottomView:
+        return "BottomView";
     case ShortcutAction::Undo:
         return "Undo";
     case ShortcutAction::Redo:
@@ -445,6 +459,85 @@ void apply_route(
             viewport.orbit_rig().target() - targetBeforeInvalid) < 0.0001f
         && !router.capture().active()
         && near(viewport.aspect_ratio(), 2.0);
+}
+
+[[nodiscard]] bool test_orthographic_viewport_navigation()
+{
+    EditorViewport viewport{};
+    viewport.resize(1600, 800);
+
+    viewport.orbit_rig().set_distance(6.0f);
+    viewport.viewport().camera().projection().set_perspective(
+        0.78539816339f,
+        viewport.aspect_ratio(),
+        0.01f,
+        1000.0f);
+
+    viewport.set_projection_mode(
+        locus::graphics::ProjectionType::Orthographic);
+
+    if (viewport.projection_mode()
+            != locus::graphics::ProjectionType::Orthographic
+        || viewport.viewport().camera().projection().orthographic_height()
+            <= 0.0f) {
+        return false;
+    }
+
+    const float expectedHeight =
+        2.0f * viewport.orbit_rig().distance()
+        * std::tan(0.78539816339f * 0.5f);
+
+    if (!near(
+            viewport.viewport().camera().projection()
+                .orthographic_height(),
+            expectedHeight)) {
+        return false;
+    }
+
+    const float distanceBeforeZoom =
+        viewport.orbit_rig().distance();
+    const float heightBeforeZoom =
+        viewport.viewport().camera().projection().orthographic_height();
+    viewport.zoom_camera(1.0);
+
+    if (!near(viewport.orbit_rig().distance(), distanceBeforeZoom)
+        || !(viewport.viewport().camera().projection()
+            .orthographic_height() < heightBeforeZoom)) {
+        return false;
+    }
+
+    const glm::vec3 targetBeforePan =
+        viewport.orbit_rig().target();
+    viewport.pan_camera(10.0, -20.0);
+
+    if (glm::length(viewport.orbit_rig().target() - targetBeforePan)
+        <= 0.0001f) {
+        return false;
+    }
+
+    viewport.orbit_camera(8.0, 4.0);
+    if (viewport.projection_mode()
+            != locus::graphics::ProjectionType::Orthographic
+        || viewport.view_orientation() != ViewOrientation::User) {
+        return false;
+    }
+
+    const glm::vec3 pivotBeforeView =
+        viewport.orbit_rig().target();
+    viewport.set_view_orientation(ViewOrientation::Top);
+
+    return viewport.projection_mode()
+            == locus::graphics::ProjectionType::Orthographic
+        && viewport.view_orientation() == ViewOrientation::Top
+        && glm::length(
+            viewport.orbit_rig().target() - pivotBeforeView)
+            <= 0.0001f
+        && glm::dot(
+            viewport.viewport().camera().forward(),
+            glm::vec3{ 0.0f, -1.0f, 0.0f }) > 0.999f
+        && glm::dot(
+            viewport.viewport().camera().up(),
+            glm::vec3{ 0.0f, 0.0f, -1.0f }) > 0.999f;
 }
 
 [[nodiscard]] bool test_editor_capture_and_focus_loss()
@@ -854,6 +947,45 @@ void apply_route(
             context,
             ShortcutAction::SetFaceGranularity,
             "Face granularity shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num5));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ToggleProjection,
+            "Projection toggle shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num1, InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::FrontView,
+            "Front view shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(Key::Num5, InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::TopView,
+            "Top view shortcut")) {
         return false;
     }
 
@@ -1449,6 +1581,8 @@ int main()
         { "InputState", &test_input_state },
         { "CameraRoutingAndCapture", &test_camera_routing_and_capture },
         { "PanZoomAndInvalidGestures", &test_pan_zoom_and_invalid_gestures },
+        { "OrthographicViewportNavigation",
+            &test_orthographic_viewport_navigation },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
         { "ShortcutResolution", &test_shortcut_resolution },
         { "MeshToolRegistrationAndActivation",

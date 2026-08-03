@@ -253,7 +253,9 @@ namespace locus::application {
             event.pointer.viewDirection = camera.forward();
             event.pointer.viewRight = camera.right();
             event.pointer.viewUp = camera.up();
-            event.pointer.visualScale = 1.0f;
+            event.pointer.visualScale =
+                viewport.visual_scale_at(
+                    viewport.orbit_rig().target());
 
             // Picking stores local framebuffer Y in OpenGL bottom-left space,
             // while CameraRayBuilder expects window-style top-down pixels.
@@ -517,7 +519,8 @@ namespace locus::application {
 
         [[nodiscard]] ApplicationResult<void> execute_shortcut_action(
             ShortcutAction action,
-            DocumentSession& document)
+            DocumentSession& document,
+            EditorViewport& viewport)
         {
             const ApplicationResult<bool> meshToolActivation =
                 MeshToolActivationController{}
@@ -599,6 +602,34 @@ namespace locus::application {
                 return set_selection_granularity(
                     document,
                     editor::SelectionGranularity::Face);
+
+            case ShortcutAction::ToggleProjection:
+                viewport.toggle_projection_mode();
+                return {};
+
+            case ShortcutAction::FrontView:
+                viewport.set_view_orientation(ViewOrientation::Front);
+                return {};
+
+            case ShortcutAction::BackView:
+                viewport.set_view_orientation(ViewOrientation::Back);
+                return {};
+
+            case ShortcutAction::LeftView:
+                viewport.set_view_orientation(ViewOrientation::Left);
+                return {};
+
+            case ShortcutAction::RightView:
+                viewport.set_view_orientation(ViewOrientation::Right);
+                return {};
+
+            case ShortcutAction::TopView:
+                viewport.set_view_orientation(ViewOrientation::Top);
+                return {};
+
+            case ShortcutAction::BottomView:
+                viewport.set_view_orientation(ViewOrientation::Bottom);
+                return {};
 
             case ShortcutAction::ActivateTranslateTool:
                 return activate_transform_tool(
@@ -907,7 +938,10 @@ namespace locus::application {
                 shortcutContext);
 
         ApplicationResult<void> shortcutResult =
-            execute_shortcut_action(shortcutAction, *activeDocument);
+            execute_shortcut_action(
+                shortcutAction,
+                *activeDocument,
+                editorViewport_);
 
         if (!shortcutResult) {
             inputState_.end_frame();

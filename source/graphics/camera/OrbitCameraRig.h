@@ -8,6 +8,7 @@
 #include "graphics/camera/Camera.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace locus::graphics
 {
@@ -20,7 +21,7 @@ namespace locus::graphics
         /**
          * @brief Creates a rig centered on the world origin.
          */
-        OrbitCameraRig() = default;
+        OrbitCameraRig();
 
         /**
          * @brief Destroys the rig state.
@@ -48,6 +49,21 @@ namespace locus::graphics
          * @param pitchRadians Vertical orbit angle in radians.
          */
         void set_angles(float yawRadians, float pitchRadians);
+
+        /**
+         * @brief Sets the exact camera orientation used by the rig.
+         *
+         * @param orientation World-space camera orientation.
+         */
+        void set_orientation(const glm::quat& orientation);
+
+        /**
+         * @brief Points the camera along a direction with a stable up vector.
+         *
+         * @param forward Desired world-space view direction.
+         * @param up Preferred world-space up direction.
+         */
+        void look(const glm::vec3& forward, const glm::vec3& up);
 
         /**
          * @brief Rotates the rig around its target.
@@ -107,8 +123,19 @@ namespace locus::graphics
          */
         [[nodiscard]] float pitch_radians() const;
 
+        /**
+         * @brief Returns the current camera orientation.
+         *
+         * @return World-space camera orientation.
+         */
+        [[nodiscard]] const glm::quat& orientation() const;
+
     private:
+        void update_orientation_from_angles();
+        void update_angles_from_orientation();
+
         glm::vec3 target_{ 0.0f, 0.0f, 0.0f };
+        glm::quat orientation_{ 1.0f, 0.0f, 0.0f, 0.0f };
         float distance_ = 5.0f;
         float yawRadians_ = 0.0f;
         float pitchRadians_ = 0.35f;

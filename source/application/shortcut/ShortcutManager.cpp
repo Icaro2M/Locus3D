@@ -65,6 +65,13 @@ namespace locus::application {
             case ShortcutAction::SetVertexGranularity:
             case ShortcutAction::SetEdgeGranularity:
             case ShortcutAction::SetFaceGranularity:
+            case ShortcutAction::ToggleProjection:
+            case ShortcutAction::FrontView:
+            case ShortcutAction::BackView:
+            case ShortcutAction::LeftView:
+            case ShortcutAction::RightView:
+            case ShortcutAction::TopView:
+            case ShortcutAction::BottomView:
                 return !context.modalActive;
 
             case ShortcutAction::ActivateTranslateTool:
@@ -118,10 +125,17 @@ namespace locus::application {
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateLoopCutTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
             { Key::T, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateUniversalTool },
-            { Key::Num1, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetObjectGranularity },
-            { Key::Num2, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetVertexGranularity },
-            { Key::Num3, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetEdgeGranularity },
-            { Key::Num4, InputModifiers::None, InputModifiers::Control, ShortcutAction::SetFaceGranularity },
+            { Key::Num1, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetObjectGranularity },
+            { Key::Num2, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetVertexGranularity },
+            { Key::Num3, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetEdgeGranularity },
+            { Key::Num4, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetFaceGranularity },
+            { Key::Num5, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::ToggleProjection },
+            { Key::Num1, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::FrontView },
+            { Key::Num2, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::BackView },
+            { Key::Num3, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::LeftView },
+            { Key::Num4, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::RightView },
+            { Key::Num5, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::TopView },
+            { Key::Num6, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::BottomView },
             { Key::Z, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Undo },
             { Key::Z, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::Redo },
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },

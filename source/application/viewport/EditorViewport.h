@@ -32,6 +32,19 @@
 
 namespace locus::application {
 
+    /**
+     * @brief Canonical orientation state for the primary editor viewport.
+     */
+    enum class ViewOrientation {
+        User,
+        Front,
+        Back,
+        Left,
+        Right,
+        Top,
+        Bottom
+    };
+
     class DocumentSession;
 
     /**
@@ -156,6 +169,57 @@ namespace locus::application {
         void zoom_camera(double scrollDelta);
 
         /**
+         * @brief Toggles between perspective and orthographic projection.
+         */
+        void toggle_projection_mode();
+
+        /**
+         * @brief Sets the viewport projection mode while preserving framing.
+         *
+         * @param mode Requested projection mode.
+         */
+        void set_projection_mode(graphics::ProjectionType mode);
+
+        /**
+         * @brief Aligns the camera to a canonical orthographic view.
+         *
+         * @param orientation Canonical orientation to apply.
+         */
+        void set_view_orientation(ViewOrientation orientation);
+
+        /**
+         * @brief Returns the active projection mode.
+         *
+         * @return Current projection mode.
+         */
+        [[nodiscard]] graphics::ProjectionType projection_mode() const noexcept;
+
+        /**
+         * @brief Returns the current orientation tag.
+         *
+         * @return Current view orientation.
+         */
+        [[nodiscard]] ViewOrientation view_orientation() const noexcept;
+
+        /**
+         * @brief Returns world units represented by one screen pixel at a point.
+         *
+         * @param worldPoint Reference point in world space.
+         * @return World units per framebuffer pixel.
+         */
+        [[nodiscard]] float world_units_per_pixel_at(
+            const glm::vec3& worldPoint) const noexcept;
+
+        /**
+         * @brief Returns a stable world-space viewport helper scale at a point.
+         *
+         * @param worldPoint Reference point in world space.
+         * @return World-space scale for constant-pixel helpers.
+         */
+        [[nodiscard]] float visual_scale_at(
+            const glm::vec3& worldPoint) const noexcept;
+
+        /**
          * @brief Synchronizes and renders one document into this viewport.
          *
          * @param document Document temporarily presented by the viewport.
@@ -245,6 +309,9 @@ namespace locus::application {
         void set_hover(
             DocumentSession& document,
             editor::SceneNodeId nodeId);
+        void apply_orbit_rig_to_camera();
+        void preserve_framing_for_projection(
+            graphics::ProjectionType mode);
 
         graphics::ShaderManager shaderManager_{};
         graphics::MeshUploader meshUploader_{};
@@ -270,6 +337,7 @@ namespace locus::application {
         std::int32_t framebufferHeight_ = 0;
         std::int32_t lastPickingX_ = -1;
         std::int32_t lastPickingY_ = -1;
+        ViewOrientation viewOrientation_ = ViewOrientation::User;
         bool pickingPassDirty_ = true;
         bool pickingQueryValid_ = false;
         bool initialized_ = false;

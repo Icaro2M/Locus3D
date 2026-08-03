@@ -111,6 +111,20 @@ namespace locus::graphics
         [[nodiscard]] float orthographic_height() const;
 
         /**
+         * @brief Returns the minimum accepted orthographic height.
+         *
+         * @return Minimum positive height in world units.
+         */
+        [[nodiscard]] static float min_orthographic_height() noexcept;
+
+        /**
+         * @brief Returns the maximum accepted orthographic height.
+         *
+         * @return Maximum height in world units.
+         */
+        [[nodiscard]] static float max_orthographic_height() noexcept;
+
+        /**
          * @brief Builds the projection matrix for the active mode.
          *
          * @return View-to-clip projection matrix.

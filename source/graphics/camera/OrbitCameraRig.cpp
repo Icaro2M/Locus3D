@@ -12,6 +12,67 @@
 
 namespace locus::graphics
 {
+    namespace {
+        constexpr float MinPitchRadians = -1.5f;
+        constexpr float MaxPitchRadians = 1.5f;
+        constexpr float DirectionEpsilon = 0.000001f;
+
+        [[nodiscard]] glm::vec3 safe_normalize(
+            const glm::vec3& value,
+            const glm::vec3& fallback)
+        {
+            const float length = glm::length(value);
+            if (length <= DirectionEpsilon) {
+                return fallback;
+            }
+
+            return value / length;
+        }
+
+        [[nodiscard]] glm::quat orientation_from_forward_up(
+            const glm::vec3& forward,
+            const glm::vec3& up)
+        {
+            const glm::vec3 safeForward =
+                safe_normalize(forward, { 0.0f, 0.0f, -1.0f });
+            glm::vec3 safeUp =
+                safe_normalize(up, { 0.0f, 1.0f, 0.0f });
+
+            if (std::abs(glm::dot(safeForward, safeUp)) > 0.999f) {
+                safeUp = std::abs(safeForward.y) < 0.999f
+                    ? glm::vec3{ 0.0f, 1.0f, 0.0f }
+                    : glm::vec3{ 0.0f, 0.0f, 1.0f };
+            }
+
+            return glm::normalize(glm::quatLookAt(safeForward, safeUp));
+        }
+
+        [[nodiscard]] glm::quat orientation_from_angles(
+            float yawRadians,
+            float pitchRadians)
+        {
+            const float cosPitch = std::cos(pitchRadians);
+            const float sinPitch = std::sin(pitchRadians);
+            const float cosYaw = std::cos(yawRadians);
+            const float sinYaw = std::sin(yawRadians);
+
+            const glm::vec3 offset{
+                cosPitch * sinYaw,
+                sinPitch,
+                cosPitch * cosYaw
+            };
+
+            return orientation_from_forward_up(
+                -safe_normalize(offset, { 0.0f, 0.0f, 1.0f }),
+                { 0.0f, 1.0f, 0.0f });
+        }
+    }
+
+    OrbitCameraRig::OrbitCameraRig()
+    {
+        update_orientation_from_angles();
+    }
+
     void OrbitCameraRig::set_target(const glm::vec3& target)
     {
         target_ = target;
@@ -27,34 +88,33 @@ namespace locus::graphics
     {
         yawRadians_ = yawRadians;
         // Keep pitch away from the poles to avoid unstable orbit controls.
-        pitchRadians_ = std::clamp(pitchRadians, -1.5f, 1.5f);
+        pitchRadians_ = std::clamp(pitchRadians, MinPitchRadians, MaxPitchRadians);
+        update_orientation_from_angles();
+    }
+
+    void OrbitCameraRig::set_orientation(const glm::quat& orientation)
+    {
+        orientation_ = glm::normalize(orientation);
+        update_angles_from_orientation();
+    }
+
+    void OrbitCameraRig::look(const glm::vec3& forward, const glm::vec3& up)
+    {
+        set_orientation(orientation_from_forward_up(forward, up));
     }
 
     void OrbitCameraRig::orbit(float deltaYawRadians, float deltaPitchRadians)
     {
-        yawRadians_ += deltaYawRadians;
-        pitchRadians_ = std::clamp(pitchRadians_ + deltaPitchRadians, -1.5f, 1.5f);
+        set_angles(
+            yawRadians_ + deltaYawRadians,
+            pitchRadians_ + deltaPitchRadians);
     }
 
     void OrbitCameraRig::pan(float deltaRight, float deltaUp)
     {
-        const float cosPitch = std::cos(pitchRadians_);
-        const float sinPitch = std::sin(pitchRadians_);
-        const float cosYaw = std::cos(yawRadians_);
-        const float sinYaw = std::sin(yawRadians_);
-
-        const glm::vec3 position{
-            target_.x + distance_ * cosPitch * sinYaw,
-            target_.y + distance_ * sinPitch,
-            target_.z + distance_ * cosPitch * cosYaw
-        };
-
-        const glm::mat4 view = glm::lookAt(position, target_, glm::vec3{ 0.0f, 1.0f, 0.0f });
-        const glm::mat4 inverseView = glm::inverse(view);
-
         // Pan in camera space so dragging feels consistent at any orbit angle.
-        const glm::vec3 right = glm::normalize(glm::vec3{ inverseView[0] });
-        const glm::vec3 up = glm::normalize(glm::vec3{ inverseView[1] });
+        const glm::vec3 right = orientation_ * glm::vec3{ 1.0f, 0.0f, 0.0f };
+        const glm::vec3 up = orientation_ * glm::vec3{ 0.0f, 1.0f, 0.0f };
 
         target_ += right * deltaRight;
         target_ += up * deltaUp;
@@ -67,18 +127,12 @@ namespace locus::graphics
 
     void OrbitCameraRig::apply(Camera& camera) const
     {
-        const float cosPitch = std::cos(pitchRadians_);
-        const float sinPitch = std::sin(pitchRadians_);
-        const float cosYaw = std::cos(yawRadians_);
-        const float sinYaw = std::sin(yawRadians_);
+        const glm::vec3 forward =
+            orientation_ * glm::vec3{ 0.0f, 0.0f, -1.0f };
+        const glm::vec3 position = target_ - forward * distance_;
 
-        const glm::vec3 position{
-            target_.x + distance_ * cosPitch * sinYaw,
-            target_.y + distance_ * sinPitch,
-            target_.z + distance_ * cosPitch * cosYaw
-        };
-
-        camera.look_at(position, target_, glm::vec3{ 0.0f, 1.0f, 0.0f });
+        camera.set_position(position);
+        camera.set_rotation(orientation_);
     }
 
     const glm::vec3& OrbitCameraRig::target() const
@@ -99,5 +153,28 @@ namespace locus::graphics
     float OrbitCameraRig::pitch_radians() const
     {
         return pitchRadians_;
+    }
+
+    const glm::quat& OrbitCameraRig::orientation() const
+    {
+        return orientation_;
+    }
+
+    void OrbitCameraRig::update_orientation_from_angles()
+    {
+        orientation_ = orientation_from_angles(
+            yawRadians_,
+            pitchRadians_);
+    }
+
+    void OrbitCameraRig::update_angles_from_orientation()
+    {
+        const glm::vec3 forward =
+            orientation_ * glm::vec3{ 0.0f, 0.0f, -1.0f };
+        const glm::vec3 offset =
+            -safe_normalize(forward, { 0.0f, 0.0f, 1.0f });
+
+        yawRadians_ = std::atan2(offset.x, offset.z);
+        pitchRadians_ = std::asin(std::clamp(offset.y, -1.0f, 1.0f));
     }
 }

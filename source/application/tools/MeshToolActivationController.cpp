@@ -457,6 +457,13 @@ namespace locus::application {
         case ShortcutAction::SetVertexGranularity:
         case ShortcutAction::SetEdgeGranularity:
         case ShortcutAction::SetFaceGranularity:
+        case ShortcutAction::ToggleProjection:
+        case ShortcutAction::FrontView:
+        case ShortcutAction::BackView:
+        case ShortcutAction::LeftView:
+        case ShortcutAction::RightView:
+        case ShortcutAction::TopView:
+        case ShortcutAction::BottomView:
         case ShortcutAction::Undo:
         case ShortcutAction::Redo:
         case ShortcutAction::Save:

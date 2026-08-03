@@ -196,6 +196,28 @@ set_tests_properties(graphics.unit.primitives PROPERTIES
     LABELS "unit;graphics;primitives"
 )
 
+add_executable(Locus3DGraphicsCameraTests
+    unit/graphics/camera/CameraTestMain.cpp
+    unit/graphics/camera/CameraTests.cpp
+)
+
+target_include_directories(Locus3DGraphicsCameraTests
+    PRIVATE
+        ${LOCUS3D_SOURCE_DIR}
+        ${LOCUS3D_TESTS_DIR}
+        ${LOCUS3D_TESTS_DIR}/common
+)
+
+target_link_libraries(Locus3DGraphicsCameraTests
+    PRIVATE
+        Locus3D::Graphics
+)
+
+add_test(NAME graphics.unit.camera COMMAND Locus3DGraphicsCameraTests)
+set_tests_properties(graphics.unit.camera PROPERTIES
+    LABELS "unit;graphics;camera"
+)
+
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
     unit/editor/scene/EditorSceneTests.cpp

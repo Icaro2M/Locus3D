@@ -40,6 +40,86 @@ namespace locus::application {
 
     namespace {
 
+        constexpr float OrbitRadiansPerPixel = 0.005f;
+        constexpr float PerspectivePanDistancePerPixel = 0.0015f;
+        constexpr float ZoomDistanceRatio = 0.1f;
+        constexpr float MinimumZoomStep = 0.05f;
+        constexpr float MinPerspectiveFovRadians = 0.001f;
+        constexpr float MinFramingDistance = 0.05f;
+        constexpr float VisualScalePixels = 96.0f;
+
+        [[nodiscard]] float safe_fov(float fov) noexcept
+        {
+            return std::max(fov, MinPerspectiveFovRadians);
+        }
+
+        [[nodiscard]] float orthographic_height_for_distance(
+            float distance,
+            float fovRadians) noexcept
+        {
+            return std::clamp(
+                2.0f * std::max(distance, MinFramingDistance)
+                    * std::tan(safe_fov(fovRadians) * 0.5f),
+                graphics::Projection::min_orthographic_height(),
+                graphics::Projection::max_orthographic_height());
+        }
+
+        [[nodiscard]] float perspective_distance_for_height(
+            float height,
+            float fovRadians) noexcept
+        {
+            const float tangent = std::tan(safe_fov(fovRadians) * 0.5f);
+            if (tangent <= 0.000001f) {
+                return MinFramingDistance;
+            }
+
+            return std::max(
+                height / (2.0f * tangent),
+                MinFramingDistance);
+        }
+
+        [[nodiscard]] glm::vec3 canonical_forward(
+            ViewOrientation orientation) noexcept
+        {
+            switch (orientation) {
+            case ViewOrientation::Front:
+                return { 0.0f, 0.0f, -1.0f };
+            case ViewOrientation::Back:
+                return { 0.0f, 0.0f, 1.0f };
+            case ViewOrientation::Left:
+                return { -1.0f, 0.0f, 0.0f };
+            case ViewOrientation::Right:
+                return { 1.0f, 0.0f, 0.0f };
+            case ViewOrientation::Top:
+                return { 0.0f, -1.0f, 0.0f };
+            case ViewOrientation::Bottom:
+                return { 0.0f, 1.0f, 0.0f };
+            case ViewOrientation::User:
+                break;
+            }
+
+            return { 0.0f, 0.0f, -1.0f };
+        }
+
+        [[nodiscard]] glm::vec3 canonical_up(
+            ViewOrientation orientation) noexcept
+        {
+            switch (orientation) {
+            case ViewOrientation::Top:
+                return { 0.0f, 0.0f, -1.0f };
+            case ViewOrientation::Bottom:
+                return { 0.0f, 0.0f, 1.0f };
+            case ViewOrientation::User:
+            case ViewOrientation::Front:
+            case ViewOrientation::Back:
+            case ViewOrientation::Left:
+            case ViewOrientation::Right:
+                return { 0.0f, 1.0f, 0.0f };
+            }
+
+            return { 0.0f, 1.0f, 0.0f };
+        }
+
         [[nodiscard]] ApplicationResult<void> graphics_failure(
             ApplicationErrorCode code,
             const char* operation,
@@ -434,7 +514,7 @@ namespace locus::application {
         }
 
         viewport_.resize(framebufferWidth, framebufferHeight);
-        orbitRig_.apply(viewport_.camera());
+        apply_orbit_rig_to_camera();
 
         shaderManager_.set_shader_root(resolve_shader_root(shaderRoot));
         append_startup_log("EditorViewport: shader root resolved");
@@ -767,10 +847,11 @@ namespace locus::application {
             return;
         }
 
-        constexpr float OrbitRadiansPerPixel = 0.005f;
         orbitRig_.orbit(
             static_cast<float>(-deltaX) * OrbitRadiansPerPixel,
             static_cast<float>(-deltaY) * OrbitRadiansPerPixel);
+        viewOrientation_ = ViewOrientation::User;
+        apply_orbit_rig_to_camera();
         invalidate_picking();
     }
 
@@ -780,13 +861,18 @@ namespace locus::application {
             return;
         }
 
-        constexpr float PanDistancePerPixel = 0.0015f;
         const float scale =
-            orbitRig_.distance() * PanDistancePerPixel;
+            viewport_.camera().projection().type()
+                == graphics::ProjectionType::Orthographic
+            ? viewport_.camera().projection().orthographic_height()
+                / static_cast<float>(
+                    std::max(viewport_.state().rect.height, 1))
+            : orbitRig_.distance() * PerspectivePanDistancePerPixel;
 
         orbitRig_.pan(
             static_cast<float>(-deltaX) * scale,
             static_cast<float>(deltaY) * scale);
+        apply_orbit_rig_to_camera();
         invalidate_picking();
     }
 
@@ -796,15 +882,108 @@ namespace locus::application {
             return;
         }
 
-        constexpr float ZoomDistanceRatio = 0.1f;
-        constexpr float MinimumZoomStep = 0.05f;
+        graphics::Projection& projection =
+            viewport_.camera().projection();
+
+        if (projection.type() == graphics::ProjectionType::Orthographic) {
+            const float zoomFactor = std::pow(
+                0.90f,
+                static_cast<float>(scrollDelta));
+            projection.set_orthographic(
+                projection.orthographic_height() * zoomFactor,
+                projection.aspect_ratio(),
+                projection.near_plane(),
+                projection.far_plane());
+            invalidate_picking();
+            return;
+        }
+
         const float step = std::max(
             orbitRig_.distance() * ZoomDistanceRatio,
             MinimumZoomStep);
 
         orbitRig_.zoom(
             static_cast<float>(-scrollDelta) * step);
+        apply_orbit_rig_to_camera();
         invalidate_picking();
+    }
+
+    void EditorViewport::toggle_projection_mode()
+    {
+        set_projection_mode(
+            viewport_.camera().projection().type()
+                == graphics::ProjectionType::Perspective
+            ? graphics::ProjectionType::Orthographic
+            : graphics::ProjectionType::Perspective);
+    }
+
+    void EditorViewport::set_projection_mode(
+        graphics::ProjectionType mode)
+    {
+        if (viewport_.camera().projection().type() == mode) {
+            return;
+        }
+
+        preserve_framing_for_projection(mode);
+        apply_orbit_rig_to_camera();
+        invalidate_picking();
+    }
+
+    void EditorViewport::set_view_orientation(
+        ViewOrientation orientation)
+    {
+        if (orientation == ViewOrientation::User) {
+            viewOrientation_ = ViewOrientation::User;
+            return;
+        }
+
+        orbitRig_.look(
+            canonical_forward(orientation),
+            canonical_up(orientation));
+        viewOrientation_ = orientation;
+        set_projection_mode(graphics::ProjectionType::Orthographic);
+        apply_orbit_rig_to_camera();
+        invalidate_picking();
+    }
+
+    graphics::ProjectionType
+    EditorViewport::projection_mode() const noexcept
+    {
+        return viewport_.camera().projection().type();
+    }
+
+    ViewOrientation EditorViewport::view_orientation() const noexcept
+    {
+        return viewOrientation_;
+    }
+
+    float EditorViewport::world_units_per_pixel_at(
+        const glm::vec3& worldPoint) const noexcept
+    {
+        const graphics::Camera& camera = viewport_.camera();
+        const std::int32_t viewportHeight =
+            std::max(viewport_.state().rect.height, 1);
+
+        if (camera.projection().type()
+            == graphics::ProjectionType::Orthographic) {
+            return camera.projection().orthographic_height()
+                / static_cast<float>(viewportHeight);
+        }
+
+        const float distance =
+            std::max(
+                glm::dot(worldPoint - camera.position(), camera.forward()),
+                MinFramingDistance);
+        return orthographic_height_for_distance(
+            distance,
+            camera.projection().vertical_fov_radians())
+            / static_cast<float>(viewportHeight);
+    }
+
+    float EditorViewport::visual_scale_at(
+        const glm::vec3& worldPoint) const noexcept
+    {
+        return world_units_per_pixel_at(worldPoint) * VisualScalePixels;
     }
 
     ApplicationResult<void> EditorViewport::render(
@@ -868,7 +1047,7 @@ namespace locus::application {
             invalidate_picking();
         }
 
-        orbitRig_.apply(viewport_.camera());
+        apply_orbit_rig_to_camera();
         gridRenderer_.update(viewport_.camera());
         viewport_.begin_frame();
 
@@ -1337,6 +1516,39 @@ namespace locus::application {
     float EditorViewport::aspect_ratio() const noexcept
     {
         return viewport_.state().aspectRatio;
+    }
+
+    void EditorViewport::apply_orbit_rig_to_camera()
+    {
+        orbitRig_.apply(viewport_.camera());
+    }
+
+    void EditorViewport::preserve_framing_for_projection(
+        graphics::ProjectionType mode)
+    {
+        graphics::Projection& projection =
+            viewport_.camera().projection();
+
+        if (mode == graphics::ProjectionType::Orthographic) {
+            projection.set_orthographic(
+                orthographic_height_for_distance(
+                    orbitRig_.distance(),
+                    projection.vertical_fov_radians()),
+                projection.aspect_ratio(),
+                projection.near_plane(),
+                projection.far_plane());
+            return;
+        }
+
+        orbitRig_.set_distance(
+            perspective_distance_for_height(
+                projection.orthographic_height(),
+                projection.vertical_fov_radians()));
+        projection.set_perspective(
+            projection.vertical_fov_radians(),
+            projection.aspect_ratio(),
+            projection.near_plane(),
+            projection.far_plane());
     }
 
     ApplicationResult<void> EditorViewport::ensure_picking_buffer()
