@@ -438,6 +438,56 @@ namespace locus::editor {
             }
         }
 
+        void append_mesh_lines(
+            graphics::ScreenSpaceLineBatch& batch,
+            const LEM& mesh,
+            SceneNodeId nodeId,
+            const glm::mat4& world,
+            const SelectionState& selection,
+            const TopologyOverlayOptions& options,
+            TopologyOverlayResult* result)
+        {
+            const std::vector<EdgeHandle> edges = TopologyTraversal::edges(mesh);
+
+            batch.lines.reserve(batch.lines.size() + edges.size());
+
+            if (result != nullptr) {
+                result->visitedEdgeCount += edges.size();
+            }
+
+            count_invalid_selected_edges(mesh, selection, nodeId, result);
+
+            for (const EdgeHandle handle : edges) {
+                if (should_skip_edge(mesh, handle, options.skipHiddenComponents)) {
+                    continue;
+                }
+
+                const Edge& edge = mesh.edge(handle);
+                if (!mesh.is_valid(edge.vertexA) || !mesh.is_valid(edge.vertexB)) {
+                    if (result != nullptr) {
+                        ++result->invalidHandleCount;
+                    }
+                    continue;
+                }
+
+                const Vertex& vertexA = mesh.vertex(edge.vertexA);
+                const Vertex& vertexB = mesh.vertex(edge.vertexB);
+                const EdgeVisualState state = edge_visual_state(
+                    handle,
+                    selection,
+                    nodeId);
+
+                batch.lines.push_back(
+                    make_line(
+                        transform_point(world, vertexA.position),
+                        transform_point(world, vertexB.position),
+                        state,
+                        options.style));
+
+                count_state(state, result);
+            }
+        }
+
     } // namespace
 
     graphics::ScreenSpaceLineBatch TopologyOverlayAdapter::build_active_mesh_lines(
@@ -484,50 +534,62 @@ namespace locus::editor {
             return batch;
         }
 
-        const std::vector<EdgeHandle> edges = TopologyTraversal::edges(mesh);
         const glm::mat4 world = node_world_matrix(scene, activeMesh);
-        batch.lines.reserve(edges.size());
-
-        if (result != nullptr) {
-            result->visitedEdgeCount = edges.size();
-        }
-
-        count_invalid_selected_edges(mesh, selection, activeMesh, result);
-
-        for (const EdgeHandle handle : edges) {
-            if (should_skip_edge(mesh, handle, options.skipHiddenComponents)) {
-                continue;
-            }
-
-            const Edge& edge = mesh.edge(handle);
-            if (!mesh.is_valid(edge.vertexA) || !mesh.is_valid(edge.vertexB)) {
-                if (result != nullptr) {
-                    ++result->invalidHandleCount;
-                }
-                continue;
-            }
-
-            const Vertex& vertexA = mesh.vertex(edge.vertexA);
-            const Vertex& vertexB = mesh.vertex(edge.vertexB);
-            const EdgeVisualState state = edge_visual_state(
-                handle,
-                selection,
-                activeMesh);
-
-            batch.lines.push_back(
-                make_line(
-                    transform_point(world, vertexA.position),
-                    transform_point(world, vertexB.position),
-                    state,
-                    options.style));
-
-            count_state(state, result);
-        }
+        append_mesh_lines(
+            batch,
+            mesh,
+            activeMesh,
+            world,
+            selection,
+            options,
+            result);
 
         if (result != nullptr) {
             result->message = result->has_geometry()
                 ? "Topology overlay lines built successfully."
                 : "Active mesh produced no drawable topology overlay lines.";
+        }
+
+        return batch;
+    }
+
+    graphics::ScreenSpaceLineBatch TopologyOverlayAdapter::build_visible_mesh_lines(
+        const EditorScene& scene,
+        const SelectionState& selection,
+        const TopologyOverlayOptions& options,
+        TopologyOverlayResult* result)
+    {
+        if (result != nullptr) {
+            *result = {};
+        }
+
+        graphics::ScreenSpaceLineBatch batch{};
+
+        for (const SceneNodeId nodeId : scene.tree().node_ids()) {
+            const MeshNode* meshNode = scene.find_mesh(nodeId);
+            if (meshNode == nullptr || !meshNode->is_visible()) {
+                continue;
+            }
+
+            const LEM& mesh = meshNode->mesh();
+            if (mesh.empty()) {
+                continue;
+            }
+
+            append_mesh_lines(
+                batch,
+                mesh,
+                nodeId,
+                node_world_matrix(scene, nodeId),
+                selection,
+                options,
+                result);
+        }
+
+        if (result != nullptr) {
+            result->message = result->has_geometry()
+                ? "Visible mesh topology lines built successfully."
+                : "Scene produced no drawable visible mesh topology lines.";
         }
 
         return batch;

@@ -113,6 +113,21 @@ namespace locus::editor {
             TopologyOverlayResult* result = nullptr);
 
         /**
+         * @brief Builds a world-space line batch for every visible editable mesh.
+         *
+         * @param scene Editor scene containing mesh nodes.
+         * @param selection Editor selection and hover state.
+         * @param options Overlay conversion options.
+         * @param result Optional diagnostic output.
+         * @return Generic graphics line batch.
+         */
+        [[nodiscard]] static graphics::ScreenSpaceLineBatch build_visible_mesh_lines(
+            const EditorScene& scene,
+            const SelectionState& selection,
+            const TopologyOverlayOptions& options = {},
+            TopologyOverlayResult* result = nullptr);
+
+        /**
          * @brief Builds a world-space point marker batch for the active editable mesh.
          *
          * @param scene Editor scene containing the active mesh node.

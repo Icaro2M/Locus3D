@@ -85,6 +85,18 @@ namespace locus::graphics
             const ViewportRect& viewport) const;
 
         /**
+         * @brief Draws the uploaded lines with a per-pass depth function.
+         *
+         * @param viewProjection World-to-clip matrix.
+         * @param viewport Viewport rectangle in framebuffer pixels.
+         * @param depthFunc Depth comparison used by this draw.
+         */
+        void render(
+            const glm::mat4& viewProjection,
+            const ViewportRect& viewport,
+            DepthFunc depthFunc) const;
+
+        /**
          * @brief Checks whether the renderer has all GPU resources.
          *
          * @return True when ready to draw.

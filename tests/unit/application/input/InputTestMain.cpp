@@ -9,6 +9,7 @@
 #include "application/shortcut/ShortcutManager.h"
 #include "application/tools/MeshToolActivationController.h"
 #include "application/viewport/EditorViewport.h"
+#include "graphics/renderer/Renderer.h"
 #include "editor/actions/mesh/edge/RegisterEdgeActions.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
@@ -199,6 +200,8 @@ using namespace locus::application;
         return "TopView";
     case ShortcutAction::BottomView:
         return "BottomView";
+    case ShortcutAction::ToggleViewportShading:
+        return "ToggleViewportShading";
     case ShortcutAction::Undo:
         return "Undo";
     case ShortcutAction::Redo:
@@ -583,6 +586,77 @@ void apply_route(
         && !state.button_down(MouseButton::Left)
         && focusRoute.captureEnded
         && !router.capture().active();
+}
+
+[[nodiscard]] bool test_viewport_shading_state()
+{
+    EditorViewport viewport{};
+
+    if (viewport.shading_mode() != ViewportShadingMode::Solid) {
+        std::cerr << "Viewport shading should default to Solid\n";
+        return false;
+    }
+
+    viewport.set_shading_mode(ViewportShadingMode::Wireframe);
+    if (viewport.shading_mode() != ViewportShadingMode::Wireframe) {
+        std::cerr << "Viewport should accept Wireframe shading\n";
+        return false;
+    }
+
+    viewport.toggle_shading_mode();
+    if (viewport.shading_mode() != ViewportShadingMode::Solid) {
+        std::cerr << "Wireframe should toggle back to Solid\n";
+        return false;
+    }
+
+    viewport.toggle_shading_mode();
+    if (viewport.shading_mode() != ViewportShadingMode::Wireframe) {
+        std::cerr << "Solid should toggle to Wireframe\n";
+        return false;
+    }
+
+    const ViewportShadingFrameConfig solid =
+        viewport_shading_frame_config(ViewportShadingMode::Solid);
+    const ViewportShadingFrameConfig wireframe =
+        viewport_shading_frame_config(ViewportShadingMode::Wireframe);
+
+    if (!solid.surfaceColorPass ||
+        solid.surfaceDepthPrepass ||
+        !solid.topologyVisibleEdges ||
+        solid.topologyOccludedEdges ||
+        !solid.topologySurfaceOverlays) {
+        std::cerr << "Solid shading frame config regressed\n";
+        return false;
+    }
+
+    if (wireframe.surfaceColorPass ||
+        !wireframe.surfaceDepthPrepass ||
+        !wireframe.topologyVisibleEdges ||
+        wireframe.topologyOccludedEdges ||
+        wireframe.topologySurfaceOverlays) {
+        std::cerr
+            << "Wireframe shading frame config should use depth and visible topology edges without face fill\n";
+        return false;
+    }
+
+    const locus::graphics::RendererSurfaceState depthOnly =
+        locus::graphics::Renderer::depth_only_surface_state();
+
+    const locus::graphics::RendererSurfaceState foreground =
+        locus::graphics::Renderer::foreground_overlay_state();
+
+    return depthOnly.depthTest &&
+        depthOnly.depthWrite &&
+        depthOnly.depthFunc == locus::graphics::DepthFunc::Less &&
+        !depthOnly.colorWrite &&
+        !depthOnly.blend &&
+        !depthOnly.cullFace &&
+        depthOnly.polygonMode == locus::graphics::RenderPolygonMode::Fill &&
+        !foreground.depthTest &&
+        !foreground.depthWrite &&
+        foreground.colorWrite &&
+        !foreground.blend &&
+        foreground.polygonMode == locus::graphics::RenderPolygonMode::Fill;
 }
 
 [[nodiscard]] bool test_shortcut_resolution()
@@ -986,6 +1060,21 @@ void apply_route(
             context,
             ShortcutAction::TopView,
             "Top view shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(
+        Key::W,
+        InputModifiers::Control | InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ToggleViewportShading,
+            "Viewport shading shortcut")) {
         return false;
     }
 
@@ -1584,6 +1673,7 @@ int main()
         { "OrthographicViewportNavigation",
             &test_orthographic_viewport_navigation },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
+        { "ViewportShadingState", &test_viewport_shading_state },
         { "ShortcutResolution", &test_shortcut_resolution },
         { "MeshToolRegistrationAndActivation",
             &test_mesh_tool_registration_and_activation },

@@ -28,6 +28,7 @@ target_sources(locus3d_application
         "tools/MeshToolActivationController.cpp"
         "viewport/EditorViewport.h"
         "viewport/EditorViewport.cpp"
+        "viewport/ViewportShadingMode.h"
         "runtime/ApplicationRuntime.h"
         "runtime/ApplicationRuntime.cpp"
         "runtime/ApplicationState.h"

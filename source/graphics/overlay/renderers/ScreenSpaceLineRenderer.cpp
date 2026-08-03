@@ -139,13 +139,21 @@ namespace locus::graphics
         const glm::mat4& viewProjection,
         const ViewportRect& viewport) const
     {
+        render(viewProjection, viewport, config_.depthFunc);
+    }
+
+    void ScreenSpaceLineRenderer::render(
+        const glm::mat4& viewProjection,
+        const ViewportRect& viewport,
+        DepthFunc depthFunc) const
+    {
         if (!is_valid() || lineCount_ == 0 || viewport.width <= 0 || viewport.height <= 0) {
             return;
         }
 
         RenderState::set_depth_test(config_.depthTest);
         RenderState::set_depth_write(config_.depthWrite);
-        RenderState::set_depth_func(config_.depthFunc);
+        RenderState::set_depth_func(depthFunc);
         RenderState::set_blend(config_.blend);
         RenderState::set_blend_func(
             BlendFactor::SourceAlpha,

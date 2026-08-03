@@ -5,6 +5,8 @@
 
 #include "graphics/renderer/Renderer.h"
 
+#include "graphics/gpu/RenderState.h"
+
 namespace locus::graphics
 {
     void Renderer::set_view_matrix(const glm::mat4& view)
@@ -55,6 +57,48 @@ namespace locus::graphics
 
             render_object(object);
         }
+    }
+
+    void Renderer::render_depth_only(const RenderQueue& queue)
+    {
+        apply_surface_state(depth_only_surface_state());
+        render(queue);
+        RenderState::reset_default();
+    }
+
+    void Renderer::render_with_state(
+        const RenderQueue& queue,
+        const RendererSurfaceState& state)
+    {
+        apply_surface_state(state);
+        render(queue);
+        RenderState::reset_default();
+    }
+
+    RendererSurfaceState Renderer::depth_only_surface_state() noexcept
+    {
+        RendererSurfaceState state{};
+        state.depthTest = true;
+        state.depthWrite = true;
+        state.depthFunc = DepthFunc::Less;
+        state.colorWrite = false;
+        state.blend = false;
+        state.cullFace = false;
+        state.polygonMode = RenderPolygonMode::Fill;
+        return state;
+    }
+
+    RendererSurfaceState Renderer::foreground_overlay_state() noexcept
+    {
+        RendererSurfaceState state{};
+        state.depthTest = false;
+        state.depthWrite = false;
+        state.depthFunc = DepthFunc::LessEqual;
+        state.colorWrite = true;
+        state.blend = false;
+        state.cullFace = false;
+        state.polygonMode = RenderPolygonMode::Fill;
+        return state;
     }
 
     const glm::mat4& Renderer::view_matrix() const
@@ -159,5 +203,20 @@ namespace locus::graphics
         );
 
         shader.set_float("u_LightIntensity", light->intensity);
+    }
+
+    void Renderer::apply_surface_state(const RendererSurfaceState& state) const
+    {
+        RenderState::set_depth_test(state.depthTest);
+        RenderState::set_depth_write(state.depthWrite);
+        RenderState::set_depth_func(state.depthFunc);
+        RenderState::set_blend(state.blend);
+        RenderState::set_cull_face(state.cullFace);
+        RenderState::set_polygon_mode(state.polygonMode);
+        RenderState::set_color_write(
+            state.colorWrite,
+            state.colorWrite,
+            state.colorWrite,
+            state.colorWrite);
     }
 }

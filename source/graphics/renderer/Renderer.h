@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "graphics/gpu/RenderState.h"
 #include "graphics/lighting/LightEnvironment.h"
 #include "graphics/renderer/RenderQueue.h"
 #include "graphics/renderer/RenderStats.h"
@@ -14,6 +15,20 @@
 
 namespace locus::graphics
 {
+    /**
+     * @brief Generic render-state policy for scene surface submission.
+     */
+    struct RendererSurfaceState
+    {
+        bool depthTest = true;
+        bool depthWrite = true;
+        DepthFunc depthFunc = DepthFunc::Less;
+        bool colorWrite = true;
+        bool blend = false;
+        bool cullFace = false;
+        RenderPolygonMode polygonMode = RenderPolygonMode::Fill;
+    };
+
     /**
      * @brief Simple scene renderer that submits drawable objects to the GPU.
      */
@@ -72,6 +87,39 @@ namespace locus::graphics
         void render(const RenderQueue& queue);
 
         /**
+         * @brief Renders every drawable object in a queue with an explicit surface state.
+         *
+         * @param queue Queue containing render commands.
+         * @param state Render-state policy to apply for the full queue.
+         */
+        void render_with_state(
+            const RenderQueue& queue,
+            const RendererSurfaceState& state);
+
+        /**
+         * @brief Renders drawable scene surfaces into depth only.
+         *
+         * @param queue Queue containing the surfaces used as depth authority.
+         */
+        void render_depth_only(const RenderQueue& queue);
+
+        /**
+         * @brief Returns the render-state policy used by render_depth_only().
+         *
+         * @return Depth-only surface state.
+         */
+        [[nodiscard]] static RendererSurfaceState depth_only_surface_state()
+            noexcept;
+
+        /**
+         * @brief Returns the render-state policy used by foreground viewport helpers.
+         *
+         * @return Foreground overlay surface state.
+         */
+        [[nodiscard]] static RendererSurfaceState foreground_overlay_state()
+            noexcept;
+
+        /**
          * @brief Returns the current view matrix.
          *
          * @return World-to-view matrix.
@@ -102,6 +150,7 @@ namespace locus::graphics
     private:
         void render_object(const RenderObject& object);
         void apply_lighting_uniforms(const Shader& shader) const;
+        void apply_surface_state(const RendererSurfaceState& state) const;
 
     private:
         glm::mat4 viewMatrix_{ 1.0f };

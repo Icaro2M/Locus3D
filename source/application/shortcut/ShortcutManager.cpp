@@ -72,6 +72,7 @@ namespace locus::application {
             case ShortcutAction::RightView:
             case ShortcutAction::TopView:
             case ShortcutAction::BottomView:
+            case ShortcutAction::ToggleViewportShading:
                 return !context.modalActive;
 
             case ShortcutAction::ActivateTranslateTool:
@@ -136,6 +137,7 @@ namespace locus::application {
             { Key::Num4, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::RightView },
             { Key::Num5, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::TopView },
             { Key::Num6, InputModifiers::Alt, InputModifiers::Control, ShortcutAction::BottomView },
+            { Key::W, InputModifiers::Control | InputModifiers::Alt, InputModifiers::Shift, ShortcutAction::ToggleViewportShading },
             { Key::Z, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Undo },
             { Key::Z, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::Redo },
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },

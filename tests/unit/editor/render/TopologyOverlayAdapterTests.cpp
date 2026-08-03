@@ -225,10 +225,61 @@ TestResult run_topology_overlay_adapter_tests()
         return TestResult::fail("topology overlay should apply parent and node transforms once");
     }
 
+    const editor::SceneNodeId ngonMesh = scene.create_mesh("Ngon wireframe");
+    add_ngon(scene.find_mesh(ngonMesh)->mesh());
+    selection.mesh().set_active_mesh(ngonMesh);
+    selection.mesh().clear_components();
+    batch = editor::TopologyOverlayAdapter::build_active_mesh_lines(scene, selection, options, &result);
+    if (batch.size() != 5u ||
+        result.visitedEdgeCount != 5u ||
+        result.wireframeEdgeCount != 5u) {
+        return TestResult::fail("n-gon topology overlay should emit boundary edges without triangulation diagonals");
+    }
+
     editor::SelectionState noActiveMesh;
     batch = editor::TopologyOverlayAdapter::build_active_mesh_lines(scene, noActiveMesh, options, &result);
     if (!batch.empty() || result.has_geometry()) {
         return TestResult::fail("topology overlay should return an empty batch without an active mesh");
+    }
+
+    editor::EditorScene visibleScene;
+    QuadHandles visibleA{};
+    QuadHandles visibleB{};
+    const editor::SceneNodeId visibleMeshA =
+        make_quad_scene(visibleScene, visibleA);
+    make_quad_scene(visibleScene, visibleB);
+    const editor::SceneNodeId hiddenMesh =
+        visibleScene.create_mesh("Hidden");
+    add_triangle(visibleScene.find_mesh(hiddenMesh)->mesh());
+    visibleScene.find_node(hiddenMesh)->metadata().visible = false;
+
+    editor::SelectionState visibleSelection;
+    visibleSelection.set_scope(editor::SelectionScope::ActiveMesh);
+    visibleSelection.set_granularity(editor::SelectionGranularity::Edge);
+    visibleSelection.mesh().set_active_mesh(visibleMeshA);
+    visibleSelection.mesh().add_edge(visibleA.bottom);
+
+    batch = editor::TopologyOverlayAdapter::build_visible_mesh_lines(
+        visibleScene,
+        visibleSelection,
+        options,
+        &result);
+
+    if (batch.size() != 8u ||
+        result.visitedEdgeCount != 8u ||
+        result.selectedEdgeCount != 1u ||
+        result.wireframeEdgeCount != 7u) {
+        return TestResult::fail("visible mesh topology should include all visible mesh edges and skip hidden meshes");
+    }
+
+    editor::SelectionState noVisibleActive;
+    batch = editor::TopologyOverlayAdapter::build_visible_mesh_lines(
+        visibleScene,
+        noVisibleActive,
+        options,
+        &result);
+    if (batch.size() != 8u || result.wireframeEdgeCount != 8u) {
+        return TestResult::fail("visible mesh topology should not require an active mesh");
     }
 
     editor::EditorScene emptyScene;

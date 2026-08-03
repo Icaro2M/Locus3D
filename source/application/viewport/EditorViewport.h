@@ -8,6 +8,7 @@
 #include "application/ApplicationResult.h"
 #include "application/document/DocumentId.h"
 #include "application/input/InputEvent.h"
+#include "application/viewport/ViewportShadingMode.h"
 #include "editor/scene/SceneNodeId.h"
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/gpu/ShaderManager.h"
@@ -174,6 +175,18 @@ namespace locus::application {
         void toggle_projection_mode();
 
         /**
+         * @brief Toggles between solid and wireframe viewport shading.
+         */
+        void toggle_shading_mode() noexcept;
+
+        /**
+         * @brief Sets the primary viewport shading mode.
+         *
+         * @param mode Requested shading mode.
+         */
+        void set_shading_mode(ViewportShadingMode mode) noexcept;
+
+        /**
          * @brief Sets the viewport projection mode while preserving framing.
          *
          * @param mode Requested projection mode.
@@ -193,6 +206,13 @@ namespace locus::application {
          * @return Current projection mode.
          */
         [[nodiscard]] graphics::ProjectionType projection_mode() const noexcept;
+
+        /**
+         * @brief Returns the primary viewport shading mode.
+         *
+         * @return Current shading mode.
+         */
+        [[nodiscard]] ViewportShadingMode shading_mode() const noexcept;
 
         /**
          * @brief Returns the current orientation tag.
@@ -338,6 +358,7 @@ namespace locus::application {
         std::int32_t lastPickingX_ = -1;
         std::int32_t lastPickingY_ = -1;
         ViewOrientation viewOrientation_ = ViewOrientation::User;
+        ViewportShadingMode shadingMode_ = ViewportShadingMode::Solid;
         bool pickingPassDirty_ = true;
         bool pickingQueryValid_ = false;
         bool initialized_ = false;

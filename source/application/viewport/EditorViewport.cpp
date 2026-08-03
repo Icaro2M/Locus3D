@@ -186,6 +186,16 @@ namespace locus::application {
             }
         }
 
+        [[nodiscard]] graphics::ScreenSpaceLineBatch make_occluded_lines(
+            graphics::ScreenSpaceLineBatch input)
+        {
+            for (graphics::ScreenSpaceLine& line : input.lines) {
+                line.color.a *= 0.26f;
+            }
+
+            return input;
+        }
+
         [[nodiscard]] std::filesystem::path resolve_shader_root(
             const std::filesystem::path& shaderRoot)
         {
@@ -917,6 +927,16 @@ namespace locus::application {
             : graphics::ProjectionType::Perspective);
     }
 
+    void EditorViewport::toggle_shading_mode() noexcept
+    {
+        set_shading_mode(toggle_viewport_shading_mode(shadingMode_));
+    }
+
+    void EditorViewport::set_shading_mode(ViewportShadingMode mode) noexcept
+    {
+        shadingMode_ = mode;
+    }
+
     void EditorViewport::set_projection_mode(
         graphics::ProjectionType mode)
     {
@@ -950,6 +970,11 @@ namespace locus::application {
     EditorViewport::projection_mode() const noexcept
     {
         return viewport_.camera().projection().type();
+    }
+
+    ViewportShadingMode EditorViewport::shading_mode() const noexcept
+    {
+        return shadingMode_;
     }
 
     ViewOrientation EditorViewport::view_orientation() const noexcept
@@ -1102,12 +1127,25 @@ namespace locus::application {
             overlayMeshes,
             overlayObjects);
 
+        const ViewportShadingFrameConfig shadingConfig =
+            viewport_shading_frame_config(shadingMode_);
+        const bool drawGridBeforeSurfaceDepth =
+            shadingConfig.surfaceDepthPrepass &&
+            !shadingConfig.surfaceColorPass;
+
         editor::TopologyOverlayOptions topologyOptions{};
         const graphics::ScreenSpaceLineBatch topologyLines =
-            editor::TopologyOverlayAdapter::build_active_mesh_lines(
-                document.editor().scene(),
-                document.editor().selection(),
-                topologyOptions);
+            shadingMode_ == ViewportShadingMode::Wireframe
+                ? editor::TopologyOverlayAdapter::build_visible_mesh_lines(
+                    document.editor().scene(),
+                    document.editor().selection(),
+                    topologyOptions)
+                : editor::TopologyOverlayAdapter::build_active_mesh_lines(
+                    document.editor().scene(),
+                    document.editor().selection(),
+                    topologyOptions);
+        const graphics::ScreenSpaceLineBatch occludedTopologyLines =
+            make_occluded_lines(topologyLines);
 
         const graphics::PointMarkerBatch topologyVertices =
             editor::TopologyOverlayAdapter::build_active_mesh_vertex_markers(
@@ -1184,14 +1222,18 @@ namespace locus::application {
         }
 
         renderQueue_.clear();
+        graphics::RenderQueue sceneSurfaceQueue{};
         graphics::RenderScene outlineScene{};
         outlineScene.reserve(scene.object_count());
+        sceneSurfaceQueue.reserve(scene.object_count());
 
         renderQueue_.reserve(
             scene.object_count()
             + overlayObjects.size()
             + 1);
-        renderQueue_.add_object(gridRenderer_.render_object());
+        if (!drawGridBeforeSurfaceDepth) {
+            renderQueue_.add_object(gridRenderer_.render_object());
+        }
 
         const editor::SceneNodeId previewTarget =
             operation_preview_target(document);
@@ -1204,7 +1246,29 @@ namespace locus::application {
             }
 
             renderQueue_.add_object(object);
+            sceneSurfaceQueue.add_object(object);
             outlineScene.add_object(object);
+        }
+
+        sceneSurfaceQueue.sort();
+        if (drawGridBeforeSurfaceDepth) {
+            graphics::RenderQueue gridQueue{};
+            gridQueue.reserve(1u);
+            gridQueue.add_object(gridRenderer_.render_object());
+            gridQueue.sort();
+            renderer_.render(gridQueue);
+        }
+
+        if (shadingConfig.surfaceDepthPrepass) {
+            renderer_.render_depth_only(sceneSurfaceQueue);
+        }
+
+        if (!shadingConfig.surfaceColorPass) {
+            renderQueue_.clear();
+            renderQueue_.reserve(overlayObjects.size() + 1u);
+            if (!drawGridBeforeSurfaceDepth) {
+                renderQueue_.add_object(gridRenderer_.render_object());
+            }
         }
 
         for (const graphics::RenderObject& object : overlayObjects) {
@@ -1258,12 +1322,45 @@ namespace locus::application {
             }
         }
 
-        topologySurfaceRenderer_.render(
-            viewport_.camera().view_projection_matrix());
+        if (shadingConfig.topologySurfaceOverlays) {
+            topologySurfaceRenderer_.render(
+                viewport_.camera().view_projection_matrix());
+        }
 
-        topologyLineRenderer_.render(
-            viewport_.camera().view_projection_matrix(),
-            viewport_.state().rect);
+        if (shadingConfig.topologyOccludedEdges &&
+            topologyLineRenderer_.is_valid()) {
+            const auto occludedUploadResult =
+                topologyLineRenderer_.set_lines(occludedTopologyLines);
+
+            if (!occludedUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload occluded topology overlay lines",
+                    occludedUploadResult.error());
+            }
+
+            topologyLineRenderer_.render(
+                viewport_.camera().view_projection_matrix(),
+                viewport_.state().rect,
+                graphics::DepthFunc::Greater);
+
+            const auto visibleUploadResult =
+                topologyLineRenderer_.set_lines(topologyLines);
+
+            if (!visibleUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to restore visible topology overlay lines",
+                    visibleUploadResult.error());
+            }
+        }
+
+        if (shadingConfig.topologyVisibleEdges) {
+            topologyLineRenderer_.render(
+                viewport_.camera().view_projection_matrix(),
+                viewport_.state().rect,
+                graphics::DepthFunc::LessEqual);
+        }
 
         topologyVertexRenderer_.render(
             viewport_.camera().view_projection_matrix(),
@@ -1278,7 +1375,14 @@ namespace locus::application {
 
         foregroundQueue.add_object(axisRenderer_.render_object());
         foregroundQueue.sort();
-        renderer_.render(foregroundQueue);
+        if (shadingMode_ == ViewportShadingMode::Wireframe) {
+            renderer_.render_with_state(
+                foregroundQueue,
+                graphics::Renderer::foreground_overlay_state());
+        }
+        else {
+            renderer_.render(foregroundQueue);
+        }
 
         return {};
     }

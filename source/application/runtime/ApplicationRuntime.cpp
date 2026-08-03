@@ -631,6 +631,10 @@ namespace locus::application {
                 viewport.set_view_orientation(ViewOrientation::Bottom);
                 return {};
 
+            case ShortcutAction::ToggleViewportShading:
+                viewport.toggle_shading_mode();
+                return {};
+
             case ShortcutAction::ActivateTranslateTool:
                 return activate_transform_tool(
                     document,
