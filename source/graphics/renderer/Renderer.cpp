@@ -76,6 +76,7 @@ namespace locus::graphics
         apply_surface_state(depth_only_surface_state());
         render(queue);
         RenderState::reset_default();
+        vertexAlphaMultiplier_ = 1.0f;
     }
 
     void Renderer::render_with_state(
@@ -85,6 +86,7 @@ namespace locus::graphics
         apply_surface_state(state);
         render(queue);
         RenderState::reset_default();
+        vertexAlphaMultiplier_ = 1.0f;
     }
 
     RendererSurfaceState Renderer::depth_only_surface_state() noexcept
@@ -153,6 +155,9 @@ namespace locus::graphics
         shader->set_mat4("u_MVP", &mvp[0][0]);
         shader->set_vec4("u_BaseColor", color.r, color.g, color.b, color.a);
         shader->set_int("u_UseVertexColor", object.uses_vertex_color() ? 1 : 0);
+        shader->set_float(
+            "u_VertexAlphaMultiplier",
+            vertexAlphaMultiplier_);
 
         apply_lighting_uniforms(*shader);
         apply_face_orientation_uniforms(*shader);
@@ -242,12 +247,16 @@ namespace locus::graphics
             back.a);
     }
 
-    void Renderer::apply_surface_state(const RendererSurfaceState& state) const
+    void Renderer::apply_surface_state(const RendererSurfaceState& state)
     {
+        vertexAlphaMultiplier_ = state.vertexAlphaMultiplier;
         RenderState::set_depth_test(state.depthTest);
         RenderState::set_depth_write(state.depthWrite);
         RenderState::set_depth_func(state.depthFunc);
         RenderState::set_blend(state.blend);
+        RenderState::set_blend_func(
+            state.sourceBlend,
+            state.destinationBlend);
         RenderState::set_cull_face(state.cullFace);
         RenderState::set_polygon_mode(state.polygonMode);
         RenderState::set_color_write(

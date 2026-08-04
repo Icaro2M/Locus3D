@@ -20,5 +20,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_screen_space_line_tests();
 [[nodiscard]] TestResult run_point_marker_tests();
 [[nodiscard]] TestResult run_surface_overlay_tests();
+[[nodiscard]] TestResult run_gizmo_renderer_geometry_tests();
 
 } // namespace locus::tests

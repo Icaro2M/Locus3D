@@ -132,6 +132,32 @@ namespace locus::editor {
             return hit;
         }
 
+        [[nodiscard]] CandidateHit hit_sphere(
+            const TransformGizmoHitTestInput& input,
+            GizmoMode mode,
+            GizmoAxis axis,
+            const glm::vec3& center,
+            float radius)
+        {
+            const GizmoRay ray = normalized_ray(input.ray);
+            const float t = std::max(0.0f, glm::dot(center - ray.origin, ray.direction));
+            const glm::vec3 closest = ray.origin + ray.direction * t;
+            const float distance = glm::length(closest - center);
+
+            if (distance > radius) {
+                return {};
+            }
+
+            CandidateHit hit{};
+            hit.valid = true;
+            hit.mode = mode;
+            hit.axis = axis;
+            hit.point = center;
+            hit.distance = distance;
+            hit.depth = hit_depth(ray, center);
+            return hit;
+        }
+
         [[nodiscard]] CandidateHit hit_axis_segment(
             const TransformGizmoHitTestInput& input,
             GizmoMode mode,
@@ -196,7 +222,8 @@ namespace locus::editor {
             GizmoMode mode,
             GizmoAxis axis,
             float offset,
-            float size)
+            float size,
+            float padding)
         {
             const glm::vec3 x = GizmoConstraint::axis_vector(GizmoAxis::X, input.orientation);
             const glm::vec3 y = GizmoConstraint::axis_vector(GizmoAxis::Y, input.orientation);
@@ -235,7 +262,10 @@ namespace locus::editor {
             const float du = glm::dot(local, u);
             const float dv = glm::dot(local, v);
 
-            if (du < offset || dv < offset || du > offset + size || dv > offset + size) {
+            if (du < offset - padding ||
+                dv < offset - padding ||
+                du > offset + size + padding ||
+                dv > offset + size + padding) {
                 return {};
             }
 
@@ -293,6 +323,70 @@ namespace locus::editor {
             return hit;
         }
 
+        [[nodiscard]] CandidateHit hit_translate_axis(
+            const TransformGizmoHitTestInput& input,
+            GizmoAxis axis,
+            float length,
+            float shaftLength,
+            float shaftThickness,
+            float tipRadius)
+        {
+            CandidateHit best{};
+            accept_hit(
+                best,
+                hit_axis_segment(
+                    input,
+                    GizmoMode::Translate,
+                    axis,
+                    shaftLength,
+                    shaftThickness));
+
+            const glm::vec3 axisDirection =
+                GizmoConstraint::axis_vector(axis, input.orientation);
+            accept_hit(
+                best,
+                hit_sphere(
+                    input,
+                    GizmoMode::Translate,
+                    axis,
+                    input.pivot + axisDirection * length,
+                    tipRadius));
+
+            return best;
+        }
+
+        [[nodiscard]] CandidateHit hit_scale_axis(
+            const TransformGizmoHitTestInput& input,
+            GizmoAxis axis,
+            float length,
+            float shaftLength,
+            float shaftThickness,
+            float cubeRadius)
+        {
+            CandidateHit best{};
+            accept_hit(
+                best,
+                hit_axis_segment(
+                    input,
+                    GizmoMode::Scale,
+                    axis,
+                    shaftLength,
+                    shaftThickness));
+
+            const glm::vec3 axisDirection =
+                GizmoConstraint::axis_vector(axis, input.orientation);
+            accept_hit(
+                best,
+                hit_sphere(
+                    input,
+                    GizmoMode::Scale,
+                    axis,
+                    input.pivot + axisDirection * length,
+                    cubeRadius));
+
+            return best;
+        }
+
     } // namespace
 
     TransformGizmo::TransformGizmo(const TransformGizmoConfig& config)
@@ -332,9 +426,17 @@ namespace locus::editor {
     {
         const float scale = std::max(input.visualScale, 0.0001f);
         const float length = config_.axisLength * scale;
-        const float thickness = config_.axisThickness * scale;
+        const float coneLength =
+            std::min(config_.arrowLength, config_.axisLength * 0.45f) * scale;
+        const float shaftLength =
+            std::max(length - coneLength, config_.shaftRadius * scale * 2.0f);
+        const float thickness =
+            std::max(config_.axisThickness, config_.shaftRadius + config_.pickingPadding) * scale;
+        const float tipRadius =
+            (config_.arrowRadius + config_.pickingPadding) * scale;
         const float planeOffset = config_.planeOffset * scale;
         const float planeSize = config_.planeSize * scale;
+        const float planePadding = config_.planePickingPadding * scale;
         const float centerRadius = config_.centerRadius * scale;
 
         const CandidateHit center = hit_center(input, GizmoMode::Translate, centerRadius);
@@ -345,11 +447,19 @@ namespace locus::editor {
         CandidateHit best{};
 
         for (GizmoAxis axis : { GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z }) {
-            accept_hit(best, hit_axis_segment(input, GizmoMode::Translate, axis, length, thickness));
+            accept_hit(
+                best,
+                hit_translate_axis(
+                    input,
+                    axis,
+                    length,
+                    shaftLength,
+                    thickness,
+                    tipRadius));
         }
 
         for (GizmoAxis axis : { GizmoAxis::XY, GizmoAxis::XZ, GizmoAxis::YZ }) {
-            accept_hit(best, hit_plane_square(input, GizmoMode::Translate, axis, planeOffset, planeSize));
+            accept_hit(best, hit_plane_square(input, GizmoMode::Translate, axis, planeOffset, planeSize, planePadding));
         }
 
         return to_gizmo_hit(best);
@@ -360,7 +470,8 @@ namespace locus::editor {
     {
         const float scale = std::max(input.visualScale, 0.0001f);
         const float radius = config_.rotationRadius * scale;
-        const float thickness = config_.rotationThickness * scale;
+        const float thickness =
+            std::max(config_.rotationThickness, config_.rotationTubeRadius + config_.pickingPadding) * scale;
         const float viewRadius = radius * config_.viewRingScale;
 
         CandidateHit best{};
@@ -378,9 +489,16 @@ namespace locus::editor {
     {
         const float scale = std::max(input.visualScale, 0.0001f);
         const float length = config_.axisLength * scale;
-        const float thickness = config_.axisThickness * scale;
+        const float halfCube = config_.scaleCubeSize * 0.5f * scale;
+        const float shaftLength =
+            std::max(length - halfCube, config_.shaftRadius * scale * 2.0f);
+        const float thickness =
+            std::max(config_.axisThickness, config_.shaftRadius + config_.pickingPadding) * scale;
+        const float cubeRadius =
+            (config_.scaleCubeSize * 0.92f + config_.pickingPadding) * scale;
         const float planeOffset = config_.planeOffset * scale;
         const float planeSize = config_.planeSize * scale;
+        const float planePadding = config_.planePickingPadding * scale;
         const float centerRadius = config_.centerRadius * scale;
 
         const CandidateHit center = hit_center(input, GizmoMode::Scale, centerRadius);
@@ -391,11 +509,19 @@ namespace locus::editor {
         CandidateHit best{};
 
         for (GizmoAxis axis : { GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z }) {
-            accept_hit(best, hit_axis_segment(input, GizmoMode::Scale, axis, length, thickness));
+            accept_hit(
+                best,
+                hit_scale_axis(
+                    input,
+                    axis,
+                    length,
+                    shaftLength,
+                    thickness,
+                    cubeRadius));
         }
 
         for (GizmoAxis axis : { GizmoAxis::XY, GizmoAxis::XZ, GizmoAxis::YZ }) {
-            accept_hit(best, hit_plane_square(input, GizmoMode::Scale, axis, planeOffset, planeSize));
+            accept_hit(best, hit_plane_square(input, GizmoMode::Scale, axis, planeOffset, planeSize, planePadding));
         }
 
         return to_gizmo_hit(best);

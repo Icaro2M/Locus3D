@@ -545,6 +545,45 @@ void apply_route(
             glm::vec3{ 0.0f, 0.0f, -1.0f }) > 0.999f;
 }
 
+[[nodiscard]] bool test_viewport_visual_scale_tracks_world_point()
+{
+    EditorViewport viewport{};
+    viewport.resize(1000, 500);
+    viewport.viewport().camera().look_at(
+        glm::vec3{ 0.0f, 0.0f, 10.0f },
+        glm::vec3{ 0.0f, 0.0f, 0.0f },
+        glm::vec3{ 0.0f, 1.0f, 0.0f });
+    viewport.viewport().camera().projection().set_perspective(
+        0.78539816339f,
+        viewport.aspect_ratio(),
+        0.01f,
+        1000.0f);
+
+    const float originScale =
+        viewport.visual_scale_at(glm::vec3{ 0.0f, 0.0f, 0.0f });
+    const float fartherScale =
+        viewport.visual_scale_at(glm::vec3{ 0.0f, 0.0f, -10.0f });
+
+    if (!(fartherScale > originScale * 1.9f)) {
+        std::cerr
+            << "Perspective visual scale should follow the target point depth\n";
+        return false;
+    }
+
+    viewport.viewport().camera().projection().set_orthographic(
+        8.0f,
+        viewport.aspect_ratio(),
+        0.01f,
+        1000.0f);
+
+    const float orthoOriginScale =
+        viewport.visual_scale_at(glm::vec3{ 0.0f, 0.0f, 0.0f });
+    const float orthoFartherScale =
+        viewport.visual_scale_at(glm::vec3{ 0.0f, 0.0f, -10.0f });
+
+    return near(orthoOriginScale, orthoFartherScale);
+}
+
 [[nodiscard]] bool test_editor_capture_and_focus_loss()
 {
     InputState state{};
@@ -713,12 +752,14 @@ void apply_route(
         depthOnly.depthFunc == locus::graphics::DepthFunc::Less &&
         !depthOnly.colorWrite &&
         !depthOnly.blend &&
+        near(depthOnly.vertexAlphaMultiplier, 1.0f) &&
         !depthOnly.cullFace &&
         depthOnly.polygonMode == locus::graphics::RenderPolygonMode::Fill &&
         !foreground.depthTest &&
         !foreground.depthWrite &&
         foreground.colorWrite &&
         !foreground.blend &&
+        near(foreground.vertexAlphaMultiplier, 1.0f) &&
         foreground.polygonMode == locus::graphics::RenderPolygonMode::Fill;
 }
 
@@ -1750,6 +1791,8 @@ int main()
         { "PanZoomAndInvalidGestures", &test_pan_zoom_and_invalid_gestures },
         { "OrthographicViewportNavigation",
             &test_orthographic_viewport_navigation },
+        { "ViewportVisualScaleTracksWorldPoint",
+            &test_viewport_visual_scale_tracks_world_point },
         { "EditorCaptureAndFocusLoss", &test_editor_capture_and_focus_loss },
         { "ViewportShadingState", &test_viewport_shading_state },
         { "ShortcutResolution", &test_shortcut_resolution },

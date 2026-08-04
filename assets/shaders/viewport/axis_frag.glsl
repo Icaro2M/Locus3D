@@ -9,7 +9,11 @@ in vec4 v_Color;
 
 out vec4 FragColor;
 
+uniform float u_VertexAlphaMultiplier;
+
 void main()
 {
-    FragColor = v_Color;
+    FragColor = vec4(
+        v_Color.rgb,
+        v_Color.a * u_VertexAlphaMultiplier);
 }

@@ -171,7 +171,9 @@ set_tests_properties(kernel.unit.geometry.topology PROPERTIES
 )
 
 add_executable(Locus3DGraphicsPrimitivesTests
+    ${GLAD_DIR}/src/glad.c
     unit/graphics/primitives/PrimitiveBuilderTests.cpp
+    unit/graphics/primitives/GizmoRendererGeometryTests.cpp
     unit/graphics/primitives/PrimitiveMeshConverterTests.cpp
     unit/graphics/primitives/PrimitiveMeshTests.cpp
     unit/graphics/primitives/PrimitivesTestMain.cpp

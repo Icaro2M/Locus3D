@@ -14,6 +14,7 @@
 #include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/command/CommandResult.h"
 #include "editor/gizmo/GizmoMode.h"
+#include "editor/gizmo/GizmoState.h"
 #include "editor/selection/SelectionGranularity.h"
 #include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
@@ -277,6 +278,33 @@ namespace locus::application {
 
             event.pointer.worldRay.origin = ray.origin;
             event.pointer.worldRay.direction = ray.direction;
+        }
+
+        void populate_transform_pointer_scale(
+            editor::ToolEvent& event,
+            DocumentSession& document,
+            const EditorViewport& viewport)
+        {
+            auto* transformTool =
+                dynamic_cast<editor::TransformTool*>(
+                    document.tool_manager().active_tool());
+
+            if (transformTool == nullptr) {
+                return;
+            }
+
+            editor::ToolContext toolContext = make_tool_context(document);
+            transformTool->refresh_gizmo_state(toolContext);
+
+            const editor::GizmoState& gizmoState =
+                transformTool->gizmo_state();
+
+            if (!gizmoState.visible) {
+                return;
+            }
+
+            event.pointer.visualScale =
+                viewport.visual_scale_at(gizmoState.pivot);
         }
 
         [[nodiscard]] ApplicationResult<void> tool_failure(
@@ -1004,6 +1032,10 @@ namespace locus::application {
             populate_camera_pointer_data(
                 hoverEvent,
                 editorViewport_);
+            populate_transform_pointer_scale(
+                hoverEvent,
+                *activeDocument,
+                editorViewport_);
 
             ApplicationResult<void> hoverToolResult =
                 dispatch_tool_event(*activeDocument, hoverEvent);
@@ -1028,6 +1060,10 @@ namespace locus::application {
                         picking);
                 populate_camera_pointer_data(
                     pressEvent,
+                    editorViewport_);
+                populate_transform_pointer_scale(
+                    pressEvent,
+                    *activeDocument,
                     editorViewport_);
 
                 ApplicationResult<editor::ToolResult> pressToolResult =
@@ -1064,6 +1100,10 @@ namespace locus::application {
                 populate_camera_pointer_data(
                     moveEvent,
                     editorViewport_);
+                populate_transform_pointer_scale(
+                    moveEvent,
+                    *activeDocument,
+                    editorViewport_);
 
                 ApplicationResult<void> moveToolResult =
                     dispatch_tool_event(*activeDocument, moveEvent);
@@ -1083,6 +1123,10 @@ namespace locus::application {
                         picking);
                 populate_camera_pointer_data(
                     releaseEvent,
+                    editorViewport_);
+                populate_transform_pointer_scale(
+                    releaseEvent,
+                    *activeDocument,
                     editorViewport_);
 
                 ApplicationResult<void> releaseToolResult =

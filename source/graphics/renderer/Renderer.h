@@ -25,6 +25,9 @@ namespace locus::graphics
         DepthFunc depthFunc = DepthFunc::Less;
         bool colorWrite = true;
         bool blend = false;
+        BlendFactor sourceBlend = BlendFactor::SourceAlpha;
+        BlendFactor destinationBlend = BlendFactor::OneMinusSourceAlpha;
+        float vertexAlphaMultiplier = 1.0f;
         bool cullFace = false;
         RenderPolygonMode polygonMode = RenderPolygonMode::Fill;
     };
@@ -177,7 +180,7 @@ namespace locus::graphics
         void render_object(const RenderObject& object);
         void apply_lighting_uniforms(const Shader& shader) const;
         void apply_face_orientation_uniforms(const Shader& shader) const;
-        void apply_surface_state(const RendererSurfaceState& state) const;
+        void apply_surface_state(const RendererSurfaceState& state);
 
     private:
         glm::mat4 viewMatrix_{ 1.0f };
@@ -185,5 +188,6 @@ namespace locus::graphics
         const LightEnvironment* lightEnvironment_ = nullptr;
         FaceOrientationDisplay faceOrientationDisplay_{};
         RenderStats stats_{};
+        float vertexAlphaMultiplier_ = 1.0f;
     };
 }

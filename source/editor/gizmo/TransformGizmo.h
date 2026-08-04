@@ -29,6 +29,21 @@ namespace locus::editor {
         float axisThickness = 0.06f;
 
         /**
+         * @brief Visual shaft radius used to keep hit-test close to the rendered handle.
+         */
+        float shaftRadius = 0.025f;
+
+        /**
+         * @brief Length of translate arrow cones.
+         */
+        float arrowLength = 0.24f;
+
+        /**
+         * @brief Radius of translate arrow cone bases.
+         */
+        float arrowRadius = 0.085f;
+
+        /**
          * @brief Size of plane handles in world units before visual scaling.
          */
         float planeSize = 0.32f;
@@ -37,6 +52,11 @@ namespace locus::editor {
          * @brief Offset of plane handles from the pivot.
          */
         float planeOffset = 0.22f;
+
+        /**
+         * @brief Additional accepted margin around plane handles.
+         */
+        float planePickingPadding = 0.025f;
 
         /**
          * @brief Radius of the center free-move/free-scale handle.
@@ -54,6 +74,11 @@ namespace locus::editor {
         float rotationThickness = 0.06f;
 
         /**
+         * @brief Visual tube radius of rotation rings.
+         */
+        float rotationTubeRadius = 0.018f;
+
+        /**
          * @brief Extra scale applied to the view-facing rotation ring.
          */
         float viewRingScale = 1.12f;
@@ -62,6 +87,16 @@ namespace locus::editor {
          * @brief Radius used for scale endpoint handles in universal mode.
          */
         float scaleHandleRadius = 0.10f;
+
+        /**
+         * @brief Rendered size of scale endpoint cubes.
+         */
+        float scaleCubeSize = 0.18f;
+
+        /**
+         * @brief Extra picking margin applied to solid gizmo handles.
+         */
+        float pickingPadding = 0.025f;
     };
 
     /**

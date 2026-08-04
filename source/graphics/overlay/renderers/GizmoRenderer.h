@@ -187,13 +187,23 @@ namespace locus::graphics
     {
         float axisLength = 1.35f;
         float axisThickness = 0.06f;
+        float shaftRadius = 0.025f;
+        float arrowLength = 0.24f;
+        float arrowRadius = 0.085f;
         float planeSize = 0.32f;
         float planeOffset = 0.22f;
+        float planeBorderWidth = 0.026f;
         float centerRadius = 0.12f;
+        float centerSize = 0.16f;
         float rotationRadius = 1.05f;
         float rotationThickness = 0.06f;
+        float rotationTubeRadius = 0.018f;
         float viewRingScale = 1.12f;
         float scaleHandleRadius = 0.10f;
+        float scaleCubeSize = 0.18f;
+        int radialSegments = 24;
+        int ringMajorSegments = 96;
+        int ringMinorSegments = 8;
 
         RenderObject::Id firstObjectId = 1100;
         std::string objectNamePrefix = "TransformGizmo";
@@ -289,6 +299,23 @@ namespace locus::graphics
          * @return Visible object count.
          */
         [[nodiscard]] std::size_t submitted_object_count() const;
+
+        /**
+         * @brief Builds CPU mesh data for one visual handle.
+         *
+         * This is shared by renderer creation and lightweight geometry tests.
+         *
+         * @param mode Visual mode that owns the handle.
+         * @param handle Handle identifier.
+         * @param config Visual configuration.
+         * @param role Appearance role used to resolve the handle color.
+         * @return CPU-side mesh data for the requested handle.
+         */
+        [[nodiscard]] static MeshUploadData build_handle_mesh_data(
+            GizmoVisualMode mode,
+            GizmoVisualHandle handle,
+            const GizmoRendererConfig& config = {},
+            GizmoVisualRole role = GizmoVisualRole::Normal);
 
     private:
         static constexpr std::size_t RoleCount = 4;

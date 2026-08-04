@@ -47,17 +47,36 @@ TestResult run_gizmo_controller_tests()
     using namespace editor;
 
     GizmoController controller;
+    if (!controller.state().can_interact()) {
+        return TestResult::fail("GizmoController should start with an interactive gizmo state");
+    }
+    if (controller.state().dragging) {
+        return TestResult::fail("GizmoController should start outside a drag operation");
+    }
+    if (controller.gizmo().config().centerRadius <= 0.0f ||
+        controller.gizmo().config().axisLength <= 0.0f) {
+        return TestResult::fail("GizmoController should start with a valid transform gizmo configuration");
+    }
 
     GizmoHoverInput hover;
     hover.mode = GizmoMode::Translate;
     hover.pointer = pointer_at(0.0f, 0.0f);
 
     GizmoHit hoverHit = controller.update_hover(hover);
-    if (!hoverHit.is_valid() ||
-        hoverHit.mode != GizmoMode::Translate ||
-        hoverHit.axis != GizmoAxis::XYZ ||
-        !controller.state().hovered.is_valid()) {
-        return TestResult::fail("update_hover should update state with the hit-tested handle");
+    if (!hoverHit.is_valid()) {
+        return TestResult::fail("update_hover should return a valid hit-tested handle");
+    }
+
+    if (hoverHit.mode != GizmoMode::Translate) {
+        return TestResult::fail("update_hover should keep the requested translate mode");
+    }
+
+    if (hoverHit.axis != GizmoAxis::XYZ) {
+        return TestResult::fail("update_hover should hit the center free handle");
+    }
+
+    if (!controller.state().hovered.is_valid()) {
+        return TestResult::fail("update_hover should store the hovered handle in controller state");
     }
 
     controller.state().visible = false;

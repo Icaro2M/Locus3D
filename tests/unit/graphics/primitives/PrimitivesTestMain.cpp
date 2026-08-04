@@ -30,6 +30,7 @@ int main()
         { "ScreenSpaceLine", run_screen_space_line_tests },
         { "PointMarker", run_point_marker_tests },
         { "SurfaceOverlay", run_surface_overlay_tests },
+        { "GizmoRendererGeometry", run_gizmo_renderer_geometry_tests },
     };
 
     for (const TestCase& test : tests) {

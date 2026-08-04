@@ -1117,7 +1117,7 @@ namespace locus::application {
             gizmoData.mode = to_visual_mode(gizmoState.mode);
             gizmoData.pivot = gizmoState.pivot;
             gizmoData.orientation = gizmoState.orientation;
-            gizmoData.visualScale = gizmoState.visualScale;
+            gizmoData.visualScale = visual_scale_at(gizmoData.pivot);
             gizmoData.viewDirection = viewport_.camera().forward();
             gizmoData.viewRight = viewport_.camera().right();
             gizmoData.viewUp = viewport_.camera().up();
@@ -1398,23 +1398,47 @@ namespace locus::application {
             viewport_.camera().view_projection_matrix(),
             viewport_.state().rect);
 
-        graphics::RenderQueue foregroundQueue;
-        foregroundQueue.reserve(gizmoScene.object_count() + 1);
+        graphics::RenderQueue gizmoQueue;
+        gizmoQueue.reserve(gizmoScene.object_count());
 
         for (const graphics::RenderObject& object : gizmoScene.objects()) {
-            foregroundQueue.add_object(object);
+            gizmoQueue.add_object(object);
         }
 
-        foregroundQueue.add_object(axisRenderer_.render_object());
-        foregroundQueue.sort();
-        if (displaySettings_.shadingMode == ViewportShadingMode::Wireframe) {
-            renderer_.render_with_state(
-                foregroundQueue,
-                graphics::Renderer::foreground_overlay_state());
-        }
-        else {
-            renderer_.render(foregroundQueue);
-        }
+        gizmoQueue.sort();
+
+        graphics::RendererSurfaceState occludedGizmoState{};
+        occludedGizmoState.depthTest = true;
+        occludedGizmoState.depthWrite = false;
+        occludedGizmoState.depthFunc = graphics::DepthFunc::Greater;
+        occludedGizmoState.blend = true;
+        occludedGizmoState.sourceBlend = graphics::BlendFactor::SourceAlpha;
+        occludedGizmoState.destinationBlend =
+            graphics::BlendFactor::OneMinusSourceAlpha;
+        occludedGizmoState.vertexAlphaMultiplier = 0.28f;
+        occludedGizmoState.cullFace = false;
+
+        renderer_.render_with_state(
+            gizmoQueue,
+            occludedGizmoState);
+
+        graphics::RendererSurfaceState visibleGizmoState =
+            occludedGizmoState;
+        visibleGizmoState.depthFunc = graphics::DepthFunc::LessEqual;
+        visibleGizmoState.vertexAlphaMultiplier = 1.0f;
+
+        renderer_.render_with_state(
+            gizmoQueue,
+            visibleGizmoState);
+
+        graphics::RenderQueue axisQueue;
+        axisQueue.reserve(1);
+        axisQueue.add_object(axisRenderer_.render_object());
+        axisQueue.sort();
+
+        renderer_.render_with_state(
+            axisQueue,
+            graphics::Renderer::foreground_overlay_state());
 
         return {};
     }

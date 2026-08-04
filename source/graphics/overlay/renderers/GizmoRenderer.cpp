@@ -21,7 +21,9 @@ namespace locus::graphics
     namespace
     {
         constexpr float Epsilon = 0.000001f;
-        constexpr int RingSegments = 96;
+        constexpr int MinimumRadialSegments = 8;
+        constexpr int MinimumRingMajorSegments = 16;
+        constexpr int MinimumRingMinorSegments = 4;
 
         [[nodiscard]] glm::vec3 safe_normalize(
             const glm::vec3& value,
@@ -36,17 +38,40 @@ namespace locus::graphics
             return value / length;
         }
 
+        [[nodiscard]] ColorRGBA scaled_alpha(
+            ColorRGBA color,
+            float scale)
+        {
+            color.a = std::clamp(color.a * scale, 0.0f, 1.0f);
+            return color;
+        }
+
+        [[nodiscard]] ColorRGBA mix_color(
+            const ColorRGBA& a,
+            const ColorRGBA& b,
+            float t)
+        {
+            t = std::clamp(t, 0.0f, 1.0f);
+            return {
+                a.r + (b.r - a.r) * t,
+                a.g + (b.g - a.g) * t,
+                a.b + (b.b - a.b) * t,
+                a.a + (b.a - a.a) * t
+            };
+        }
+
         [[nodiscard]] MeshVertex make_vertex(
             const glm::vec3& position,
+            const glm::vec3& normal,
             const ColorRGBA& color)
         {
             MeshVertex vertex;
             vertex.position[0] = position.x;
             vertex.position[1] = position.y;
             vertex.position[2] = position.z;
-            vertex.normal[0] = 0.0f;
-            vertex.normal[1] = 1.0f;
-            vertex.normal[2] = 0.0f;
+            vertex.normal[0] = normal.x;
+            vertex.normal[1] = normal.y;
+            vertex.normal[2] = normal.z;
             vertex.color[0] = color.r;
             vertex.color[1] = color.g;
             vertex.color[2] = color.b;
@@ -54,14 +79,54 @@ namespace locus::graphics
             return vertex;
         }
 
-        void add_line(
+        std::uint32_t add_vertex(
+            MeshUploadData& data,
+            const glm::vec3& position,
+            const glm::vec3& normal,
+            const ColorRGBA& color)
+        {
+            data.vertices.push_back(make_vertex(position, normal, color));
+            return static_cast<std::uint32_t>(data.vertices.size() - 1u);
+        }
+
+        void add_triangle_indices(
+            MeshUploadData& data,
+            std::uint32_t a,
+            std::uint32_t b,
+            std::uint32_t c)
+        {
+            data.indices.push_back(a);
+            data.indices.push_back(b);
+            data.indices.push_back(c);
+        }
+
+        void add_quad_indices(
+            MeshUploadData& data,
+            std::uint32_t a,
+            std::uint32_t b,
+            std::uint32_t c,
+            std::uint32_t d)
+        {
+            add_triangle_indices(data, a, b, c);
+            add_triangle_indices(data, a, c, d);
+        }
+
+        void add_quad(
             MeshUploadData& data,
             const glm::vec3& a,
             const glm::vec3& b,
+            const glm::vec3& c,
+            const glm::vec3& d,
             const ColorRGBA& color)
         {
-            data.vertices.push_back(make_vertex(a, color));
-            data.vertices.push_back(make_vertex(b, color));
+            const glm::vec3 normal = safe_normalize(
+                glm::cross(b - a, c - a),
+                { 0.0f, 1.0f, 0.0f });
+            const std::uint32_t ia = add_vertex(data, a, normal, color);
+            const std::uint32_t ib = add_vertex(data, b, normal, color);
+            const std::uint32_t ic = add_vertex(data, c, normal, color);
+            const std::uint32_t id = add_vertex(data, d, normal, color);
+            add_quad_indices(data, ia, ib, ic, id);
         }
 
         [[nodiscard]] glm::vec3 axis_vector(GizmoVisualHandle handle)
@@ -93,6 +158,37 @@ namespace locus::graphics
                 || handle == GizmoVisualHandle::YZ;
         }
 
+        [[nodiscard]] bool axis_basis(
+            GizmoVisualHandle handle,
+            glm::vec3& axis,
+            glm::vec3& sideA,
+            glm::vec3& sideB)
+        {
+            axis = axis_vector(handle);
+            if (glm::length(axis) <= Epsilon)
+            {
+                return false;
+            }
+
+            if (handle == GizmoVisualHandle::X)
+            {
+                sideA = { 0.0f, 1.0f, 0.0f };
+                sideB = { 0.0f, 0.0f, 1.0f };
+            }
+            else if (handle == GizmoVisualHandle::Y)
+            {
+                sideA = { 1.0f, 0.0f, 0.0f };
+                sideB = { 0.0f, 0.0f, 1.0f };
+            }
+            else
+            {
+                sideA = { 1.0f, 0.0f, 0.0f };
+                sideB = { 0.0f, 1.0f, 0.0f };
+            }
+
+            return true;
+        }
+
         void plane_basis(
             GizmoVisualHandle handle,
             glm::vec3& u,
@@ -119,62 +215,129 @@ namespace locus::graphics
             }
         }
 
-        void add_axis_arrow(
+        void add_cylinder(
             MeshUploadData& data,
             GizmoVisualHandle handle,
             float length,
             float radius,
+            int segments,
             const ColorRGBA& color)
         {
-            const glm::vec3 axis = axis_vector(handle);
-            if (glm::length(axis) <= Epsilon)
+            glm::vec3 axis{};
+            glm::vec3 sideA{};
+            glm::vec3 sideB{};
+            if (!axis_basis(handle, axis, sideA, sideB)
+                || length <= Epsilon
+                || radius <= Epsilon)
             {
                 return;
             }
 
-            glm::vec3 sideA{ 0.0f, 1.0f, 0.0f };
-            glm::vec3 sideB{ 0.0f, 0.0f, 1.0f };
-
-            if (handle == GizmoVisualHandle::Y)
-            {
-                sideA = { 1.0f, 0.0f, 0.0f };
-                sideB = { 0.0f, 0.0f, 1.0f };
-            }
-            else if (handle == GizmoVisualHandle::Z)
-            {
-                sideA = { 1.0f, 0.0f, 0.0f };
-                sideB = { 0.0f, 1.0f, 0.0f };
-            }
-
+            segments = std::max(segments, MinimumRadialSegments);
+            const glm::vec3 start = axis * radius * 1.25f;
             const glm::vec3 end = axis * length;
-            const glm::vec3 base = axis * std::max(length - radius * 3.0f, 0.0f);
-            const float wing = radius * 1.7f;
+            const std::uint32_t startCenter =
+                add_vertex(data, start, -axis, color);
+            const std::uint32_t endCenter =
+                add_vertex(data, end, axis, color);
 
-            add_line(data, { 0.0f, 0.0f, 0.0f }, end, color);
-            add_line(data, end, base + sideA * wing, color);
-            add_line(data, end, base - sideA * wing, color);
-            add_line(data, end, base + sideB * wing, color);
-            add_line(data, end, base - sideB * wing, color);
+            std::vector<std::uint32_t> startRing;
+            std::vector<std::uint32_t> endRing;
+            startRing.reserve(static_cast<std::size_t>(segments));
+            endRing.reserve(static_cast<std::size_t>(segments));
+
+            for (int i = 0; i < segments; ++i)
+            {
+                const float angle =
+                    (static_cast<float>(i) / static_cast<float>(segments))
+                    * glm::two_pi<float>();
+                const glm::vec3 radial =
+                    sideA * std::cos(angle) + sideB * std::sin(angle);
+                startRing.push_back(add_vertex(data, start + radial * radius, radial, color));
+                endRing.push_back(add_vertex(data, end + radial * radius, radial, color));
+            }
+
+            for (int i = 0; i < segments; ++i)
+            {
+                const std::uint32_t next =
+                    static_cast<std::uint32_t>((i + 1) % segments);
+                const std::uint32_t current =
+                    static_cast<std::uint32_t>(i);
+
+                add_quad_indices(
+                    data,
+                    startRing[current],
+                    endRing[current],
+                    endRing[next],
+                    startRing[next]);
+                add_triangle_indices(data, startCenter, startRing[next], startRing[current]);
+                add_triangle_indices(data, endCenter, endRing[current], endRing[next]);
+            }
         }
 
-        void add_scale_handle(
+        void add_cone(
             MeshUploadData& data,
             GizmoVisualHandle handle,
+            float baseDistance,
             float length,
             float radius,
+            int segments,
             const ColorRGBA& color)
         {
-            const glm::vec3 axis = axis_vector(handle);
-            if (glm::length(axis) <= Epsilon)
+            glm::vec3 axis{};
+            glm::vec3 sideA{};
+            glm::vec3 sideB{};
+            if (!axis_basis(handle, axis, sideA, sideB)
+                || length <= Epsilon
+                || radius <= Epsilon)
             {
                 return;
             }
 
-            const glm::vec3 center = axis * length;
-            const glm::vec3 minPoint = center - glm::vec3{ radius };
-            const glm::vec3 maxPoint = center + glm::vec3{ radius };
+            segments = std::max(segments, MinimumRadialSegments);
+            const glm::vec3 base = axis * baseDistance;
+            const glm::vec3 tip = axis * (baseDistance + length);
+            const std::uint32_t baseCenter =
+                add_vertex(data, base, -axis, color);
+            const std::uint32_t tipIndex =
+                add_vertex(data, tip, axis, color);
 
-            add_line(data, { 0.0f, 0.0f, 0.0f }, center, color);
+            std::vector<std::uint32_t> ring;
+            ring.reserve(static_cast<std::size_t>(segments));
+
+            for (int i = 0; i < segments; ++i)
+            {
+                const float angle =
+                    (static_cast<float>(i) / static_cast<float>(segments))
+                    * glm::two_pi<float>();
+                const glm::vec3 radial =
+                    sideA * std::cos(angle) + sideB * std::sin(angle);
+                const glm::vec3 normal =
+                    safe_normalize(radial * length + axis * radius, radial);
+                ring.push_back(add_vertex(data, base + radial * radius, normal, color));
+            }
+
+            for (int i = 0; i < segments; ++i)
+            {
+                const std::uint32_t next =
+                    static_cast<std::uint32_t>((i + 1) % segments);
+                const std::uint32_t current =
+                    static_cast<std::uint32_t>(i);
+
+                add_triangle_indices(data, ring[current], tipIndex, ring[next]);
+                add_triangle_indices(data, baseCenter, ring[next], ring[current]);
+            }
+        }
+
+        void add_box(
+            MeshUploadData& data,
+            const glm::vec3& center,
+            float size,
+            const ColorRGBA& color)
+        {
+            const glm::vec3 half{ size * 0.5f };
+            const glm::vec3 minPoint = center - half;
+            const glm::vec3 maxPoint = center + half;
 
             const glm::vec3 p000{ minPoint.x, minPoint.y, minPoint.z };
             const glm::vec3 p001{ minPoint.x, minPoint.y, maxPoint.z };
@@ -185,18 +348,63 @@ namespace locus::graphics
             const glm::vec3 p110{ maxPoint.x, maxPoint.y, minPoint.z };
             const glm::vec3 p111{ maxPoint.x, maxPoint.y, maxPoint.z };
 
-            add_line(data, p000, p100, color);
-            add_line(data, p100, p101, color);
-            add_line(data, p101, p001, color);
-            add_line(data, p001, p000, color);
-            add_line(data, p010, p110, color);
-            add_line(data, p110, p111, color);
-            add_line(data, p111, p011, color);
-            add_line(data, p011, p010, color);
-            add_line(data, p000, p010, color);
-            add_line(data, p100, p110, color);
-            add_line(data, p101, p111, color);
-            add_line(data, p001, p011, color);
+            add_quad(data, p000, p001, p011, p010, color);
+            add_quad(data, p100, p110, p111, p101, color);
+            add_quad(data, p000, p100, p101, p001, color);
+            add_quad(data, p010, p011, p111, p110, color);
+            add_quad(data, p000, p010, p110, p100, color);
+            add_quad(data, p001, p101, p111, p011, color);
+        }
+
+        void add_axis_arrow(
+            MeshUploadData& data,
+            GizmoVisualHandle handle,
+            const GizmoRendererConfig& config,
+            const ColorRGBA& color)
+        {
+            const float coneLength =
+                std::min(config.arrowLength, config.axisLength * 0.45f);
+            const float shaftLength =
+                std::max(config.axisLength - coneLength, config.shaftRadius * 2.0f);
+
+            add_cylinder(
+                data,
+                handle,
+                shaftLength,
+                config.shaftRadius,
+                config.radialSegments,
+                color);
+            add_cone(
+                data,
+                handle,
+                shaftLength,
+                config.axisLength - shaftLength,
+                config.arrowRadius,
+                config.radialSegments,
+                color);
+        }
+
+        void add_scale_handle(
+            MeshUploadData& data,
+            GizmoVisualHandle handle,
+            const GizmoRendererConfig& config,
+            const ColorRGBA& color)
+        {
+            const glm::vec3 axis = axis_vector(handle);
+            if (glm::length(axis) <= Epsilon)
+            {
+                return;
+            }
+
+            const float halfCube = config.scaleCubeSize * 0.5f;
+            add_cylinder(
+                data,
+                handle,
+                std::max(config.axisLength - halfCube, config.shaftRadius * 2.0f),
+                config.shaftRadius,
+                config.radialSegments,
+                color);
+            add_box(data, axis * config.axisLength, config.scaleCubeSize, color);
         }
 
         void add_plane_square(
@@ -204,6 +412,8 @@ namespace locus::graphics
             GizmoVisualHandle handle,
             float offset,
             float size,
+            float borderWidth,
+            const ColorRGBA& fillColor,
             const ColorRGBA& color)
         {
             glm::vec3 u{};
@@ -215,57 +425,135 @@ namespace locus::graphics
             const glm::vec3 p2 = u * (offset + size) + v * (offset + size);
             const glm::vec3 p3 = u * offset + v * (offset + size);
 
-            add_line(data, p0, p1, color);
-            add_line(data, p1, p2, color);
-            add_line(data, p2, p3, color);
-            add_line(data, p3, p0, color);
-            add_line(data, p0, p2, color);
+            add_quad(data, p0, p1, p2, p3, fillColor);
+
+            const float bw = std::min(borderWidth, size * 0.35f);
+            add_quad(data, p0 - u * bw - v * bw, p1 + u * bw - v * bw, p1 + u * bw, p0 - u * bw, color);
+            add_quad(data, p1 + u * bw, p2 + u * bw + v * bw, p2, p1, color);
+            add_quad(data, p3 - u * bw, p2, p2 + u * bw + v * bw, p3 - u * bw + v * bw, color);
+            add_quad(data, p0 - u * bw - v * bw, p0 - u * bw, p3 - u * bw, p3 - u * bw + v * bw, color);
         }
 
-        void add_center(
+        void add_uv_sphere(
             MeshUploadData& data,
             float radius,
+            int segments,
             const ColorRGBA& color)
         {
-            add_line(data, { -radius, 0.0f, 0.0f }, { radius, 0.0f, 0.0f }, color);
-            add_line(data, { 0.0f, -radius, 0.0f }, { 0.0f, radius, 0.0f }, color);
-            add_line(data, { 0.0f, 0.0f, -radius }, { 0.0f, 0.0f, radius }, color);
+            segments = std::max(segments, MinimumRadialSegments);
+            const int rings = std::max(segments / 2, 4);
+            const std::uint32_t base =
+                static_cast<std::uint32_t>(data.vertices.size());
+
+            for (int ring = 0; ring <= rings; ++ring)
+            {
+                const float v = static_cast<float>(ring) / static_cast<float>(rings);
+                const float phi = v * glm::pi<float>();
+                const float y = std::cos(phi);
+                const float r = std::sin(phi);
+
+                for (int segment = 0; segment <= segments; ++segment)
+                {
+                    const float u = static_cast<float>(segment) / static_cast<float>(segments);
+                    const float theta = u * glm::two_pi<float>();
+                    const glm::vec3 normal{
+                        r * std::cos(theta),
+                        y,
+                        r * std::sin(theta)
+                    };
+                    add_vertex(data, normal * radius, normal, color);
+                }
+            }
+
+            const int stride = segments + 1;
+            for (int ring = 0; ring < rings; ++ring)
+            {
+                for (int segment = 0; segment < segments; ++segment)
+                {
+                    const std::uint32_t a =
+                        base + static_cast<std::uint32_t>(ring * stride + segment);
+                    const std::uint32_t b = a + 1u;
+                    const std::uint32_t c =
+                        base + static_cast<std::uint32_t>((ring + 1) * stride + segment + 1);
+                    const std::uint32_t d =
+                        base + static_cast<std::uint32_t>((ring + 1) * stride + segment);
+                    add_quad_indices(data, a, b, c, d);
+                }
+            }
         }
 
-        void add_rotation_ring(
+        void add_torus(
             MeshUploadData& data,
             GizmoVisualHandle handle,
             float radius,
+            float tubeRadius,
+            int majorSegments,
+            int minorSegments,
             const ColorRGBA& color)
         {
-            for (int i = 0; i < RingSegments; ++i)
+            majorSegments = std::max(majorSegments, MinimumRingMajorSegments);
+            minorSegments = std::max(minorSegments, MinimumRingMinorSegments);
+            const std::uint32_t base =
+                static_cast<std::uint32_t>(data.vertices.size());
+
+            for (int major = 0; major < majorSegments; ++major)
             {
-                const float a0 = (static_cast<float>(i) / RingSegments) * glm::two_pi<float>();
-                const float a1 = (static_cast<float>(i + 1) / RingSegments) * glm::two_pi<float>();
+                const float u =
+                    (static_cast<float>(major) / static_cast<float>(majorSegments))
+                    * glm::two_pi<float>();
+                const glm::vec3 radial{
+                    std::cos(u),
+                    std::sin(u),
+                    0.0f
+                };
 
-                glm::vec3 p0{};
-                glm::vec3 p1{};
-
-                switch (handle)
+                for (int minor = 0; minor < minorSegments; ++minor)
                 {
-                case GizmoVisualHandle::X:
-                    p0 = { 0.0f, std::cos(a0) * radius, std::sin(a0) * radius };
-                    p1 = { 0.0f, std::cos(a1) * radius, std::sin(a1) * radius };
-                    break;
-                case GizmoVisualHandle::Y:
-                    p0 = { std::cos(a0) * radius, 0.0f, std::sin(a0) * radius };
-                    p1 = { std::cos(a1) * radius, 0.0f, std::sin(a1) * radius };
-                    break;
-                case GizmoVisualHandle::Z:
-                case GizmoVisualHandle::View:
-                    p0 = { std::cos(a0) * radius, std::sin(a0) * radius, 0.0f };
-                    p1 = { std::cos(a1) * radius, std::sin(a1) * radius, 0.0f };
-                    break;
-                default:
-                    return;
-                }
+                    const float v =
+                        (static_cast<float>(minor) / static_cast<float>(minorSegments))
+                        * glm::two_pi<float>();
+                    const glm::vec3 normal{
+                        radial.x * std::cos(v),
+                        radial.y * std::cos(v),
+                        std::sin(v)
+                    };
+                    const glm::vec3 xyPosition =
+                        radial * (radius + tubeRadius * std::cos(v))
+                        + glm::vec3{ 0.0f, 0.0f, tubeRadius * std::sin(v) };
 
-                add_line(data, p0, p1, color);
+                    glm::vec3 position = xyPosition;
+                    glm::vec3 orientedNormal = normal;
+                    if (handle == GizmoVisualHandle::X)
+                    {
+                        position = { xyPosition.z, xyPosition.x, xyPosition.y };
+                        orientedNormal = { normal.z, normal.x, normal.y };
+                    }
+                    else if (handle == GizmoVisualHandle::Y)
+                    {
+                        position = { xyPosition.x, xyPosition.z, xyPosition.y };
+                        orientedNormal = { normal.x, normal.z, normal.y };
+                    }
+
+                    add_vertex(data, position, orientedNormal, color);
+                }
+            }
+
+            for (int major = 0; major < majorSegments; ++major)
+            {
+                const int nextMajor = (major + 1) % majorSegments;
+                for (int minor = 0; minor < minorSegments; ++minor)
+                {
+                    const int nextMinor = (minor + 1) % minorSegments;
+                    const std::uint32_t a =
+                        base + static_cast<std::uint32_t>(major * minorSegments + minor);
+                    const std::uint32_t b =
+                        base + static_cast<std::uint32_t>(nextMajor * minorSegments + minor);
+                    const std::uint32_t c =
+                        base + static_cast<std::uint32_t>(nextMajor * minorSegments + nextMinor);
+                    const std::uint32_t d =
+                        base + static_cast<std::uint32_t>(major * minorSegments + nextMinor);
+                    add_quad_indices(data, a, b, c, d);
+                }
             }
         }
 
@@ -323,13 +611,23 @@ namespace locus::graphics
 
         if (config.axisLength <= 0.0f
             || config.axisThickness <= 0.0f
+            || config.shaftRadius <= 0.0f
+            || config.arrowLength <= 0.0f
+            || config.arrowRadius <= 0.0f
             || config.planeSize <= 0.0f
             || config.planeOffset < 0.0f
+            || config.planeBorderWidth <= 0.0f
             || config.centerRadius <= 0.0f
+            || config.centerSize <= 0.0f
             || config.rotationRadius <= 0.0f
             || config.rotationThickness <= 0.0f
+            || config.rotationTubeRadius <= 0.0f
             || config.viewRingScale <= 0.0f
-            || config.scaleHandleRadius <= 0.0f)
+            || config.scaleHandleRadius <= 0.0f
+            || config.scaleCubeSize <= 0.0f
+            || config.radialSegments < MinimumRadialSegments
+            || config.ringMajorSegments < MinimumRingMajorSegments
+            || config.ringMinorSegments < MinimumRingMinorSegments)
         {
             return GraphicsError::make(
                 GraphicsErrorCode::InvalidArgument,
@@ -517,6 +815,57 @@ namespace locus::graphics
         return submittedObjectCount_;
     }
 
+    MeshUploadData GizmoRenderer::build_handle_mesh_data(
+        GizmoVisualMode mode,
+        GizmoVisualHandle handle,
+        const GizmoRendererConfig& config,
+        GizmoVisualRole role)
+    {
+        ColorRGBA color = base_color(handle, config);
+
+        switch (role)
+        {
+        case GizmoVisualRole::Hovered:
+            color = config.hoverColor;
+            break;
+        case GizmoVisualRole::Active:
+            color = config.activeColor;
+            break;
+        case GizmoVisualRole::Disabled:
+            color = config.disabledColor;
+            break;
+        case GizmoVisualRole::Normal:
+        default:
+            break;
+        }
+
+        if (is_plane_handle(handle))
+        {
+            switch (role)
+            {
+            case GizmoVisualRole::Hovered:
+                color.a = 1.0f;
+                break;
+            case GizmoVisualRole::Active:
+                color.a = 1.0f;
+                break;
+            case GizmoVisualRole::Disabled:
+                color.a = 0.42f;
+                break;
+            case GizmoVisualRole::Normal:
+            default:
+                color.a = 0.82f;
+                break;
+            }
+        }
+        else if (role == GizmoVisualRole::Disabled)
+        {
+            color.a = 0.62f;
+        }
+
+        return build_mesh_data(mode, handle, config, color);
+    }
+
     GraphicsResult<void> GizmoRenderer::create_handle(
         const MeshUploader& uploader,
         const Shader* shader,
@@ -530,21 +879,13 @@ namespace locus::graphics
         entry.handle = handle;
         entry.viewFacing = viewFacing;
 
-        const ColorRGBA normalColor = base_color(handle, config_);
-        const ColorRGBA colors[] = {
-            normalColor,
-            config_.hoverColor,
-            config_.activeColor,
-            config_.disabledColor
-        };
-
         for (std::size_t index = 0; index < RoleCount; ++index)
         {
-            MeshUploadData meshData = build_mesh_data(
+            MeshUploadData meshData = build_handle_mesh_data(
                 mode,
                 handle,
                 config_,
-                colors[index]);
+                static_cast<GizmoVisualRole>(index));
 
             if (meshData.is_empty())
             {
@@ -606,32 +947,47 @@ namespace locus::graphics
         const ColorRGBA& color)
     {
         MeshUploadData data;
-        data.topology = PrimitiveTopology::Lines;
+        data.topology = PrimitiveTopology::Triangles;
         data.usage = BufferUsage::Static;
 
         if (mode == GizmoVisualMode::Translate && is_single_axis(handle))
         {
-            add_axis_arrow(data, handle, config.axisLength, config.axisThickness, color);
+            add_axis_arrow(data, handle, config, color);
             return data;
         }
 
         if (mode == GizmoVisualMode::Scale && is_single_axis(handle))
         {
-            add_scale_handle(data, handle, config.axisLength, config.scaleHandleRadius, color);
+            add_scale_handle(data, handle, config, color);
             return data;
         }
 
         if ((mode == GizmoVisualMode::Translate || mode == GizmoVisualMode::Scale)
             && is_plane_handle(handle))
         {
-            add_plane_square(data, handle, config.planeOffset, config.planeSize, color);
+            const ColorRGBA fillColor = scaled_alpha(color, 0.42f);
+            add_plane_square(
+                data,
+                handle,
+                config.planeOffset,
+                config.planeSize,
+                config.planeBorderWidth,
+                fillColor,
+                color);
             return data;
         }
 
-        if ((mode == GizmoVisualMode::Translate || mode == GizmoVisualMode::Scale)
+        if (mode == GizmoVisualMode::Translate
             && handle == GizmoVisualHandle::XYZ)
         {
-            add_center(data, config.centerRadius, color);
+            add_uv_sphere(data, config.centerSize, config.radialSegments, color);
+            return data;
+        }
+
+        if (mode == GizmoVisualMode::Scale
+            && handle == GizmoVisualHandle::XYZ)
+        {
+            add_box(data, { 0.0f, 0.0f, 0.0f }, config.centerSize * 1.45f, color);
             return data;
         }
 
@@ -640,7 +996,17 @@ namespace locus::graphics
             const float radius = handle == GizmoVisualHandle::View
                 ? config.rotationRadius * config.viewRingScale
                 : config.rotationRadius;
-            add_rotation_ring(data, handle, radius, color);
+            const float tubeRadius = handle == GizmoVisualHandle::View
+                ? config.rotationTubeRadius * 1.35f
+                : config.rotationTubeRadius;
+            add_torus(
+                data,
+                handle,
+                radius,
+                tubeRadius,
+                config.ringMajorSegments,
+                config.ringMinorSegments,
+                color);
             return data;
         }
 
@@ -660,9 +1026,11 @@ namespace locus::graphics
         case GizmoVisualHandle::Z:
             return config.zColor;
         case GizmoVisualHandle::XY:
+            return mix_color(config.xColor, config.yColor, 0.5f);
         case GizmoVisualHandle::XZ:
+            return mix_color(config.xColor, config.zColor, 0.5f);
         case GizmoVisualHandle::YZ:
-            return config.planeColor;
+            return mix_color(config.yColor, config.zColor, 0.5f);
         case GizmoVisualHandle::XYZ:
             return config.centerColor;
         case GizmoVisualHandle::View:
