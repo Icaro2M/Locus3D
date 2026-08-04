@@ -70,6 +70,7 @@ add_executable(Locus3DGeometryTests
     unit/kernel/geometry/mesh/BridgeEdgeOpTests.cpp
     unit/kernel/geometry/mesh/DeleteMeshElementsOpTests.cpp
     unit/kernel/geometry/mesh/DissolveMeshElementsOpTests.cpp
+    unit/kernel/geometry/mesh/FaceOrientationRenderTests.cpp
     unit/kernel/geometry/mesh/FillHoleOpTests.cpp
     unit/kernel/geometry/mesh/FlipFaceOpTests.cpp
     unit/kernel/geometry/mesh/LEMAttributeTests.cpp

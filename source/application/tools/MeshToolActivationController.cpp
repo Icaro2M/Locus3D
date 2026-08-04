@@ -465,6 +465,7 @@ namespace locus::application {
         case ShortcutAction::TopView:
         case ShortcutAction::BottomView:
         case ShortcutAction::ToggleViewportShading:
+        case ShortcutAction::ToggleFaceOrientation:
         case ShortcutAction::Undo:
         case ShortcutAction::Redo:
         case ShortcutAction::Save:

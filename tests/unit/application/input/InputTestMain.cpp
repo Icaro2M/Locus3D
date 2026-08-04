@@ -202,6 +202,8 @@ using namespace locus::application;
         return "BottomView";
     case ShortcutAction::ToggleViewportShading:
         return "ToggleViewportShading";
+    case ShortcutAction::ToggleFaceOrientation:
+        return "ToggleFaceOrientation";
     case ShortcutAction::Undo:
         return "Undo";
     case ShortcutAction::Redo:
@@ -597,6 +599,31 @@ void apply_route(
         return false;
     }
 
+    if (viewport.face_orientation_enabled()) {
+        std::cerr << "Face Orientation should default to disabled\n";
+        return false;
+    }
+
+    viewport.set_face_orientation_enabled(true);
+    if (!viewport.face_orientation_enabled()) {
+        std::cerr << "Viewport should enable Face Orientation\n";
+        return false;
+    }
+
+    viewport.toggle_face_orientation();
+    if (viewport.face_orientation_enabled()) {
+        std::cerr << "Face Orientation toggle should disable\n";
+        return false;
+    }
+
+    viewport.toggle_face_orientation();
+    if (!viewport.face_orientation_enabled()) {
+        std::cerr << "Face Orientation toggle should enable\n";
+        return false;
+    }
+
+    viewport.set_face_orientation_enabled(false);
+
     viewport.set_shading_mode(ViewportShadingMode::Wireframe);
     if (viewport.shading_mode() != ViewportShadingMode::Wireframe) {
         std::cerr << "Viewport should accept Wireframe shading\n";
@@ -619,6 +646,12 @@ void apply_route(
         viewport_shading_frame_config(ViewportShadingMode::Solid);
     const ViewportShadingFrameConfig wireframe =
         viewport_shading_frame_config(ViewportShadingMode::Wireframe);
+    const ViewportDisplaySettings wireframeOrientation{
+        ViewportShadingMode::Wireframe,
+        true
+    };
+    const ViewportShadingFrameConfig wireframeWithOrientation =
+        viewport_shading_frame_config(wireframeOrientation);
 
     if (!solid.surfaceColorPass ||
         solid.surfaceDepthPrepass ||
@@ -639,11 +672,41 @@ void apply_route(
         return false;
     }
 
+    if (!wireframeWithOrientation.surfaceColorPass ||
+        wireframeWithOrientation.surfaceDepthPrepass ||
+        !wireframeWithOrientation.topologyVisibleEdges ||
+        wireframeWithOrientation.topologyOccludedEdges ||
+        !wireframeWithOrientation.topologySurfaceOverlays) {
+        std::cerr
+            << "Face Orientation should add a surface color pass under Wireframe\n";
+        return false;
+    }
+
     const locus::graphics::RendererSurfaceState depthOnly =
         locus::graphics::Renderer::depth_only_surface_state();
 
     const locus::graphics::RendererSurfaceState foreground =
         locus::graphics::Renderer::foreground_overlay_state();
+
+    locus::graphics::Renderer renderer{};
+    if (renderer.face_orientation_display().enabled) {
+        std::cerr << "Renderer Face Orientation should default to disabled\n";
+        return false;
+    }
+
+    locus::graphics::FaceOrientationDisplay orientationDisplay{};
+    orientationDisplay.enabled = true;
+    renderer.set_face_orientation_display(orientationDisplay);
+    if (!renderer.face_orientation_display().enabled) {
+        std::cerr << "Renderer should accept Face Orientation display state\n";
+        return false;
+    }
+
+    renderer.set_face_orientation_display({});
+    if (renderer.face_orientation_display().enabled) {
+        std::cerr << "Renderer Face Orientation display should reset\n";
+        return false;
+    }
 
     return depthOnly.depthTest &&
         depthOnly.depthWrite &&
@@ -1075,6 +1138,21 @@ void apply_route(
             context,
             ShortcutAction::ToggleViewportShading,
             "Viewport shading shortcut")) {
+        return false;
+    }
+
+    state.reset();
+    state.begin_frame();
+    state.consume(key(
+        Key::N,
+        InputModifiers::Control | InputModifiers::Alt));
+
+    if (!expect_shortcut(
+            shortcuts,
+            state,
+            context,
+            ShortcutAction::ToggleFaceOrientation,
+            "Face Orientation shortcut")) {
         return false;
     }
 

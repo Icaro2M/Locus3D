@@ -49,6 +49,7 @@ struct QuadMesh {
 [[nodiscard]] TestResult run_lem_editor_diff_tests();
 [[nodiscard]] TestResult run_lem_geometry_tests();
 [[nodiscard]] TestResult run_lem_attribute_tests();
+[[nodiscard]] TestResult run_face_orientation_render_tests();
 [[nodiscard]] TestResult run_bevel_operation_tests();
 [[nodiscard]] TestResult run_bridge_edge_operation_tests();
 [[nodiscard]] TestResult run_flip_face_operation_tests();

@@ -28,6 +28,7 @@ int main()
         { "LEMEditorDiff", run_lem_editor_diff_tests },
         { "LEMGeometry", run_lem_geometry_tests },
         { "LEMAttributes", run_lem_attribute_tests },
+        { "FaceOrientationRender", run_face_orientation_render_tests },
         { "BevelOperation", run_bevel_operation_tests },
         { "BridgeEdgeOperation", run_bridge_edge_operation_tests },
         { "FlipFaceOperation", run_flip_face_operation_tests },

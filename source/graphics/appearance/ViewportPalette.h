@@ -121,6 +121,16 @@ namespace locus::graphics
         ColorRGBA objectDefault{ 0.85f, 0.85f, 0.88f, 1.0f };
 
         /**
+         * @brief Diagnostic color for front-facing surface fragments.
+         */
+        ColorRGBA frontFaceOrientationColor{ 0.22f, 0.48f, 0.86f, 1.0f };
+
+        /**
+         * @brief Diagnostic color for back-facing surface fragments.
+         */
+        ColorRGBA backFaceOrientationColor{ 0.95f, 0.08f, 0.08f, 1.0f };
+
+        /**
          * @brief Object color used for selected state.
          */
         ColorRGBA objectSelected{ 1.0f, 0.68f, 0.18f, 1.0f };

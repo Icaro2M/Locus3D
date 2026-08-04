@@ -42,6 +42,7 @@ namespace locus::application {
         TopView,
         BottomView,
         ToggleViewportShading,
+        ToggleFaceOrientation,
         Undo,
         Redo,
         Save,

@@ -24,6 +24,18 @@ namespace locus::graphics
         lightEnvironment_ = environment;
     }
 
+    void Renderer::set_face_orientation_display(
+        const FaceOrientationDisplay& display) noexcept
+    {
+        faceOrientationDisplay_ = display;
+    }
+
+    const FaceOrientationDisplay&
+    Renderer::face_orientation_display() const noexcept
+    {
+        return faceOrientationDisplay_;
+    }
+
     void Renderer::render(const RenderScene& scene)
     {
         RenderQueue queue;
@@ -143,6 +155,7 @@ namespace locus::graphics
         shader->set_int("u_UseVertexColor", object.uses_vertex_color() ? 1 : 0);
 
         apply_lighting_uniforms(*shader);
+        apply_face_orientation_uniforms(*shader);
 
         object.mesh->draw();
 
@@ -203,6 +216,30 @@ namespace locus::graphics
         );
 
         shader.set_float("u_LightIntensity", light->intensity);
+    }
+
+    void Renderer::apply_face_orientation_uniforms(
+        const Shader& shader) const
+    {
+        shader.set_int(
+            "u_FaceOrientationEnabled",
+            faceOrientationDisplay_.enabled ? 1 : 0);
+
+        const ColorRGBA& front = faceOrientationDisplay_.frontColor;
+        shader.set_vec4(
+            "u_FrontFaceOrientationColor",
+            front.r,
+            front.g,
+            front.b,
+            front.a);
+
+        const ColorRGBA& back = faceOrientationDisplay_.backColor;
+        shader.set_vec4(
+            "u_BackFaceOrientationColor",
+            back.r,
+            back.g,
+            back.b,
+            back.a);
     }
 
     void Renderer::apply_surface_state(const RendererSurfaceState& state) const

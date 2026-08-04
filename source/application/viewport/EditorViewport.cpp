@@ -23,6 +23,7 @@
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
+#include "graphics/appearance/ViewportPalette.h"
 #include "graphics/primitives/PrimitiveMeshConverter.h"
 #include "graphics/primitives/SurfaceOverlay.h"
 #include "graphics/scene/RenderObject.h"
@@ -929,12 +930,25 @@ namespace locus::application {
 
     void EditorViewport::toggle_shading_mode() noexcept
     {
-        set_shading_mode(toggle_viewport_shading_mode(shadingMode_));
+        set_shading_mode(
+            toggle_viewport_shading_mode(displaySettings_.shadingMode));
+    }
+
+    void EditorViewport::toggle_face_orientation() noexcept
+    {
+        set_face_orientation_enabled(
+            !displaySettings_.showFaceOrientation);
     }
 
     void EditorViewport::set_shading_mode(ViewportShadingMode mode) noexcept
     {
-        shadingMode_ = mode;
+        displaySettings_.shadingMode = mode;
+    }
+
+    void EditorViewport::set_face_orientation_enabled(
+        bool enabled) noexcept
+    {
+        displaySettings_.showFaceOrientation = enabled;
     }
 
     void EditorViewport::set_projection_mode(
@@ -974,7 +988,12 @@ namespace locus::application {
 
     ViewportShadingMode EditorViewport::shading_mode() const noexcept
     {
-        return shadingMode_;
+        return displaySettings_.shadingMode;
+    }
+
+    bool EditorViewport::face_orientation_enabled() const noexcept
+    {
+        return displaySettings_.showFaceOrientation;
     }
 
     ViewOrientation EditorViewport::view_orientation() const noexcept
@@ -1128,14 +1147,14 @@ namespace locus::application {
             overlayObjects);
 
         const ViewportShadingFrameConfig shadingConfig =
-            viewport_shading_frame_config(shadingMode_);
+            viewport_shading_frame_config(displaySettings_);
         const bool drawGridBeforeSurfaceDepth =
             shadingConfig.surfaceDepthPrepass &&
             !shadingConfig.surfaceColorPass;
 
         editor::TopologyOverlayOptions topologyOptions{};
         const graphics::ScreenSpaceLineBatch topologyLines =
-            shadingMode_ == ViewportShadingMode::Wireframe
+            displaySettings_.shadingMode == ViewportShadingMode::Wireframe
                 ? editor::TopologyOverlayAdapter::build_visible_mesh_lines(
                     document.editor().scene(),
                     document.editor().selection(),
@@ -1276,7 +1295,20 @@ namespace locus::application {
         }
 
         renderQueue_.sort();
+        if (displaySettings_.showFaceOrientation) {
+            graphics::ViewportPalette palette{};
+            graphics::FaceOrientationDisplay orientationDisplay{};
+            orientationDisplay.enabled = true;
+            orientationDisplay.frontColor =
+                palette.frontFaceOrientationColor;
+            orientationDisplay.backColor =
+                palette.backFaceOrientationColor;
+
+            renderer_.set_face_orientation_display(orientationDisplay);
+        }
+
         renderer_.render(renderQueue_);
+        renderer_.set_face_orientation_display({});
 
         const auto selectionMaskResizeResult =
             selectionMaskPass_.resize(
@@ -1375,7 +1407,7 @@ namespace locus::application {
 
         foregroundQueue.add_object(axisRenderer_.render_object());
         foregroundQueue.sort();
-        if (shadingMode_ == ViewportShadingMode::Wireframe) {
+        if (displaySettings_.shadingMode == ViewportShadingMode::Wireframe) {
             renderer_.render_with_state(
                 foregroundQueue,
                 graphics::Renderer::foreground_overlay_state());

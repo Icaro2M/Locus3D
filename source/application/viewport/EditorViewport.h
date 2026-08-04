@@ -180,11 +180,23 @@ namespace locus::application {
         void toggle_shading_mode() noexcept;
 
         /**
+         * @brief Toggles diagnostic front/back face orientation coloring.
+         */
+        void toggle_face_orientation() noexcept;
+
+        /**
          * @brief Sets the primary viewport shading mode.
          *
          * @param mode Requested shading mode.
          */
         void set_shading_mode(ViewportShadingMode mode) noexcept;
+
+        /**
+         * @brief Enables or disables diagnostic face orientation coloring.
+         *
+         * @param enabled True to color front/back fragments diagnostically.
+         */
+        void set_face_orientation_enabled(bool enabled) noexcept;
 
         /**
          * @brief Sets the viewport projection mode while preserving framing.
@@ -213,6 +225,13 @@ namespace locus::application {
          * @return Current shading mode.
          */
         [[nodiscard]] ViewportShadingMode shading_mode() const noexcept;
+
+        /**
+         * @brief Checks whether diagnostic face orientation coloring is active.
+         *
+         * @return True when Face Orientation display is enabled.
+         */
+        [[nodiscard]] bool face_orientation_enabled() const noexcept;
 
         /**
          * @brief Returns the current orientation tag.
@@ -358,7 +377,7 @@ namespace locus::application {
         std::int32_t lastPickingX_ = -1;
         std::int32_t lastPickingY_ = -1;
         ViewOrientation viewOrientation_ = ViewOrientation::User;
-        ViewportShadingMode shadingMode_ = ViewportShadingMode::Solid;
+        ViewportDisplaySettings displaySettings_{};
         bool pickingPassDirty_ = true;
         bool pickingQueryValid_ = false;
         bool initialized_ = false;

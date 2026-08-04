@@ -5,11 +5,24 @@ in vec4 v_Color;
 
 uniform vec4 u_BaseColor;
 uniform int u_UseVertexColor;
+uniform int u_FaceOrientationEnabled;
+uniform vec4 u_FrontFaceOrientationColor;
+uniform vec4 u_BackFaceOrientationColor;
 
 out vec4 FragColor;
 
 void main()
 {
+    if (u_FaceOrientationEnabled != 0)
+    {
+        vec4 orientationColor = gl_FrontFacing
+            ? u_FrontFaceOrientationColor
+            : u_BackFaceOrientationColor;
+
+        FragColor = vec4(orientationColor.rgb, orientationColor.a);
+        return;
+    }
+
     vec3 normal = normalize(v_Normal);
 
     vec3 lightA = normalize(vec3(0.6, 0.8, 0.5));

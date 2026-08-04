@@ -27,6 +27,14 @@ namespace locus::application {
     };
 
     /**
+     * @brief Independent visual display options for one editor viewport.
+     */
+    struct ViewportDisplaySettings {
+        ViewportShadingMode shadingMode = ViewportShadingMode::Solid;
+        bool showFaceOrientation = false;
+    };
+
+    /**
      * @brief Returns the alternate shading mode for two-state toggles.
      */
     [[nodiscard]] constexpr ViewportShadingMode toggle_viewport_shading_mode(
@@ -58,6 +66,26 @@ namespace locus::application {
         }
 
         return {};
+    }
+
+    /**
+     * @brief Builds the generic frame policy for combined display settings.
+     */
+    [[nodiscard]] constexpr ViewportShadingFrameConfig
+    viewport_shading_frame_config(
+        const ViewportDisplaySettings& settings) noexcept
+    {
+        ViewportShadingFrameConfig config =
+            viewport_shading_frame_config(settings.shadingMode);
+
+        if (settings.showFaceOrientation) {
+            config.surfaceColorPass = true;
+            config.surfaceDepthPrepass = false;
+            config.topologyVisibleEdges = true;
+            config.topologySurfaceOverlays = true;
+        }
+
+        return config;
     }
 
 } // namespace locus::application

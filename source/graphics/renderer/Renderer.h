@@ -30,6 +30,16 @@ namespace locus::graphics
     };
 
     /**
+     * @brief Diagnostic front/back surface coloring for scene rendering.
+     */
+    struct FaceOrientationDisplay
+    {
+        bool enabled = false;
+        ColorRGBA frontColor{ 0.22f, 0.48f, 0.86f, 1.0f };
+        ColorRGBA backColor{ 0.95f, 0.08f, 0.08f, 1.0f };
+    };
+
+    /**
      * @brief Simple scene renderer that submits drawable objects to the GPU.
      */
     class Renderer
@@ -71,6 +81,22 @@ namespace locus::graphics
          * @param environment Lighting environment or nullptr to disable scene lighting uniforms.
          */
         void set_light_environment(const LightEnvironment* environment);
+
+        /**
+         * @brief Sets diagnostic surface coloring for subsequent draw calls.
+         *
+         * @param display Face-orientation display state.
+         */
+        void set_face_orientation_display(
+            const FaceOrientationDisplay& display) noexcept;
+
+        /**
+         * @brief Returns the current diagnostic face orientation display state.
+         *
+         * @return Read-only face orientation display state.
+         */
+        [[nodiscard]] const FaceOrientationDisplay&
+            face_orientation_display() const noexcept;
 
         /**
          * @brief Renders every drawable object in the scene.
@@ -150,12 +176,14 @@ namespace locus::graphics
     private:
         void render_object(const RenderObject& object);
         void apply_lighting_uniforms(const Shader& shader) const;
+        void apply_face_orientation_uniforms(const Shader& shader) const;
         void apply_surface_state(const RendererSurfaceState& state) const;
 
     private:
         glm::mat4 viewMatrix_{ 1.0f };
         glm::mat4 projectionMatrix_{ 1.0f };
         const LightEnvironment* lightEnvironment_ = nullptr;
+        FaceOrientationDisplay faceOrientationDisplay_{};
         RenderStats stats_{};
     };
 }
