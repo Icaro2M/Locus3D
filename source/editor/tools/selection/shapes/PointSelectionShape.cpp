@@ -20,6 +20,7 @@ namespace locus::editor {
             if (result.component.hit) {
                 result.componentNode =
                     context.selection().mesh().active_mesh();
+                result.components.push_back(result.component);
             }
             return result;
         }
@@ -34,6 +35,7 @@ namespace locus::editor {
             if (result.component.hit) {
                 result.componentNode =
                     context.selection().mesh().active_mesh();
+                result.components.push_back(result.component);
             }
             return result;
         }
@@ -45,6 +47,7 @@ namespace locus::editor {
 
         if (result.component.hit) {
             result.componentNode = nodeId;
+            result.components.push_back(result.component);
             return result;
         }
 
@@ -53,6 +56,7 @@ namespace locus::editor {
         if (result.component.hit) {
             result.componentNode =
                 context.selection().mesh().active_mesh();
+            result.components.push_back(result.component);
         }
         return result;
     }

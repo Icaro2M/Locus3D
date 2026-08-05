@@ -6,7 +6,9 @@
 #pragma once
 
 #include "editor/tools/interaction/ModalTool.h"
+#include "editor/tools/interaction/ToolCapture.h"
 #include "editor/tools/selection/shapes/ISelectionShape.h"
+#include "editor/tools/selection/shapes/BoxSelectionShape.h"
 
 #include <memory>
 
@@ -54,6 +56,9 @@ namespace locus::editor {
          */
         [[nodiscard]]
         const ISelectionShape* shape() const;
+
+        [[nodiscard]] bool is_box_selecting() const noexcept;
+        [[nodiscard]] ScreenSelectionRect selection_rect() const noexcept;
 
     protected:
         /**
@@ -127,6 +132,24 @@ namespace locus::editor {
             ToolContext& context,
             const ToolEvent& event);
 
+        ToolResult begin_pointer_selection(
+            ToolContext& context,
+            const ToolEvent& event);
+
+        ToolResult update_pointer_selection(
+            ToolContext& context,
+            const ToolEvent& event);
+
+        ToolResult finish_pointer_selection(
+            ToolContext& context,
+            const ToolEvent& event);
+
+        ToolResult apply_box_selection(
+            ToolContext& context,
+            const ToolEvent& event);
+
+        void clear_interaction_state();
+
         /**
          * @brief Converts command execution into a tool result.
          *
@@ -140,6 +163,11 @@ namespace locus::editor {
             const char* successMessage);
 
         std::unique_ptr<ISelectionShape> shape_{};
+        BoxSelectionShape boxShape_{};
+        ToolCapture capture_{};
+        SelectionOperation operation_ = SelectionOperation::Replace;
+        bool boxSelecting_ = false;
+        float dragThresholdPixels_ = 4.0f;
     };
 
 } // namespace locus::editor

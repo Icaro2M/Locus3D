@@ -1645,6 +1645,57 @@ namespace locus::application {
         return lastPickingResult_;
     }
 
+    ApplicationResult<std::vector<graphics::PickingId>>
+    EditorViewport::read_picking_region(
+        DocumentSession& document,
+        const editor::ScreenSelectionRect& rect)
+    {
+        const auto bufferResult = ensure_picking_buffer();
+        if (!bufferResult) {
+            return bufferResult.error();
+        }
+
+        bool bufferRendered = false;
+        if (pickingPassDirty_) {
+            const graphics::Camera& camera = viewport_.camera();
+            pickingRenderer_.set_view_matrix(camera.view_matrix());
+            pickingRenderer_.set_projection_matrix(camera.projection_matrix());
+            pickingRenderer_.render(
+                pickingBuffer_,
+                document.editor_sync().render_scene());
+
+            pickingPassDirty_ = false;
+            pickingQueryValid_ = false;
+            bufferRendered = true;
+        }
+
+        (void)bufferRendered;
+
+        const editor::ScreenSelectionRect clipped =
+            rect.clipped(glm::vec2{
+                static_cast<float>(framebufferWidth_),
+                static_cast<float>(framebufferHeight_) });
+
+        if (clipped.empty()) {
+            return std::vector<graphics::PickingId>{};
+        }
+
+        const std::int32_t x =
+            static_cast<std::int32_t>(clipped.min.x);
+        const std::int32_t y =
+            static_cast<std::int32_t>(clipped.min.y);
+        const std::int32_t width =
+            static_cast<std::int32_t>(clipped.width()) + 1;
+        const std::int32_t height =
+            static_cast<std::int32_t>(clipped.height()) + 1;
+
+        return pickingBuffer_.read_region(
+            x,
+            y,
+            width,
+            height);
+    }
+
     graphics::Viewport& EditorViewport::viewport() noexcept
     {
         invalidate_picking();

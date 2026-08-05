@@ -10,6 +10,8 @@
 #include "graphics/gpu/Framebuffer.h"
 #include "graphics/picking/PickingId.h"
 
+#include <vector>
+
 namespace locus::graphics
 {
     /**
@@ -80,6 +82,12 @@ namespace locus::graphics
          * @return Decoded picking ID, or invalid when out of range.
          */
         [[nodiscard]] PickingId read_id(i32 x, i32 y) const;
+
+        [[nodiscard]] std::vector<PickingId> read_region(
+            i32 x,
+            i32 y,
+            i32 width,
+            i32 height) const;
 
         /**
          * @brief Checks whether the picking framebuffer exists.

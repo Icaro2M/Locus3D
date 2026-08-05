@@ -10,6 +10,7 @@
 #include "application/input/InputEvent.h"
 #include "application/viewport/ViewportShadingMode.h"
 #include "editor/scene/SceneNodeId.h"
+#include "editor/tools/selection/shapes/SelectionShapeTypes.h"
 #include "graphics/camera/OrbitCameraRig.h"
 #include "graphics/gpu/ShaderManager.h"
 #include "graphics/mesh/MeshRenderCache.h"
@@ -30,6 +31,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <vector>
 
 namespace locus::application {
 
@@ -295,6 +297,11 @@ namespace locus::application {
          */
         [[nodiscard]] const ViewportPickingResult&
             last_picking_result() const noexcept;
+
+        [[nodiscard]] ApplicationResult<std::vector<graphics::PickingId>>
+            read_picking_region(
+                DocumentSession& document,
+                const editor::ScreenSelectionRect& rect);
 
         /**
          * @brief Returns the graphics viewport and its owned camera.

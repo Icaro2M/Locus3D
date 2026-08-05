@@ -254,6 +254,12 @@ namespace locus::application {
             event.pointer.viewDirection = camera.forward();
             event.pointer.viewRight = camera.right();
             event.pointer.viewUp = camera.up();
+            event.pointer.viewportSize = glm::vec2{
+                static_cast<float>(graphicsViewport.state().rect.width),
+                static_cast<float>(graphicsViewport.state().rect.height)
+            };
+            event.pointer.viewProjection =
+                camera.view_projection_matrix();
             event.pointer.visualScale =
                 viewport.visual_scale_at(
                     viewport.orbit_rig().target());
@@ -278,6 +284,13 @@ namespace locus::application {
 
             event.pointer.worldRay.origin = ray.origin;
             event.pointer.worldRay.direction = ray.direction;
+        }
+
+        [[nodiscard]] editor::SelectTool* active_select_tool(
+            DocumentSession& document)
+        {
+            return dynamic_cast<editor::SelectTool*>(
+                document.tool_manager().active_tool());
         }
 
         void populate_transform_pointer_scale(
@@ -1128,6 +1141,24 @@ namespace locus::application {
                     releaseEvent,
                     *activeDocument,
                     editorViewport_);
+
+                if (editor::SelectTool* selectTool =
+                        active_select_tool(*activeDocument);
+                    selectTool != nullptr &&
+                    selectTool->is_box_selecting()) {
+                    const auto regionIds =
+                        editorViewport_.read_picking_region(
+                            *activeDocument,
+                            selectTool->selection_rect());
+
+                    if (!regionIds) {
+                        inputState_.end_frame();
+                        return regionIds.error();
+                    }
+
+                    releaseEvent.pointer.regionalPickingIds =
+                        regionIds.value();
+                }
 
                 ApplicationResult<void> releaseToolResult =
                     dispatch_tool_event(*activeDocument, releaseEvent);

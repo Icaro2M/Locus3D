@@ -252,6 +252,7 @@ add_executable(Locus3DEditorSelectionTests
     unit/editor/selection/ObjectSelectionTests.cpp
     unit/editor/selection/SelectionControllerTests.cpp
     unit/editor/selection/SelectionSetTests.cpp
+    unit/editor/selection/SelectionShapeTypesTests.cpp
     unit/editor/selection/SelectionStateTests.cpp
     unit/editor/selection/SelectionTestMain.cpp
 )

@@ -6,7 +6,9 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
+#include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -208,6 +210,10 @@ namespace locus::editor {
          */
         glm::vec2 viewportDelta{ 0.0f, 0.0f };
 
+        glm::vec2 viewportSize{ 0.0f, 0.0f };
+
+        glm::mat4 viewProjection{ 1.0f };
+
         /**
          * @brief Compact picking identifier sampled at the pointer position.
          *
@@ -216,6 +222,8 @@ namespace locus::editor {
          */
         graphics::PickingId pickingId =
             graphics::PickingId::invalid();
+
+        std::vector<graphics::PickingId> regionalPickingIds{};
 
         /**
          * @brief Checks whether the pointer has a valid picking sample.

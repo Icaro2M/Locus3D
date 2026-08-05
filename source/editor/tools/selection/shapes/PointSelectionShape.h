@@ -34,6 +34,12 @@ namespace locus::editor {
         SelectionShapeResult resolve(
             const ToolContext& context,
             const ToolEvent& event) const override;
+
+        [[nodiscard]]
+        SelectionShapeKind kind() const noexcept override
+        {
+            return SelectionShapeKind::Point;
+        }
     };
 
 } // namespace locus::editor

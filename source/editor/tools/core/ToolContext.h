@@ -9,10 +9,12 @@
 #include "editor/command/CommandResult.h"
 #include "editor/scene/SceneNodeId.h"
 #include "kernel/geometry/queries/SelectionHit.h"
+#include "editor/tools/selection/shapes/SelectionShapeTypes.h"
 
 #include "graphics/picking/PickingId.h"
 
 #include <memory>
+#include <vector>
 
 namespace locus::editor {
 
@@ -225,6 +227,9 @@ namespace locus::editor {
         [[nodiscard]] SceneNodeId resolve_scene_node(
             graphics::PickingId pickingId) const;
 
+        [[nodiscard]] std::vector<SceneNodeId> resolve_scene_nodes(
+            const std::vector<graphics::PickingId>& pickingIds) const;
+
         /**
          * @brief Resolves the active mesh component under a pointer event.
          *
@@ -247,6 +252,17 @@ namespace locus::editor {
         [[nodiscard]] kernel::geometry::SelectionHit resolve_mesh_component(
             SceneNodeId meshNodeId,
             const ToolEvent& event) const;
+
+        [[nodiscard]] std::vector<SceneNodeId> resolve_objects_in_rect(
+            const ScreenSelectionRect& rect,
+            const ToolEvent& event,
+            SelectionContainment containment) const;
+
+        [[nodiscard]] std::vector<kernel::geometry::SelectionHit>
+            resolve_active_mesh_components(
+                const ScreenSelectionRect& rect,
+                const ToolEvent& event,
+                SelectionContainment containment) const;
 
         /**
          * @brief Marks editor subsystems as dirty.

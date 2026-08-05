@@ -19,5 +19,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_mesh_selection_tests();
 [[nodiscard]] TestResult run_selection_state_tests();
 [[nodiscard]] TestResult run_selection_controller_tests();
+[[nodiscard]] TestResult run_selection_shape_types_tests();
 
 } // namespace locus::tests

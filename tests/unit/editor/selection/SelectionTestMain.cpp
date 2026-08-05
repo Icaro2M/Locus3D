@@ -29,6 +29,7 @@ int main()
         { "MeshSelection", run_mesh_selection_tests },
         { "SelectionState", run_selection_state_tests },
         { "SelectionController", run_selection_controller_tests },
+        { "SelectionShapeTypes", run_selection_shape_types_tests },
     };
 
     for (const TestCase& test : tests) {

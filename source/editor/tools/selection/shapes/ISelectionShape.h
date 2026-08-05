@@ -9,6 +9,7 @@
 #include "kernel/geometry/queries/SelectionHit.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/core/ToolEvent.h"
+#include "editor/tools/selection/shapes/SelectionShapeTypes.h"
 
 #include <vector>
 
@@ -28,6 +29,8 @@ namespace locus::editor {
          */
         kernel::geometry::SelectionHit component =
             kernel::geometry::SelectionHit::miss();
+
+        std::vector<kernel::geometry::SelectionHit> components{};
 
         /**
          * @brief Mesh node that owns the resolved component.
@@ -49,7 +52,7 @@ namespace locus::editor {
          * @return True when no object was resolved.
          */
         [[nodiscard]] bool empty() const {
-            return objects.empty() && !component.hit;
+            return objects.empty() && !component.hit && components.empty();
         }
 
         /**
@@ -58,6 +61,7 @@ namespace locus::editor {
         void clear() {
             objects.clear();
             component = kernel::geometry::SelectionHit::miss();
+            components.clear();
         }
     };
 
@@ -88,6 +92,9 @@ namespace locus::editor {
         virtual SelectionShapeResult resolve(
             const ToolContext& context,
             const ToolEvent& event) const = 0;
+
+        [[nodiscard]]
+        virtual SelectionShapeKind kind() const noexcept = 0;
     };
 
 } // namespace locus::editor
