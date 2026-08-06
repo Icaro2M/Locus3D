@@ -255,6 +255,7 @@ add_executable(Locus3DEditorSelectionTests
     unit/editor/selection/SelectionShapeTypesTests.cpp
     unit/editor/selection/SelectionStateTests.cpp
     unit/editor/selection/SelectionTestMain.cpp
+    unit/editor/selection/SelectToolVisualStateTests.cpp
 )
 
 target_include_directories(Locus3DEditorSelectionTests

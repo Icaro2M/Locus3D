@@ -12,7 +12,18 @@
 
 #include <memory>
 
+#include <glm/vec2.hpp>
+
 namespace locus::editor {
+
+    /**
+     * @brief Read-only visual snapshot for an active selection drag region.
+     */
+    struct SelectionRegionVisualState {
+        bool visible = false;
+        glm::vec2 start{ 0.0f, 0.0f };
+        glm::vec2 current{ 0.0f, 0.0f };
+    };
 
     /**
      * @brief Persistent editor tool used for object and component selection.
@@ -59,6 +70,8 @@ namespace locus::editor {
 
         [[nodiscard]] bool is_box_selecting() const noexcept;
         [[nodiscard]] ScreenSelectionRect selection_rect() const noexcept;
+        [[nodiscard]] SelectionRegionVisualState
+            selection_region_visual_state() const noexcept;
 
     protected:
         /**

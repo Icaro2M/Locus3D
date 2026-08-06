@@ -30,6 +30,7 @@ int main()
         { "SelectionState", run_selection_state_tests },
         { "SelectionController", run_selection_controller_tests },
         { "SelectionShapeTypes", run_selection_shape_types_tests },
+        { "SelectToolVisualState", run_select_tool_visual_state_tests },
     };
 
     for (const TestCase& test : tests) {

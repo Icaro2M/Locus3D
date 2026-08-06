@@ -21,6 +21,7 @@
 #include "editor/sync/EditorSync.h"
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
+#include "editor/tools/selection/SelectTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/appearance/ViewportPalette.h"
@@ -319,6 +320,62 @@ namespace locus::application {
                 document.tool_manager().active_tool();
 
             return dynamic_cast<const editor::MeshDragOperationTool*>(tool);
+        }
+
+        [[nodiscard]] const editor::SelectTool* active_select_tool(
+            const DocumentSession& document)
+        {
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            return dynamic_cast<const editor::SelectTool*>(tool);
+        }
+
+        [[nodiscard]] graphics::SelectionRectangleDrawData
+        make_selection_rectangle_draw_data(
+            const DocumentSession& document,
+            const graphics::ViewportRect& viewport)
+        {
+            graphics::SelectionRectangleDrawData data{};
+            data.viewportOrigin = glm::vec2{
+                static_cast<float>(viewport.x),
+                static_cast<float>(viewport.y) };
+            data.viewportSize = glm::vec2{
+                static_cast<float>(viewport.width),
+                static_cast<float>(viewport.height) };
+
+            const editor::SelectTool* selectTool =
+                active_select_tool(document);
+            if (selectTool == nullptr) {
+                return data;
+            }
+
+            const editor::SelectionRegionVisualState visualState =
+                selectTool->selection_region_visual_state();
+            if (!visualState.visible ||
+                data.viewportSize.x <= 0.0f ||
+                data.viewportSize.y <= 0.0f) {
+                return data;
+            }
+
+            const glm::vec2 minimum{
+                std::min(visualState.start.x, visualState.current.x),
+                std::min(visualState.start.y, visualState.current.y) };
+            const glm::vec2 maximum{
+                std::max(visualState.start.x, visualState.current.x),
+                std::max(visualState.start.y, visualState.current.y) };
+
+            data.minimum = glm::vec2{
+                std::clamp(minimum.x, 0.0f, data.viewportSize.x),
+                std::clamp(minimum.y, 0.0f, data.viewportSize.y) };
+            data.maximum = glm::vec2{
+                std::clamp(maximum.x, 0.0f, data.viewportSize.x),
+                std::clamp(maximum.y, 0.0f, data.viewportSize.y) };
+            data.visible =
+                data.maximum.x > data.minimum.x &&
+                data.maximum.y > data.minimum.y;
+
+            return data;
         }
 
         [[nodiscard]] editor::SceneNodeId operation_preview_target(
@@ -642,6 +699,32 @@ namespace locus::application {
         }
         append_startup_log("EditorViewport: surface overlay renderer created");
 
+        auto selectionShapeShaderResult = shaderManager_.load(
+            "viewport/selection_shape",
+            "viewport/selection_shape_vert.glsl",
+            "viewport/selection_shape_frag.glsl");
+
+        if (!selectionShapeShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the selection shape overlay shader",
+                selectionShapeShaderResult.error());
+        }
+        append_startup_log("EditorViewport: selection shape shader loaded");
+
+        const auto selectionShapeRendererResult =
+            selectionShapeRenderer_.create(shaderManager_);
+
+        if (!selectionShapeRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the selection shape overlay renderer",
+                selectionShapeRendererResult.error());
+        }
+        append_startup_log("EditorViewport: selection shape renderer created");
+
         auto pickingShaderResult = shaderManager_.load(
             "picking/object",
             "picking/picking_vert.glsl",
@@ -820,6 +903,7 @@ namespace locus::application {
         topologyVertexRenderer_.destroy();
         topologyLineRenderer_.destroy();
         topologySurfaceRenderer_.destroy();
+        selectionShapeRenderer_.destroy();
         gridRenderer_.destroy();
         meshCache_.clear();
         shaderManager_.clear();
@@ -1101,6 +1185,11 @@ namespace locus::application {
 
         const graphics::RenderScene& scene =
             document.editor_sync().render_scene();
+
+        selectionShapeRenderer_.set_rectangle(
+            make_selection_rectangle_draw_data(
+                document,
+                viewport_.state().rect));
 
         graphics::GizmoDrawData gizmoData{};
         gizmoData.visible = false;
@@ -1439,6 +1528,8 @@ namespace locus::application {
         renderer_.render_with_state(
             axisQueue,
             graphics::Renderer::foreground_overlay_state());
+
+        selectionShapeRenderer_.render();
 
         return {};
     }

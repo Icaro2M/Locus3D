@@ -179,8 +179,14 @@ source\graphics
 |           MeasurementRenderer.h
 |           NormalRenderer.cpp
 |           NormalRenderer.h
+|           PointMarkerRenderer.cpp
+|           PointMarkerRenderer.h
 |           ScreenSpaceLineRenderer.cpp
 |           ScreenSpaceLineRenderer.h
+|           SelectionShapeRenderer.cpp
+|           SelectionShapeRenderer.h
+|           SurfaceOverlayRenderer.cpp
+|           SurfaceOverlayRenderer.h
 |
 +---passes
 |       DebugPass.h [!]
@@ -269,4 +275,5 @@ When changing graphics code:
 - Screen-space topology lines are `VisibleOnly`: they render after opaque scene geometry into the same framebuffer, keep depth testing enabled with depth writes disabled, and do not apply clip/NDC depth bias. The scene depth buffer remains the authority for occlusion, while `GL_LEQUAL` handles only coplanar numeric equality.
 - `PointMarkerRenderer` follows the same overlay contract for generic world-space point markers. Markers are instanced screen-space billboards, keep the center point depth as the semantic depth for every fragment, and rely on the scene depth buffer with `GL_LEQUAL` for `VisibleOnly` occlusion.
 - `SurfaceOverlayRenderer` receives generic indexed local-space triangles plus a model matrix for translucent editable-face overlays. It renders after opaque scene geometry and before topology lines/point markers, keeps depth testing enabled with depth writes disabled, uses `GL_LEQUAL` and alpha blending, and does not know editor handles, selection state, or LEM topology.
+- `SelectionShapeRenderer` receives viewport-local 2D rectangle draw data only. It renders a screen-space fill and constant-pixel border above the scene with depth testing and depth writes disabled, uses alpha blending, and does not know editor tools, selection controllers, picking IDs, or scene nodes.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

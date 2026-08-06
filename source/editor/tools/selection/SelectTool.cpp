@@ -62,6 +62,16 @@ namespace locus::editor {
             capture_.currentPosition);
     }
 
+    SelectionRegionVisualState
+        SelectTool::selection_region_visual_state() const noexcept {
+
+        return SelectionRegionVisualState{
+            boxSelecting_ && capture_.has_pointer(),
+            capture_.startPosition,
+            capture_.currentPosition
+        };
+    }
+
     bool SelectTool::can_activate_tool(
         const ToolContext& context) const {
 

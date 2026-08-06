@@ -20,5 +20,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_selection_state_tests();
 [[nodiscard]] TestResult run_selection_controller_tests();
 [[nodiscard]] TestResult run_selection_shape_types_tests();
+[[nodiscard]] TestResult run_select_tool_visual_state_tests();
 
 } // namespace locus::tests

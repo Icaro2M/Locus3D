@@ -20,6 +20,7 @@
 #include "graphics/overlay/renderers/GridRenderer.h"
 #include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
+#include "graphics/overlay/renderers/SelectionShapeRenderer.h"
 #include "graphics/overlay/renderers/SurfaceOverlayRenderer.h"
 #include "graphics/passes/ObjectOutlinePass.h"
 #include "graphics/passes/SelectionMaskPass.h"
@@ -368,6 +369,7 @@ namespace locus::application {
         graphics::SurfaceOverlayRenderer topologySurfaceRenderer_{};
         graphics::ScreenSpaceLineRenderer topologyLineRenderer_{};
         graphics::PointMarkerRenderer topologyVertexRenderer_{};
+        graphics::SelectionShapeRenderer selectionShapeRenderer_{};
         graphics::Viewport viewport_{};
         graphics::OrbitCameraRig orbitRig_{};
         graphics::Renderer renderer_{};

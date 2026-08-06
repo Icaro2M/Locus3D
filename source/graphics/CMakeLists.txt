@@ -33,6 +33,7 @@ target_sources(locus3d_graphics PRIVATE
     "overlay/renderers/NormalRenderer.cpp"
     "overlay/renderers/PointMarkerRenderer.cpp"
     "overlay/renderers/ScreenSpaceLineRenderer.cpp"
+    "overlay/renderers/SelectionShapeRenderer.cpp"
     "overlay/renderers/SurfaceOverlayRenderer.cpp"
     "passes/GeometryPass.cpp"
     "passes/ObjectOutlinePass.cpp"
