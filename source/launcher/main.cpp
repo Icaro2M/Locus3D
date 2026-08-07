@@ -51,6 +51,11 @@
 #include "kernel/manufacturing/profiles/PrintProfile.h"
 #include "kernel/manufacturing/profiles/SLAProfile.h"
 #include "kernel/manufacturing/profiles/SLSProfile.h"
+#include "kernel/manufacturing/core/AnalysisContext.h"
+#include "kernel/manufacturing/core/IAnalyzer.h"
+
+#include "kernel/geometry/mesh/LEM.h"
+
 
 //========manufacturing==============================
 
@@ -1604,145 +1609,151 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing Print Profile Smoke Test
-    //=============================================================================
+// Manufacturing Analyzer Contract Smoke Test
+//=============================================================================
 
     {
+        using namespace locus::kernel;
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing Print Profile Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing Analyzer Contract Smoke Test ===\n\n";
 
-        std::cout << "=== FDM profile ===\n";
+        std::cout << "=== Empty AnalysisContext ===\n";
+
+        AnalysisContext emptyContext;
+
+        if (!emptyContext.has_mesh() &&
+            !emptyContext.has_profile() &&
+            !emptyContext.has_analysis_mesh()) {
+            std::cout
+                << "[OK] contexto vazio nao inventa dependencias\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] estado inicial do AnalysisContext inconsistente\n";
+        }
+
+        std::cout << "\n=== Mesh and profile context ===\n";
+
+        geometry::LEM mesh;
 
         FDMProfile fdm;
-        fdm.name = "Test FDM";
-        fdm.nozzleDiameter = 0.4;
-        fdm.extrusionWidth = 0.45;
-        fdm.layerHeight = 0.2;
-
+        fdm.name = "Analyzer Test FDM";
         fdm.limits.minimumWallThickness = 0.8;
-        fdm.limits.minimumFeatureSize = 0.4;
-        fdm.limits.maximumUnsupportedOverhangAngleDegrees = 45.0;
 
-        PrintProfile profile{ fdm };
+        PrintProfile printProfile{ fdm };
 
-        if (profile.technology() == PrintTechnology::FDM &&
-            profile.name() == "Test FDM" &&
-            profile.is<FDMProfile>() &&
-            !profile.is<SLAProfile>() &&
-            !profile.is<SLSProfile>()) {
+        AnalysisContext context;
+        context.mesh = &mesh;
+        context.profile = &printProfile;
+
+        if (context.has_mesh() &&
+            context.has_profile() &&
+            !context.has_analysis_mesh() &&
+            context.mesh == &mesh &&
+            context.profile == &printProfile) {
             std::cout
-                << "[OK] PrintProfile preserva tecnologia e tipo FDM\n";
+                << "[OK] contexto preserva LEM e profile sem exigir AnalysisMesh\n";
         }
         else {
             std::cout
-                << "[FAIL] PrintProfile FDM inconsistente\n";
+                << "[FAIL] referencias do AnalysisContext inconsistentes\n";
         }
 
-        const FDMProfile* storedFdm =
-            profile.get_if<FDMProfile>();
+        std::cout << "\n=== IAnalyzer contract ===\n";
 
-        if (storedFdm != nullptr &&
-            storedFdm->nozzleDiameter.has_value() &&
-            storedFdm->nozzleDiameter.value() == 0.4 &&
-            storedFdm->extrusionWidth.has_value() &&
-            storedFdm->extrusionWidth.value() == 0.45 &&
-            storedFdm->layerHeight.has_value() &&
-            storedFdm->layerHeight.value() == 0.2) {
+        class TestAnalyzer final : public IAnalyzer {
+        public:
+            [[nodiscard]] std::string_view name() const noexcept override
+            {
+                return "TestAnalyzer";
+            }
+
+            void analyze(
+                const AnalysisContext& analyzerContext,
+                AnalysisReport& report) const override
+            {
+                if (!analyzerContext.has_mesh()) {
+                    return;
+                }
+
+                IssueLocation location;
+
+                PrintIssue issue{
+                    PrintIssueType::MinimumFeatureSize,
+                    IssueSeverity::Info,
+                    "Test manufacturing analyzer executed.",
+                    location
+                };
+
+                report.add_issue(std::move(issue));
+            }
+        };
+
+        TestAnalyzer analyzer;
+
+        if (analyzer.name() == "TestAnalyzer") {
             std::cout
-                << "[OK] parametros especificos de FDM foram preservados\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] parametros especificos de FDM inconsistentes\n";
-        }
-
-        std::cout << "\n=== Manufacturing limits ===\n";
-
-        if (profile.limits().has_minimum_wall_thickness() &&
-            profile.limits().has_minimum_feature_size() &&
-            profile.limits().has_maximum_unsupported_overhang_angle() &&
-            profile.limits().minimumWallThickness.value() == 0.8 &&
-            profile.limits().minimumFeatureSize.value() == 0.4 &&
-            profile.limits()
-            .maximumUnsupportedOverhangAngleDegrees.value() == 45.0) {
-            std::cout
-                << "[OK] limites comuns foram preservados\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] limites comuns inconsistentes\n";
-        }
-
-        std::cout << "\n=== Mutable common limits ===\n";
-
-        profile.limits().minimumWallThickness = 1.0;
-
-        if (profile.limits().minimumWallThickness.value() == 1.0 &&
-            profile.get_if<FDMProfile>() != nullptr &&
-            profile.get_if<FDMProfile>()
-            ->limits.minimumWallThickness.value() == 1.0) {
-            std::cout
-                << "[OK] acesso comum modifica o perfil armazenado\n";
+                << "[OK] analyzer fornece nome estavel\n";
         }
         else {
             std::cout
-                << "[FAIL] acesso mutavel aos limites inconsistente\n";
+                << "[FAIL] nome do analyzer inconsistente\n";
         }
 
-        std::cout << "\n=== SLA profile ===\n";
+        AnalysisReport report;
 
-        SLAProfile sla;
-        sla.name = "Test SLA";
-        sla.xyResolution = 0.05;
-        sla.layerHeight = 0.05;
-        sla.limits.minimumWallThickness = 0.5;
+        analyzer.analyze(context, report);
 
-        PrintProfile slaProfile{ sla };
-
-        if (slaProfile.technology() == PrintTechnology::SLA &&
-            slaProfile.name() == "Test SLA" &&
-            slaProfile.is<SLAProfile>() &&
-            slaProfile.get_if<SLAProfile>() != nullptr &&
-            slaProfile.get_if<FDMProfile>() == nullptr) {
+        if (report.issue_count() == 1 &&
+            report.info_count() == 1 &&
+            report.has_issue_type(PrintIssueType::MinimumFeatureSize)) {
             std::cout
-                << "[OK] perfil SLA funciona\n";
+                << "[OK] analyzer escreve no AnalysisReport\n";
         }
         else {
             std::cout
-                << "[FAIL] perfil SLA inconsistente\n";
+                << "[FAIL] analyzer nao produziu o resultado esperado\n";
         }
 
-        std::cout << "\n=== SLS profile ===\n";
+        AnalysisReport missingMeshReport;
 
-        SLSProfile sls;
-        sls.name = "Test SLS";
-        sls.laserSpotDiameter = 0.3;
-        sls.layerHeight = 0.1;
-        sls.limits.minimumFeatureSize = 0.6;
+        AnalysisContext profileOnlyContext;
+        profileOnlyContext.profile = &printProfile;
 
-        PrintProfile slsProfile{ sls };
+        analyzer.analyze(profileOnlyContext, missingMeshReport);
 
-        if (slsProfile.technology() == PrintTechnology::SLS &&
-            slsProfile.name() == "Test SLS" &&
-            slsProfile.is<SLSProfile>() &&
-            slsProfile.get_if<SLSProfile>() != nullptr &&
-            slsProfile.get_if<FDMProfile>() == nullptr) {
+        if (!missingMeshReport.has_issues()) {
             std::cout
-                << "[OK] perfil SLS funciona\n";
+                << "[OK] analyzer pode rejeitar contexto sem dependencia necessaria\n";
         }
         else {
             std::cout
-                << "[FAIL] perfil SLS inconsistente\n";
+                << "[FAIL] analyzer executou sem LEM necessaria\n";
+        }
+
+        IAnalyzer* interfaceAnalyzer = &analyzer;
+
+        AnalysisReport interfaceReport;
+        interfaceAnalyzer->analyze(context, interfaceReport);
+
+        if (interfaceReport.issue_count() == 1 &&
+            interfaceAnalyzer->name() == "TestAnalyzer") {
+            std::cout
+                << "[OK] contrato polimorfico de IAnalyzer funciona\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] contrato polimorfico de IAnalyzer inconsistente\n";
         }
 
         std::cout
-            << "\n=== Manufacturing Print Profile Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing Analyzer Contract Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing Print Profile Smoke Test
+    // End Manufacturing Analyzer Contract Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

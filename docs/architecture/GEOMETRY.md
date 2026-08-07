@@ -284,8 +284,8 @@ source\kernel
 |
 \---manufacturing
     +---core
-    |       IAnalyzer.h [!]
-    |       AnalysisContext.h [!]
+    |       IAnalyzer.h
+    |       AnalysisContext.h
     |       AnalysisReport.h
     |       AnalysisMetrics.h
     |       PrintIssue.h
