@@ -113,7 +113,10 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/preview/PreviewMesh.h"
     "modeling/preview/OperationPreview.h"
     "modeling/preview/IPreviewStrategy.h"
-    "modeling/preview/GhostMeshBuilder.h")
+    "modeling/preview/GhostMeshBuilder.h"
+    "manufacturing/core/IssueSeverity.h"
+    "manufacturing/profiles/PrintTechnology.h"
+    "manufacturing/core/PrintIssueType.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

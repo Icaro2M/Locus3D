@@ -282,18 +282,18 @@ source\kernel
 |           ValidationPipeline.h
 |           ValidationMode.h
 |
-\---manufacturing [!]
+\---manufacturing
     +---core
     |       IAnalyzer.h [!]
     |       AnalysisContext.h [!]
     |       AnalysisReport.h [!]
     |       PrintIssue.h [!]
-    |       PrintIssueType.h [!]
-    |       IssueSeverity.h [!]
+    |       PrintIssueType.h
+    |       IssueSeverity.h
     |
     +---profiles
     |       PrintProfile.h [!]
-    |       PrintTechnology.h [!]
+    |       PrintTechnology.h
     |       FDMProfile.h [!]
     |       SLAProfile.h [!]
     |       SLSProfile.h [!]
