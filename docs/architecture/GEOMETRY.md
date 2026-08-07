@@ -303,9 +303,9 @@ source\kernel
     |       ProfileRegistry.h [!]
     |
     +---mesh
-    |       AnalysisMesh.h [!]
-    |       AnalysisMeshBuilder.h [!]
-    |       MeshHandleMapping.h [!]
+    |       AnalysisMesh.h
+    |       AnalysisMeshBuilder.h
+    |       MeshHandleMapping.h
     |
     +---analyzers
     |   +---topology

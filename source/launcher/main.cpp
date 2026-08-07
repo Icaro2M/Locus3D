@@ -53,6 +53,9 @@
 #include "kernel/manufacturing/profiles/SLSProfile.h"
 #include "kernel/manufacturing/core/AnalysisContext.h"
 #include "kernel/manufacturing/core/IAnalyzer.h"
+#include "kernel/manufacturing/mesh/AnalysisMesh.h"
+#include "kernel/manufacturing/mesh/AnalysisMeshBuilder.h"
+#include "kernel/manufacturing/mesh/MeshHandleMapping.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1609,151 +1612,255 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-// Manufacturing Analyzer Contract Smoke Test
-//=============================================================================
+    // Manufacturing AnalysisMesh Smoke Test
+    //=============================================================================
 
     {
         using namespace locus::kernel;
+        using namespace locus::kernel::geometry;
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing Analyzer Contract Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing AnalysisMesh Smoke Test ===\n\n";
 
-        std::cout << "=== Empty AnalysisContext ===\n";
+        //-------------------------------------------------------------------------
+        // Empty mesh
+        //-------------------------------------------------------------------------
 
-        AnalysisContext emptyContext;
+        std::cout << "=== Empty LEM ===\n";
 
-        if (!emptyContext.has_mesh() &&
-            !emptyContext.has_profile() &&
-            !emptyContext.has_analysis_mesh()) {
+        LEM emptyLem;
+
+        AnalysisMesh emptyAnalysis =
+            AnalysisMeshBuilder::build(emptyLem);
+
+        if (emptyAnalysis.empty() &&
+            emptyAnalysis.vertex_count() == 0 &&
+            emptyAnalysis.triangle_count() == 0 &&
+            emptyAnalysis.mapping().triangle_count() == 0 &&
+            !emptyAnalysis.has_bounds()) {
             std::cout
-                << "[OK] contexto vazio nao inventa dependencias\n";
+                << "[OK] LEM vazia gera AnalysisMesh vazia\n";
         }
         else {
             std::cout
-                << "[FAIL] estado inicial do AnalysisContext inconsistente\n";
+                << "[FAIL] AnalysisMesh vazia inconsistente\n";
         }
 
-        std::cout << "\n=== Mesh and profile context ===\n";
+        //-------------------------------------------------------------------------
+        // Quad
+        //-------------------------------------------------------------------------
 
-        geometry::LEM mesh;
+        std::cout << "\n=== Quad fixture ===\n";
 
-        FDMProfile fdm;
-        fdm.name = "Analyzer Test FDM";
-        fdm.limits.minimumWallThickness = 0.8;
+        LEM quad;
 
-        PrintProfile printProfile{ fdm };
+        const VertexHandle v0 =
+            quad.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
 
-        AnalysisContext context;
-        context.mesh = &mesh;
-        context.profile = &printProfile;
+        const VertexHandle v1 =
+            quad.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
 
-        if (context.has_mesh() &&
-            context.has_profile() &&
-            !context.has_analysis_mesh() &&
-            context.mesh == &mesh &&
-            context.profile == &printProfile) {
+        const VertexHandle v2 =
+            quad.add_vertex(glm::vec3{ 1.0f,  1.0f, 0.0f });
+
+        const VertexHandle v3 =
+            quad.add_vertex(glm::vec3{ -1.0f,  1.0f, 0.0f });
+
+        const FaceHandle quadFace =
+            quad.add_face({ v0, v1, v2, v3 });
+
+        if (quadFace.is_valid()) {
+            std::cout << "[OK] face quadrada criada\n";
+        }
+        else {
+            std::cout << "[FAIL] face quadrada nao foi criada\n";
+        }
+
+        const AnalysisMesh quadAnalysis =
+            AnalysisMeshBuilder::build(quad);
+
+        if (!quadAnalysis.empty() &&
+            quadAnalysis.vertex_count() == 4 &&
+            quadAnalysis.triangle_count() == 2) {
             std::cout
-                << "[OK] contexto preserva LEM e profile sem exigir AnalysisMesh\n";
+                << "[OK] quad foi triangulado em dois triangulos\n";
         }
         else {
             std::cout
-                << "[FAIL] referencias do AnalysisContext inconsistentes\n";
+                << "[FAIL] triangulacao do quad inconsistente\n";
         }
 
-        std::cout << "\n=== IAnalyzer contract ===\n";
+        if (quadAnalysis.mapping().triangle_count() ==
+            quadAnalysis.triangle_count()) {
+            std::cout
+                << "[OK] todo triangulo possui mapeamento para a LEM\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] contagem de mappings nao acompanha triangulos\n";
+        }
 
-        class TestAnalyzer final : public IAnalyzer {
-        public:
-            [[nodiscard]] std::string_view name() const noexcept override
-            {
-                return "TestAnalyzer";
+        bool allQuadTrianglesMapped = true;
+
+        for (std::size_t i = 0;
+            i < quadAnalysis.triangle_count();
+            ++i) {
+
+            if (!quadAnalysis.mapping().has_triangle(i) ||
+                quadAnalysis.mapping().face_for_triangle(i) != quadFace) {
+                allQuadTrianglesMapped = false;
+                break;
+            }
+        }
+
+        if (allQuadTrianglesMapped) {
+            std::cout
+                << "[OK] dois triangulos apontam para a FaceHandle original\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] source FaceHandle do quad foi perdido\n";
+        }
+
+        if (quadAnalysis.has_bounds()) {
+            const glm::vec3 size =
+                quadAnalysis.bounds().size();
+
+            if (size.x == 2.0f &&
+                size.y == 2.0f &&
+                size.z == 0.0f) {
+                std::cout
+                    << "[OK] bounds da AnalysisMesh estao corretos\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] dimensoes dos bounds inconsistentes\n";
+            }
+        }
+        else {
+            std::cout
+                << "[FAIL] quad deveria possuir bounds validos\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Two independent faces
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Multiple source faces ===\n";
+
+        LEM twoFaces;
+
+        const VertexHandle a0 =
+            twoFaces.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle a1 =
+            twoFaces.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle a2 =
+            twoFaces.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const FaceHandle faceA =
+            twoFaces.add_face({ a0, a1, a2 });
+
+        const VertexHandle b0 =
+            twoFaces.add_vertex(glm::vec3{ 2.0f, 0.0f, 0.0f });
+        const VertexHandle b1 =
+            twoFaces.add_vertex(glm::vec3{ 3.0f, 0.0f, 0.0f });
+        const VertexHandle b2 =
+            twoFaces.add_vertex(glm::vec3{ 2.0f, 1.0f, 0.0f });
+
+        const FaceHandle faceB =
+            twoFaces.add_face({ b0, b1, b2 });
+
+        const AnalysisMesh twoFaceAnalysis =
+            AnalysisMeshBuilder::build(twoFaces);
+
+        if (twoFaceAnalysis.triangle_count() == 2 &&
+            twoFaceAnalysis.mapping().triangle_count() == 2) {
+            std::cout
+                << "[OK] duas faces triangulares geram dois triangulos\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] AnalysisMesh de multiplas faces inconsistente\n";
+        }
+
+        bool foundFaceA = false;
+        bool foundFaceB = false;
+
+        for (std::size_t i = 0;
+            i < twoFaceAnalysis.triangle_count();
+            ++i) {
+
+            const FaceHandle source =
+                twoFaceAnalysis.mapping().face_for_triangle(i);
+
+            if (source == faceA) {
+                foundFaceA = true;
             }
 
-            void analyze(
-                const AnalysisContext& analyzerContext,
-                AnalysisReport& report) const override
-            {
-                if (!analyzerContext.has_mesh()) {
-                    return;
-                }
-
-                IssueLocation location;
-
-                PrintIssue issue{
-                    PrintIssueType::MinimumFeatureSize,
-                    IssueSeverity::Info,
-                    "Test manufacturing analyzer executed.",
-                    location
-                };
-
-                report.add_issue(std::move(issue));
+            if (source == faceB) {
+                foundFaceB = true;
             }
-        };
+        }
 
-        TestAnalyzer analyzer;
-
-        if (analyzer.name() == "TestAnalyzer") {
+        if (foundFaceA && foundFaceB) {
             std::cout
-                << "[OK] analyzer fornece nome estavel\n";
+                << "[OK] mappings distinguem as duas faces originais\n";
         }
         else {
             std::cout
-                << "[FAIL] nome do analyzer inconsistente\n";
+                << "[FAIL] mappings perderam identidade das faces\n";
         }
 
-        AnalysisReport report;
+        //-------------------------------------------------------------------------
+        // Mapping out of range
+        //-------------------------------------------------------------------------
 
-        analyzer.analyze(context, report);
+        std::cout << "\n=== Invalid mapping lookup ===\n";
 
-        if (report.issue_count() == 1 &&
-            report.info_count() == 1 &&
-            report.has_issue_type(PrintIssueType::MinimumFeatureSize)) {
+        const FaceHandle invalidSource =
+            twoFaceAnalysis.mapping().face_for_triangle(9999);
+
+        if (invalidSource.is_invalid() &&
+            !twoFaceAnalysis.mapping().has_triangle(9999)) {
             std::cout
-                << "[OK] analyzer escreve no AnalysisReport\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] analyzer nao produziu o resultado esperado\n";
-        }
-
-        AnalysisReport missingMeshReport;
-
-        AnalysisContext profileOnlyContext;
-        profileOnlyContext.profile = &printProfile;
-
-        analyzer.analyze(profileOnlyContext, missingMeshReport);
-
-        if (!missingMeshReport.has_issues()) {
-            std::cout
-                << "[OK] analyzer pode rejeitar contexto sem dependencia necessaria\n";
+                << "[OK] lookup fora do range retorna handle invalido\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem LEM necessaria\n";
+                << "[FAIL] lookup fora do range inconsistente\n";
         }
 
-        IAnalyzer* interfaceAnalyzer = &analyzer;
+        //-------------------------------------------------------------------------
+        // Clear / rebuild
+        //-------------------------------------------------------------------------
 
-        AnalysisReport interfaceReport;
-        interfaceAnalyzer->analyze(context, interfaceReport);
+        std::cout << "\n=== Rebuild ===\n";
 
-        if (interfaceReport.issue_count() == 1 &&
-            interfaceAnalyzer->name() == "TestAnalyzer") {
+        AnalysisMesh reusable =
+            AnalysisMeshBuilder::build(twoFaces);
+
+        AnalysisMeshBuilder::build_into(emptyLem, reusable);
+
+        if (reusable.empty() &&
+            reusable.vertex_count() == 0 &&
+            reusable.triangle_count() == 0 &&
+            reusable.mapping().triangle_count() == 0 &&
+            !reusable.has_bounds()) {
             std::cout
-                << "[OK] contrato polimorfico de IAnalyzer funciona\n";
+                << "[OK] build_into remove dados derivados antigos\n";
         }
         else {
             std::cout
-                << "[FAIL] contrato polimorfico de IAnalyzer inconsistente\n";
+                << "[FAIL] rebuild preservou dados derivados antigos\n";
         }
 
         std::cout
-            << "\n=== Manufacturing Analyzer Contract Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing AnalysisMesh Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing Analyzer Contract Smoke Test
+    // End Manufacturing AnalysisMesh Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

@@ -128,7 +128,10 @@ target_sources(locus3d_geometry PRIVATE
     "manufacturing/profiles/SLSProfile.h"
     "manufacturing/profiles/PrintProfile.h"
     "manufacturing/core/AnalysisContext.h"
-    "manufacturing/core/IAnalyzer.h")
+    "manufacturing/core/IAnalyzer.h"
+    "manufacturing/mesh/MeshHandleMapping.h"
+    "manufacturing/mesh/AnalysisMesh.h"
+    "manufacturing/mesh/AnalysisMeshBuilder.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
