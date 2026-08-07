@@ -254,6 +254,10 @@ namespace locus::application {
             event.pointer.viewDirection = camera.forward();
             event.pointer.viewRight = camera.right();
             event.pointer.viewUp = camera.up();
+            event.pointer.cameraPosition = camera.position();
+            event.pointer.orthographicProjection =
+                camera.projection().type()
+                == graphics::ProjectionType::Orthographic;
             event.pointer.viewportSize = glm::vec2{
                 static_cast<float>(graphicsViewport.state().rect.width),
                 static_cast<float>(graphicsViewport.state().rect.height)
@@ -291,6 +295,32 @@ namespace locus::application {
         {
             return dynamic_cast<editor::SelectTool*>(
                 document.tool_manager().active_tool());
+        }
+
+        [[nodiscard]] ViewportShadingFrameConfig viewport_policy(
+            const EditorViewport& viewport)
+        {
+            return viewport_shading_frame_config(
+                ViewportDisplaySettings{
+                    viewport.shading_mode(),
+                    viewport.face_orientation_enabled() });
+        }
+
+        void apply_selection_depth_policy(
+            DocumentSession& document,
+            const EditorViewport& viewport)
+        {
+            editor::SelectTool* selectTool =
+                active_select_tool(document);
+            if (selectTool == nullptr) {
+                return;
+            }
+
+            const ViewportShadingFrameConfig policy =
+                viewport_policy(viewport);
+            selectTool->set_selection_depth_modes(
+                policy.pointSelectionDepthMode,
+                policy.regionSelectionDepthMode);
         }
 
         void populate_transform_pointer_scale(
@@ -1015,6 +1045,10 @@ namespace locus::application {
             routeResult.owner == InputCaptureOwner::ViewportCamera;
         const bool editorToolCaptured =
             routeResult.owner == InputCaptureOwner::EditorTool;
+
+        apply_selection_depth_policy(
+            *activeDocument,
+            editorViewport_);
 
         const auto pickingResult = editorViewport_.update_hover(
             *activeDocument,

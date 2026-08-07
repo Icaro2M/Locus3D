@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "editor/tools/selection/shapes/SelectionShapeTypes.h"
+
 namespace locus::application {
 
     /**
@@ -24,6 +26,15 @@ namespace locus::application {
         bool topologyVisibleEdges = true;
         bool topologyOccludedEdges = false;
         bool topologySurfaceOverlays = true;
+        editor::SelectionDepthMode pointSelectionDepthMode =
+            editor::SelectionDepthMode::VisibleOnly;
+        editor::SelectionDepthMode regionSelectionDepthMode =
+            editor::SelectionDepthMode::VisibleOnly;
+        bool topologyDepthTest = true;
+        bool gridDepthTest = true;
+        bool gridDepthWrite = false;
+        bool axisDepthTest = true;
+        bool attenuateOccludedGizmo = true;
     };
 
     /**
@@ -55,9 +66,16 @@ namespace locus::application {
         case ViewportShadingMode::Wireframe:
             return {
                 false,
-                true,
+                false,
                 true,
                 false,
+                false,
+                editor::SelectionDepthMode::Through,
+                editor::SelectionDepthMode::Through,
+                false,
+                true,
+                false,
+                true,
                 false
             };
 
@@ -82,7 +100,14 @@ namespace locus::application {
             config.surfaceColorPass = true;
             config.surfaceDepthPrepass = false;
             config.topologyVisibleEdges = true;
+            config.topologyOccludedEdges = false;
             config.topologySurfaceOverlays = true;
+            config.pointSelectionDepthMode =
+                editor::SelectionDepthMode::VisibleOnly;
+            config.regionSelectionDepthMode =
+                editor::SelectionDepthMode::VisibleOnly;
+            config.topologyDepthTest = true;
+            config.attenuateOccludedGizmo = true;
         }
 
         return config;

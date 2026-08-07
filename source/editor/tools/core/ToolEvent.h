@@ -255,6 +255,16 @@ namespace locus::editor {
         glm::vec3 viewUp{ 0.0f, 1.0f, 0.0f };
 
         /**
+         * @brief Camera position in world coordinates.
+         */
+        glm::vec3 cameraPosition{ 0.0f, 0.0f, 0.0f };
+
+        /**
+         * @brief True when pointer rays share the camera view direction.
+         */
+        bool orthographicProjection = false;
+
+        /**
          * @brief Scale suitable for world-space interaction handles.
          */
         float visualScale = 1.0f;

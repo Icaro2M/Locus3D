@@ -82,6 +82,26 @@ TestResult run_select_tool_visual_state_tests()
         return result;
     }
 
+    if (tool.point_selection_depth_mode() !=
+            editor::SelectionDepthMode::VisibleOnly ||
+        tool.region_selection_depth_mode() !=
+            editor::SelectionDepthMode::VisibleOnly) {
+        return TestResult::fail(
+            "SelectTool should default selection depth to visible-only");
+    }
+
+    tool.set_selection_depth_modes(
+        editor::SelectionDepthMode::Through,
+        editor::SelectionDepthMode::Through);
+
+    if (tool.point_selection_depth_mode() !=
+            editor::SelectionDepthMode::Through ||
+        tool.region_selection_depth_mode() !=
+            editor::SelectionDepthMode::Through) {
+        return TestResult::fail(
+            "SelectTool should expose viewport selection depth policy");
+    }
+
     if (tool.selection_region_visual_state().visible) {
         return TestResult::fail(
             "Selection region visual state should be hidden initially");

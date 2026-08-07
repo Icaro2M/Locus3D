@@ -166,13 +166,26 @@ namespace locus::graphics
         const glm::mat4& viewProjection,
         const ViewportRect& viewport) const
     {
+        render(
+            viewProjection,
+            viewport,
+            config_.depthFunc,
+            config_.depthTest);
+    }
+
+    void PointMarkerRenderer::render(
+        const glm::mat4& viewProjection,
+        const ViewportRect& viewport,
+        const DepthFunc depthFunc,
+        const bool depthTest) const
+    {
         if (!is_valid() || markerCount_ == 0 || viewport.width <= 0 || viewport.height <= 0) {
             return;
         }
 
-        RenderState::set_depth_test(config_.depthTest);
+        RenderState::set_depth_test(depthTest);
         RenderState::set_depth_write(config_.depthWrite);
-        RenderState::set_depth_func(config_.depthFunc);
+        RenderState::set_depth_func(depthFunc);
         RenderState::set_blend(config_.blend);
         RenderState::set_blend_func(
             BlendFactor::SourceAlpha,

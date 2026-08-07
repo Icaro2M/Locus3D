@@ -7,6 +7,12 @@
 
 namespace locus::editor {
 
+    PointSelectionShape::PointSelectionShape(
+        const SelectionDepthMode depthMode)
+        : depthMode_(depthMode)
+    {
+    }
+
     SelectionShapeResult PointSelectionShape::resolve(
         const ToolContext& context,
         const ToolEvent& event) const {
@@ -16,7 +22,9 @@ namespace locus::editor {
         if (!event.is_pointer_event() ||
             !event.pointer.has_picking_hit()) {
             result.component =
-                context.resolve_active_mesh_component(event);
+                context.resolve_active_mesh_component(
+                    event,
+                    depthMode_);
             if (result.component.hit) {
                 result.componentNode =
                     context.selection().mesh().active_mesh();
@@ -31,7 +39,9 @@ namespace locus::editor {
 
         if (!nodeId.is_valid()) {
             result.component =
-                context.resolve_active_mesh_component(event);
+                context.resolve_active_mesh_component(
+                    event,
+                    depthMode_);
             if (result.component.hit) {
                 result.componentNode =
                     context.selection().mesh().active_mesh();
@@ -43,7 +53,10 @@ namespace locus::editor {
         result.objects.push_back(nodeId);
 
         result.component =
-            context.resolve_mesh_component(nodeId, event);
+            context.resolve_mesh_component(
+                nodeId,
+                event,
+                depthMode_);
 
         if (result.component.hit) {
             result.componentNode = nodeId;
@@ -52,13 +65,26 @@ namespace locus::editor {
         }
 
         result.component =
-            context.resolve_active_mesh_component(event);
+            context.resolve_active_mesh_component(
+                event,
+                depthMode_);
         if (result.component.hit) {
             result.componentNode =
                 context.selection().mesh().active_mesh();
             result.components.push_back(result.component);
         }
         return result;
+    }
+
+    SelectionDepthMode PointSelectionShape::depth_mode() const noexcept
+    {
+        return depthMode_;
+    }
+
+    void PointSelectionShape::set_depth_mode(
+        const SelectionDepthMode depthMode) noexcept
+    {
+        depthMode_ = depthMode;
     }
 
 } // namespace locus::editor

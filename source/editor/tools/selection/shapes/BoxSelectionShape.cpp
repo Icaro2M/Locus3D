@@ -38,7 +38,8 @@ namespace locus::editor {
                 context.resolve_active_mesh_components(
                     rect,
                     event,
-                    containment_);
+                    containment_,
+                    depthMode_);
 
             if (!result.components.empty()) {
                 result.component = result.components.back();
@@ -53,7 +54,6 @@ namespace locus::editor {
                 event,
                 containment_);
 
-        (void)depthMode_;
         return result;
     }
 

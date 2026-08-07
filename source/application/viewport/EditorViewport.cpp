@@ -1237,9 +1237,6 @@ namespace locus::application {
 
         const ViewportShadingFrameConfig shadingConfig =
             viewport_shading_frame_config(displaySettings_);
-        const bool drawGridBeforeSurfaceDepth =
-            shadingConfig.surfaceDepthPrepass &&
-            !shadingConfig.surfaceColorPass;
 
         editor::TopologyOverlayOptions topologyOptions{};
         const graphics::ScreenSpaceLineBatch topologyLines =
@@ -1337,11 +1334,7 @@ namespace locus::application {
 
         renderQueue_.reserve(
             scene.object_count()
-            + overlayObjects.size()
-            + 1);
-        if (!drawGridBeforeSurfaceDepth) {
-            renderQueue_.add_object(gridRenderer_.render_object());
-        }
+            + overlayObjects.size());
 
         const editor::SceneNodeId previewTarget =
             operation_preview_target(document);
@@ -1359,13 +1352,6 @@ namespace locus::application {
         }
 
         sceneSurfaceQueue.sort();
-        if (drawGridBeforeSurfaceDepth) {
-            graphics::RenderQueue gridQueue{};
-            gridQueue.reserve(1u);
-            gridQueue.add_object(gridRenderer_.render_object());
-            gridQueue.sort();
-            renderer_.render(gridQueue);
-        }
 
         if (shadingConfig.surfaceDepthPrepass) {
             renderer_.render_depth_only(sceneSurfaceQueue);
@@ -1373,10 +1359,7 @@ namespace locus::application {
 
         if (!shadingConfig.surfaceColorPass) {
             renderQueue_.clear();
-            renderQueue_.reserve(overlayObjects.size() + 1u);
-            if (!drawGridBeforeSurfaceDepth) {
-                renderQueue_.add_object(gridRenderer_.render_object());
-            }
+            renderQueue_.reserve(overlayObjects.size());
         }
 
         for (const graphics::RenderObject& object : overlayObjects) {
@@ -1398,6 +1381,32 @@ namespace locus::application {
 
         renderer_.render(renderQueue_);
         renderer_.set_face_orientation_display({});
+
+        graphics::RendererSurfaceState worldHelperState{};
+        worldHelperState.depthFunc = graphics::DepthFunc::LessEqual;
+        worldHelperState.blend = true;
+        worldHelperState.sourceBlend = graphics::BlendFactor::SourceAlpha;
+        worldHelperState.destinationBlend =
+            graphics::BlendFactor::OneMinusSourceAlpha;
+        worldHelperState.cullFace = false;
+
+        graphics::RenderQueue gridQueue{};
+        gridQueue.reserve(1u);
+        gridQueue.add_object(gridRenderer_.render_object());
+        gridQueue.sort();
+
+        worldHelperState.depthTest = shadingConfig.gridDepthTest;
+        worldHelperState.depthWrite = shadingConfig.gridDepthWrite;
+        renderer_.render_with_state(gridQueue, worldHelperState);
+
+        graphics::RenderQueue axisQueue{};
+        axisQueue.reserve(1u);
+        axisQueue.add_object(axisRenderer_.render_object());
+        axisQueue.sort();
+
+        worldHelperState.depthTest = shadingConfig.axisDepthTest;
+        worldHelperState.depthWrite = false;
+        renderer_.render_with_state(axisQueue, worldHelperState);
 
         const auto selectionMaskResizeResult =
             selectionMaskPass_.resize(
@@ -1463,7 +1472,8 @@ namespace locus::application {
             topologyLineRenderer_.render(
                 viewport_.camera().view_projection_matrix(),
                 viewport_.state().rect,
-                graphics::DepthFunc::Greater);
+                graphics::DepthFunc::Greater,
+                shadingConfig.topologyDepthTest);
 
             const auto visibleUploadResult =
                 topologyLineRenderer_.set_lines(topologyLines);
@@ -1480,12 +1490,15 @@ namespace locus::application {
             topologyLineRenderer_.render(
                 viewport_.camera().view_projection_matrix(),
                 viewport_.state().rect,
-                graphics::DepthFunc::LessEqual);
+                graphics::DepthFunc::LessEqual,
+                shadingConfig.topologyDepthTest);
         }
 
         topologyVertexRenderer_.render(
             viewport_.camera().view_projection_matrix(),
-            viewport_.state().rect);
+            viewport_.state().rect,
+            graphics::DepthFunc::LessEqual,
+            shadingConfig.topologyDepthTest);
 
         graphics::RenderQueue gizmoQueue;
         gizmoQueue.reserve(gizmoScene.object_count());
@@ -1496,38 +1509,34 @@ namespace locus::application {
 
         gizmoQueue.sort();
 
-        graphics::RendererSurfaceState occludedGizmoState{};
-        occludedGizmoState.depthTest = true;
-        occludedGizmoState.depthWrite = false;
-        occludedGizmoState.depthFunc = graphics::DepthFunc::Greater;
-        occludedGizmoState.blend = true;
-        occludedGizmoState.sourceBlend = graphics::BlendFactor::SourceAlpha;
-        occludedGizmoState.destinationBlend =
+        graphics::RendererSurfaceState gizmoState{};
+        gizmoState.depthTest = true;
+        gizmoState.depthWrite = false;
+        gizmoState.depthFunc = graphics::DepthFunc::Greater;
+        gizmoState.blend = true;
+        gizmoState.sourceBlend = graphics::BlendFactor::SourceAlpha;
+        gizmoState.destinationBlend =
             graphics::BlendFactor::OneMinusSourceAlpha;
-        occludedGizmoState.vertexAlphaMultiplier = 0.28f;
-        occludedGizmoState.cullFace = false;
+        gizmoState.vertexAlphaMultiplier = 0.28f;
+        gizmoState.cullFace = false;
+
+        if (shadingConfig.attenuateOccludedGizmo) {
+            renderer_.render_with_state(
+                gizmoQueue,
+                gizmoState);
+
+            gizmoState.depthFunc = graphics::DepthFunc::LessEqual;
+            gizmoState.vertexAlphaMultiplier = 1.0f;
+        }
+        else {
+            gizmoState.depthTest = false;
+            gizmoState.depthFunc = graphics::DepthFunc::LessEqual;
+            gizmoState.vertexAlphaMultiplier = 1.0f;
+        }
 
         renderer_.render_with_state(
             gizmoQueue,
-            occludedGizmoState);
-
-        graphics::RendererSurfaceState visibleGizmoState =
-            occludedGizmoState;
-        visibleGizmoState.depthFunc = graphics::DepthFunc::LessEqual;
-        visibleGizmoState.vertexAlphaMultiplier = 1.0f;
-
-        renderer_.render_with_state(
-            gizmoQueue,
-            visibleGizmoState);
-
-        graphics::RenderQueue axisQueue;
-        axisQueue.reserve(1);
-        axisQueue.add_object(axisRenderer_.render_object());
-        axisQueue.sort();
-
-        renderer_.render_with_state(
-            axisQueue,
-            graphics::Renderer::foreground_overlay_state());
+            gizmoState);
 
         selectionShapeRenderer_.render();
 

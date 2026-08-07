@@ -85,6 +85,20 @@ namespace locus::graphics
             const ViewportRect& viewport) const;
 
         /**
+         * @brief Draws the uploaded markers with explicit depth state.
+         *
+         * @param viewProjection World-to-clip matrix.
+         * @param viewport Viewport rectangle in framebuffer pixels.
+         * @param depthFunc Depth comparison used by this draw.
+         * @param depthTest True when the scene depth buffer should be tested.
+         */
+        void render(
+            const glm::mat4& viewProjection,
+            const ViewportRect& viewport,
+            DepthFunc depthFunc,
+            bool depthTest) const;
+
+        /**
          * @brief Checks whether the renderer has all GPU resources.
          *
          * @return True when ready to draw.

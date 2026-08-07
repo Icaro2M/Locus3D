@@ -19,10 +19,13 @@
 #include "kernel/math/Ray.h"
 
 #include <glm/gtc/matrix_inverse.hpp>
+#include <glm/geometric.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/vec4.hpp>
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <utility>
 
 namespace locus::editor {
@@ -159,6 +162,143 @@ namespace locus::editor {
             return SelectionElementMask::None;
         }
 
+        [[nodiscard]] bool finite_vec3(const glm::vec3& value)
+        {
+            return std::isfinite(value.x) &&
+                std::isfinite(value.y) &&
+                std::isfinite(value.z);
+        }
+
+        [[nodiscard]] bool normalize_direction(glm::vec3& direction)
+        {
+            if (!finite_vec3(direction)) {
+                return false;
+            }
+
+            const float length = glm::length(direction);
+            if (length <= 0.000001f ||
+                !std::isfinite(length)) {
+                return false;
+            }
+
+            direction /= length;
+            return true;
+        }
+
+        [[nodiscard]] bool valid_ray(const kernel::math::Ray& ray)
+        {
+            return finite_vec3(ray.origin) &&
+                finite_vec3(ray.direction) &&
+                glm::length(ray.direction) > 0.000001f;
+        }
+
+        [[nodiscard]] kernel::math::Ray local_visibility_ray(
+            const ToolEvent& event,
+            const glm::mat4& inverseWorld,
+            const glm::vec3& localPoint,
+            float& targetDistance)
+        {
+            constexpr float OrthographicVisibilityDistance = 100000.0f;
+
+            glm::vec3 worldOrigin = event.pointer.cameraPosition;
+            glm::vec3 worldDirection{ 0.0f, 0.0f, -1.0f };
+
+            const glm::vec3 worldPoint =
+                glm::vec3(glm::inverse(inverseWorld) *
+                    glm::vec4(localPoint, 1.0f));
+
+            if (event.pointer.orthographicProjection) {
+                worldDirection = event.pointer.viewDirection;
+                worldOrigin =
+                    worldPoint - worldDirection * OrthographicVisibilityDistance;
+            }
+            else {
+                worldDirection = worldPoint - worldOrigin;
+            }
+
+            if (!normalize_direction(worldDirection)) {
+                targetDistance = 0.0f;
+                return {};
+            }
+
+            const glm::vec4 localOrigin =
+                inverseWorld * glm::vec4(worldOrigin, 1.0f);
+            const glm::vec4 localDirection =
+                inverseWorld * glm::vec4(worldDirection, 0.0f);
+
+            kernel::math::Ray ray{};
+            ray.origin = glm::vec3(localOrigin);
+            ray.direction = glm::vec3(localDirection);
+            if (!normalize_direction(ray.direction)) {
+                targetDistance = 0.0f;
+                return {};
+            }
+
+            targetDistance = glm::dot(localPoint - ray.origin, ray.direction);
+            return ray;
+        }
+
+        [[nodiscard]] bool visible_at_local_point(
+            const kernel::geometry::LEM& mesh,
+            const ToolEvent& event,
+            const glm::mat4& inverseWorld,
+            const glm::vec3& localPoint)
+        {
+            float targetDistance = 0.0f;
+            const kernel::math::Ray ray =
+                local_visibility_ray(
+                    event,
+                    inverseWorld,
+                    localPoint,
+                    targetDistance);
+
+            if (targetDistance <= 0.0f ||
+                !std::isfinite(targetDistance) ||
+                !valid_ray(ray)) {
+                return false;
+            }
+
+            constexpr float VisibilityEpsilon = 0.01f;
+            const kernel::geometry::SelectionHit surfaceHit =
+                kernel::geometry::RaycastQuery::raycast_faces(
+                    mesh,
+                    ray,
+                    targetDistance + VisibilityEpsilon);
+
+            return !surfaceHit.hit ||
+                surfaceHit.distance + VisibilityEpsilon >= targetDistance;
+        }
+
+        [[nodiscard]] glm::vec3 edge_center(
+            const kernel::geometry::LEM& mesh,
+            const kernel::geometry::Edge& edge)
+        {
+            return (mesh.vertex(edge.vertexA).position +
+                mesh.vertex(edge.vertexB).position) * 0.5f;
+        }
+
+        [[nodiscard]] glm::vec3 face_center(
+            const kernel::geometry::LEM& mesh,
+            const kernel::geometry::FaceHandle faceHandle)
+        {
+            glm::vec3 center{ 0.0f };
+            std::size_t count = 0u;
+
+            for (const kernel::geometry::VertexHandle vertexHandle :
+                kernel::geometry::TopologyTraversal::face_vertices(
+                    mesh,
+                    faceHandle)) {
+                center += mesh.vertex(vertexHandle).position;
+                ++count;
+            }
+
+            if (count > 0u) {
+                center /= static_cast<float>(count);
+            }
+
+            return center;
+        }
+
     } // namespace
 
     CommandResult ToolContext::execute_command(
@@ -207,7 +347,8 @@ namespace locus::editor {
     }
 
     kernel::geometry::SelectionHit ToolContext::resolve_active_mesh_component(
-        const ToolEvent& event) const
+        const ToolEvent& event,
+        const SelectionDepthMode depthMode) const
     {
         const SelectionGranularity granularity =
             selection().granularity();
@@ -219,12 +360,16 @@ namespace locus::editor {
         const SceneNodeId activeMesh =
             selection().mesh().active_mesh();
 
-        return resolve_mesh_component(activeMesh, event);
+        return resolve_mesh_component(
+            activeMesh,
+            event,
+            depthMode);
     }
 
     kernel::geometry::SelectionHit ToolContext::resolve_mesh_component(
         const SceneNodeId meshNodeId,
-        const ToolEvent& event) const
+        const ToolEvent& event,
+        const SelectionDepthMode depthMode) const
     {
         if (!event.is_pointer_event()) {
             return kernel::geometry::SelectionHit::miss();
@@ -263,6 +408,9 @@ namespace locus::editor {
         kernel::math::Ray localRay{};
         localRay.origin = glm::vec3(localOrigin);
         localRay.direction = glm::vec3(localDirection);
+        if (!normalize_direction(localRay.direction)) {
+            return kernel::geometry::SelectionHit::miss();
+        }
 
         kernel::geometry::SelectionQueryOptions options{};
         options.mask = mask;
@@ -270,6 +418,17 @@ namespace locus::editor {
         options.edgeRadius = 0.025f * event.pointer.visualScale;
         options.preferVertices = granularity == SelectionGranularity::Vertex;
         options.preferEdges = granularity == SelectionGranularity::Edge;
+
+        if (depthMode == SelectionDepthMode::VisibleOnly) {
+            const kernel::geometry::SelectionHit surfaceHit =
+                kernel::geometry::RaycastQuery::raycast_faces(
+                    meshNode->mesh(),
+                    localRay);
+
+            if (surfaceHit.hit) {
+                options.maxDistance = surfaceHit.distance + 0.01f;
+            }
+        }
 
         return kernel::geometry::SelectionQuery::pick_by_ray(
             meshNode->mesh(),
@@ -319,7 +478,8 @@ namespace locus::editor {
     ToolContext::resolve_active_mesh_components(
         const ScreenSelectionRect& rect,
         const ToolEvent& event,
-        const SelectionContainment containment) const
+        const SelectionContainment containment,
+        const SelectionDepthMode depthMode) const
     {
         std::vector<kernel::geometry::SelectionHit> result;
         const SelectionGranularity granularity = selection().granularity();
@@ -333,7 +493,10 @@ namespace locus::editor {
         }
 
         const glm::mat4 world = node_world_matrix(scene(), activeMesh);
+        const glm::mat4 inverseWorld = glm::inverse(world);
         const kernel::geometry::LEM& mesh = meshNode->mesh();
+        const bool visibleOnly =
+            depthMode == SelectionDepthMode::VisibleOnly;
 
         if (granularity == SelectionGranularity::Vertex) {
             for (const kernel::geometry::VertexHandle vertexHandle :
@@ -349,7 +512,13 @@ namespace locus::editor {
                         event.pointer.viewportSize,
                         glm::vec3(world * glm::vec4(vertex.position, 1.0f)),
                         screen) &&
-                    rect.contains(screen)) {
+                    rect.contains(screen) &&
+                    (!visibleOnly ||
+                        visible_at_local_point(
+                            mesh,
+                            event,
+                            inverseWorld,
+                            vertex.position))) {
                     result.push_back(
                         kernel::geometry::SelectionHit::vertex_hit(
                             vertexHandle,
@@ -395,6 +564,25 @@ namespace locus::editor {
                         rect.intersects_segment(screenA, screenB);
 
                 if (selected) {
+                    if (visibleOnly &&
+                        !visible_at_local_point(
+                            mesh,
+                            event,
+                            inverseWorld,
+                            edge_center(mesh, edge)) &&
+                        !visible_at_local_point(
+                            mesh,
+                            event,
+                            inverseWorld,
+                            a.position) &&
+                        !visible_at_local_point(
+                            mesh,
+                            event,
+                            inverseWorld,
+                            b.position)) {
+                        continue;
+                    }
+
                     result.push_back(
                         kernel::geometry::SelectionHit::edge_hit(
                             edgeHandle,
@@ -429,19 +617,15 @@ namespace locus::editor {
                     }
                 }
 
-                if (points_match_rect(projected, rect, containment)) {
-                    glm::vec3 center{ 0.0f };
-                    std::size_t count = 0u;
-                    for (const kernel::geometry::VertexHandle vertexHandle :
-                        kernel::geometry::TopologyTraversal::face_vertices(
+                const glm::vec3 center = face_center(mesh, faceHandle);
+
+                if (points_match_rect(projected, rect, containment) &&
+                    (!visibleOnly ||
+                        visible_at_local_point(
                             mesh,
-                            faceHandle)) {
-                        center += mesh.vertex(vertexHandle).position;
-                        ++count;
-                    }
-                    if (count > 0u) {
-                        center /= static_cast<float>(count);
-                    }
+                            event,
+                            inverseWorld,
+                            center))) {
 
                     result.push_back(
                         kernel::geometry::SelectionHit::face_hit(

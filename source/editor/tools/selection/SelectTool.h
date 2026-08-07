@@ -72,6 +72,13 @@ namespace locus::editor {
         [[nodiscard]] ScreenSelectionRect selection_rect() const noexcept;
         [[nodiscard]] SelectionRegionVisualState
             selection_region_visual_state() const noexcept;
+        [[nodiscard]] SelectionDepthMode point_selection_depth_mode()
+            const noexcept;
+        [[nodiscard]] SelectionDepthMode region_selection_depth_mode()
+            const noexcept;
+        void set_selection_depth_modes(
+            SelectionDepthMode pointDepthMode,
+            SelectionDepthMode regionDepthMode) noexcept;
 
     protected:
         /**
@@ -179,6 +186,8 @@ namespace locus::editor {
         BoxSelectionShape boxShape_{};
         ToolCapture capture_{};
         SelectionOperation operation_ = SelectionOperation::Replace;
+        SelectionDepthMode pointDepthMode_ = SelectionDepthMode::VisibleOnly;
+        SelectionDepthMode regionDepthMode_ = SelectionDepthMode::VisibleOnly;
         bool boxSelecting_ = false;
         float dragThresholdPixels_ = 4.0f;
     };

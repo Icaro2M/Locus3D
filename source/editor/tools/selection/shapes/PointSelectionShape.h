@@ -24,6 +24,14 @@ namespace locus::editor {
         PointSelectionShape() = default;
 
         /**
+         * @brief Creates a point selection shape with explicit depth policy.
+         *
+         * @param depthMode Component depth policy.
+         */
+        explicit PointSelectionShape(
+            SelectionDepthMode depthMode);
+
+        /**
          * @brief Resolves the object under the event pointer.
          *
          * @param context Tool runtime context.
@@ -40,6 +48,12 @@ namespace locus::editor {
         {
             return SelectionShapeKind::Point;
         }
+
+        [[nodiscard]] SelectionDepthMode depth_mode() const noexcept;
+        void set_depth_mode(SelectionDepthMode depthMode) noexcept;
+
+    private:
+        SelectionDepthMode depthMode_ = SelectionDepthMode::VisibleOnly;
     };
 
 } // namespace locus::editor

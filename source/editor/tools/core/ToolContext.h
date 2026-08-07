@@ -240,7 +240,9 @@ namespace locus::editor {
          * @return Component hit with stable LEM handles, or miss.
          */
         [[nodiscard]] kernel::geometry::SelectionHit resolve_active_mesh_component(
-            const ToolEvent& event) const;
+            const ToolEvent& event,
+            SelectionDepthMode depthMode =
+                SelectionDepthMode::VisibleOnly) const;
 
         /**
          * @brief Resolves a component inside a specific mesh node.
@@ -251,7 +253,9 @@ namespace locus::editor {
          */
         [[nodiscard]] kernel::geometry::SelectionHit resolve_mesh_component(
             SceneNodeId meshNodeId,
-            const ToolEvent& event) const;
+            const ToolEvent& event,
+            SelectionDepthMode depthMode =
+                SelectionDepthMode::VisibleOnly) const;
 
         [[nodiscard]] std::vector<SceneNodeId> resolve_objects_in_rect(
             const ScreenSelectionRect& rect,
@@ -262,7 +266,9 @@ namespace locus::editor {
             resolve_active_mesh_components(
                 const ScreenSelectionRect& rect,
                 const ToolEvent& event,
-                SelectionContainment containment) const;
+                SelectionContainment containment,
+                SelectionDepthMode depthMode =
+                    SelectionDepthMode::VisibleOnly) const;
 
         /**
          * @brief Marks editor subsystems as dirty.

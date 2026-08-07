@@ -72,6 +72,34 @@ namespace locus::editor {
         };
     }
 
+    SelectionDepthMode SelectTool::point_selection_depth_mode()
+        const noexcept {
+
+        return pointDepthMode_;
+    }
+
+    SelectionDepthMode SelectTool::region_selection_depth_mode()
+        const noexcept {
+
+        return regionDepthMode_;
+    }
+
+    void SelectTool::set_selection_depth_modes(
+        const SelectionDepthMode pointDepthMode,
+        const SelectionDepthMode regionDepthMode) noexcept {
+
+        pointDepthMode_ = pointDepthMode;
+        regionDepthMode_ = regionDepthMode;
+
+        if (PointSelectionShape* pointShape =
+            dynamic_cast<PointSelectionShape*>(shape_.get())) {
+
+            pointShape->set_depth_mode(pointDepthMode_);
+        }
+
+        boxShape_.set_depth_mode(regionDepthMode_);
+    }
+
     bool SelectTool::can_activate_tool(
         const ToolContext& context) const {
 

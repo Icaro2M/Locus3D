@@ -696,18 +696,30 @@ void apply_route(
         solid.surfaceDepthPrepass ||
         !solid.topologyVisibleEdges ||
         solid.topologyOccludedEdges ||
-        !solid.topologySurfaceOverlays) {
+        !solid.topologySurfaceOverlays ||
+        solid.pointSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::VisibleOnly ||
+        solid.regionSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::VisibleOnly ||
+        !solid.topologyDepthTest ||
+        !solid.attenuateOccludedGizmo) {
         std::cerr << "Solid shading frame config regressed\n";
         return false;
     }
 
     if (wireframe.surfaceColorPass ||
-        !wireframe.surfaceDepthPrepass ||
+        wireframe.surfaceDepthPrepass ||
         !wireframe.topologyVisibleEdges ||
         wireframe.topologyOccludedEdges ||
-        wireframe.topologySurfaceOverlays) {
+        wireframe.topologySurfaceOverlays ||
+        wireframe.pointSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::Through ||
+        wireframe.regionSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::Through ||
+        wireframe.topologyDepthTest ||
+        wireframe.attenuateOccludedGizmo) {
         std::cerr
-            << "Wireframe shading frame config should use depth and visible topology edges without face fill\n";
+            << "Wireframe shading frame config should draw topology through without invisible surface depth\n";
         return false;
     }
 
@@ -715,9 +727,15 @@ void apply_route(
         wireframeWithOrientation.surfaceDepthPrepass ||
         !wireframeWithOrientation.topologyVisibleEdges ||
         wireframeWithOrientation.topologyOccludedEdges ||
-        !wireframeWithOrientation.topologySurfaceOverlays) {
+        !wireframeWithOrientation.topologySurfaceOverlays ||
+        wireframeWithOrientation.pointSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::VisibleOnly ||
+        wireframeWithOrientation.regionSelectionDepthMode !=
+            locus::editor::SelectionDepthMode::VisibleOnly ||
+        !wireframeWithOrientation.topologyDepthTest ||
+        !wireframeWithOrientation.attenuateOccludedGizmo) {
         std::cerr
-            << "Face Orientation should add a surface color pass under Wireframe\n";
+            << "Face Orientation should use solid visibility policy with diagnostic colors\n";
         return false;
     }
 
