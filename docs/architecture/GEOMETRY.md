@@ -294,11 +294,12 @@ source\kernel
     |       IssueLocation.h
     |
     +---profiles
-    |       PrintProfile.h [!]
+    |       PrintProfile.h
+    |       ManufacturingLimits.h 
     |       PrintTechnology.h
-    |       FDMProfile.h [!]
-    |       SLAProfile.h [!]
-    |       SLSProfile.h [!]
+    |       FDMProfile.h
+    |       SLAProfile.h
+    |       SLSProfile.h
     |       ProfileRegistry.h [!]
     |
     +---mesh

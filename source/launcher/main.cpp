@@ -46,6 +46,11 @@
 #include "kernel/manufacturing/core/PrintIssue.h"
 #include "kernel/manufacturing/core/PrintIssueType.h"
 #include "kernel/manufacturing/profiles/PrintTechnology.h"
+#include "kernel/manufacturing/profiles/FDMProfile.h"
+#include "kernel/manufacturing/profiles/ManufacturingLimits.h"
+#include "kernel/manufacturing/profiles/PrintProfile.h"
+#include "kernel/manufacturing/profiles/SLAProfile.h"
+#include "kernel/manufacturing/profiles/SLSProfile.h"
 
 //========manufacturing==============================
 
@@ -1599,180 +1604,145 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-// Manufacturing Core Smoke Test
-//=============================================================================
+    // Manufacturing Print Profile Smoke Test
+    //=============================================================================
 
     {
-        using namespace locus::kernel;
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing Core Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing Print Profile Smoke Test ===\n\n";
 
-        AnalysisReport report;
+        std::cout << "=== FDM profile ===\n";
 
-        std::cout << "=== Empty report ===\n";
+        FDMProfile fdm;
+        fdm.name = "Test FDM";
+        fdm.nozzleDiameter = 0.4;
+        fdm.extrusionWidth = 0.45;
+        fdm.layerHeight = 0.2;
 
-        if (!report.has_issues() &&
-            report.issue_count() == 0 &&
-            !report.has_errors() &&
-            !report.has_warnings()) {
-            std::cout << "[OK] novo report inicia vazio\n";
-        }
-        else {
-            std::cout << "[FAIL] novo report deveria iniciar vazio\n";
-        }
+        fdm.limits.minimumWallThickness = 0.8;
+        fdm.limits.minimumFeatureSize = 0.4;
+        fdm.limits.maximumUnsupportedOverhangAngleDegrees = 45.0;
 
-        IssueLocation boundaryLocation;
+        PrintProfile profile{ fdm };
 
-        geometry::EdgeHandle edgeA{ 10 };
-        geometry::EdgeHandle edgeB{ 11 };
-        geometry::EdgeHandle edgeC{ 12 };
-
-        boundaryLocation.edges.push_back(edgeA);
-        boundaryLocation.edges.push_back(edgeB);
-        boundaryLocation.edges.push_back(edgeC);
-
-        std::cout << "\n=== IssueLocation ===\n";
-
-        if (!boundaryLocation.empty() &&
-            boundaryLocation.has_mesh_elements() &&
-            !boundaryLocation.has_samples() &&
-            !boundaryLocation.has_region() &&
-            boundaryLocation.mesh_element_count() == 3) {
+        if (profile.technology() == PrintTechnology::FDM &&
+            profile.name() == "Test FDM" &&
+            profile.is<FDMProfile>() &&
+            !profile.is<SLAProfile>() &&
+            !profile.is<SLSProfile>()) {
             std::cout
-                << "[OK] localizacao preserva referencias de arestas\n";
+                << "[OK] PrintProfile preserva tecnologia e tipo FDM\n";
         }
         else {
             std::cout
-                << "[FAIL] localizacao de arestas inconsistente\n";
+                << "[FAIL] PrintProfile FDM inconsistente\n";
         }
 
-        PrintIssue boundaryIssue{
-            PrintIssueType::OpenBoundary,
-            IssueSeverity::Error,
-            "Open boundary detected.",
-            boundaryLocation
-        };
+        const FDMProfile* storedFdm =
+            profile.get_if<FDMProfile>();
 
-        if (boundaryIssue.has_location() &&
-            !boundaryIssue.has_measurement()) {
+        if (storedFdm != nullptr &&
+            storedFdm->nozzleDiameter.has_value() &&
+            storedFdm->nozzleDiameter.value() == 0.4 &&
+            storedFdm->extrusionWidth.has_value() &&
+            storedFdm->extrusionWidth.value() == 0.45 &&
+            storedFdm->layerHeight.has_value() &&
+            storedFdm->layerHeight.value() == 0.2) {
             std::cout
-                << "[OK] issue preserva localizacao sem medida opcional\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] estado inicial do issue inconsistente\n";
-        }
-
-        report.add_issue(boundaryIssue);
-
-        PrintIssue thinWallIssue{
-            PrintIssueType::ThinWall,
-            IssueSeverity::Warning,
-            "Wall thickness is below the configured limit."
-        };
-
-        thinWallIssue.measurement = IssueMeasurement{
-            IssueMeasurementKind::Length,
-            0.25,
-            0.40
-        };
-
-        report.add_issue(thinWallIssue);
-
-        std::cout << "\n=== AnalysisReport issues ===\n";
-
-        if (report.issue_count() == 2) {
-            std::cout << "[OK] report armazena dois issues\n";
-        }
-        else {
-            std::cout << "[FAIL] contagem total de issues incorreta\n";
-        }
-
-        if (report.issue_count(PrintIssueType::OpenBoundary) == 1 &&
-            report.issue_count(PrintIssueType::ThinWall) == 1) {
-            std::cout << "[OK] consulta por tipo funciona\n";
-        }
-        else {
-            std::cout << "[FAIL] consulta por tipo inconsistente\n";
-        }
-
-        if (report.error_count() == 1 &&
-            report.warning_count() == 1 &&
-            report.info_count() == 0) {
-            std::cout << "[OK] contagem por severidade funciona\n";
-        }
-        else {
-            std::cout << "[FAIL] contagem por severidade inconsistente\n";
-        }
-
-        if (report.has_issue_type(PrintIssueType::OpenBoundary) &&
-            report.has_issue_type(PrintIssueType::ThinWall) &&
-            !report.has_issue_type(PrintIssueType::SelfIntersection)) {
-            std::cout << "[OK] deteccao de tipos presentes funciona\n";
-        }
-        else {
-            std::cout << "[FAIL] deteccao de tipos presentes inconsistente\n";
-        }
-
-        const auto& measurement =
-            report.issues()[1].measurement;
-
-        if (measurement.has_value() &&
-            measurement->kind == IssueMeasurementKind::Length &&
-            measurement->value == 0.25 &&
-            measurement->has_limit() &&
-            measurement->limit.value() == 0.40) {
-            std::cout
-                << "[OK] medida e limite de thin wall foram preservados\n";
+                << "[OK] parametros especificos de FDM foram preservados\n";
         }
         else {
             std::cout
-                << "[FAIL] medida de manufacturing inconsistente\n";
+                << "[FAIL] parametros especificos de FDM inconsistentes\n";
         }
 
-        std::cout << "\n=== AnalysisMetrics ===\n";
+        std::cout << "\n=== Manufacturing limits ===\n";
 
-        report.metrics().volume = 125.0;
-        report.metrics().surfaceArea = 250.0;
-        report.metrics().connectedComponentCount = 2;
-        report.metrics().analysisTriangleCount = 24;
-
-        if (report.metrics().has_volume() &&
-            report.metrics().has_surface_area() &&
-            report.metrics().has_connected_component_count() &&
-            report.metrics().has_analysis_triangle_count() &&
-            report.metrics().volume.value() == 125.0 &&
-            report.metrics().connectedComponentCount.value() == 2) {
-            std::cout << "[OK] metricas opcionais funcionam\n";
+        if (profile.limits().has_minimum_wall_thickness() &&
+            profile.limits().has_minimum_feature_size() &&
+            profile.limits().has_maximum_unsupported_overhang_angle() &&
+            profile.limits().minimumWallThickness.value() == 0.8 &&
+            profile.limits().minimumFeatureSize.value() == 0.4 &&
+            profile.limits()
+            .maximumUnsupportedOverhangAngleDegrees.value() == 45.0) {
+            std::cout
+                << "[OK] limites comuns foram preservados\n";
         }
         else {
-            std::cout << "[FAIL] metricas opcionais inconsistentes\n";
+            std::cout
+                << "[FAIL] limites comuns inconsistentes\n";
         }
 
-        std::cout << "\n=== Clear report ===\n";
+        std::cout << "\n=== Mutable common limits ===\n";
 
-        report.clear();
+        profile.limits().minimumWallThickness = 1.0;
 
-        if (!report.has_issues() &&
-            report.issue_count() == 0 &&
-            !report.metrics().has_volume() &&
-            !report.metrics().has_surface_area() &&
-            !report.metrics().has_connected_component_count() &&
-            !report.metrics().has_analysis_triangle_count()) {
-            std::cout << "[OK] clear remove issues e metricas\n";
+        if (profile.limits().minimumWallThickness.value() == 1.0 &&
+            profile.get_if<FDMProfile>() != nullptr &&
+            profile.get_if<FDMProfile>()
+            ->limits.minimumWallThickness.value() == 1.0) {
+            std::cout
+                << "[OK] acesso comum modifica o perfil armazenado\n";
         }
         else {
-            std::cout << "[FAIL] clear nao restaurou o report\n";
+            std::cout
+                << "[FAIL] acesso mutavel aos limites inconsistente\n";
+        }
+
+        std::cout << "\n=== SLA profile ===\n";
+
+        SLAProfile sla;
+        sla.name = "Test SLA";
+        sla.xyResolution = 0.05;
+        sla.layerHeight = 0.05;
+        sla.limits.minimumWallThickness = 0.5;
+
+        PrintProfile slaProfile{ sla };
+
+        if (slaProfile.technology() == PrintTechnology::SLA &&
+            slaProfile.name() == "Test SLA" &&
+            slaProfile.is<SLAProfile>() &&
+            slaProfile.get_if<SLAProfile>() != nullptr &&
+            slaProfile.get_if<FDMProfile>() == nullptr) {
+            std::cout
+                << "[OK] perfil SLA funciona\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] perfil SLA inconsistente\n";
+        }
+
+        std::cout << "\n=== SLS profile ===\n";
+
+        SLSProfile sls;
+        sls.name = "Test SLS";
+        sls.laserSpotDiameter = 0.3;
+        sls.layerHeight = 0.1;
+        sls.limits.minimumFeatureSize = 0.6;
+
+        PrintProfile slsProfile{ sls };
+
+        if (slsProfile.technology() == PrintTechnology::SLS &&
+            slsProfile.name() == "Test SLS" &&
+            slsProfile.is<SLSProfile>() &&
+            slsProfile.get_if<SLSProfile>() != nullptr &&
+            slsProfile.get_if<FDMProfile>() == nullptr) {
+            std::cout
+                << "[OK] perfil SLS funciona\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] perfil SLS inconsistente\n";
         }
 
         std::cout
-            << "\n=== Manufacturing Core Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing Print Profile Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing Core Smoke Test
+    // End Manufacturing Print Profile Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
