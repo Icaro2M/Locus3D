@@ -116,7 +116,12 @@ target_sources(locus3d_geometry PRIVATE
     "modeling/preview/GhostMeshBuilder.h"
     "manufacturing/core/IssueSeverity.h"
     "manufacturing/profiles/PrintTechnology.h"
-    "manufacturing/core/PrintIssueType.h")
+    "manufacturing/core/PrintIssueType.h"
+    "manufacturing/core/IssueLocation.h"
+    "manufacturing/core/IssueMeasurement.h"
+    "manufacturing/core/PrintIssue.h"
+    "manufacturing/core/AnalysisMetrics.h"
+    "manufacturing/core/AnalysisReport.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

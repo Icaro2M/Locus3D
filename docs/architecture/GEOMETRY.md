@@ -286,10 +286,12 @@ source\kernel
     +---core
     |       IAnalyzer.h [!]
     |       AnalysisContext.h [!]
-    |       AnalysisReport.h [!]
-    |       PrintIssue.h [!]
+    |       AnalysisReport.h
+    |       AnalysisMetrics.h
+    |       PrintIssue.h
     |       PrintIssueType.h
     |       IssueSeverity.h
+    |       IssueLocation.h
     |
     +---profiles
     |       PrintProfile.h [!]

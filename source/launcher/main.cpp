@@ -37,6 +37,19 @@
 #include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 
+
+//========manufacturing==============================
+#include "kernel/manufacturing/core/AnalysisReport.h"
+#include "kernel/manufacturing/core/IssueLocation.h"
+#include "kernel/manufacturing/core/IssueMeasurement.h"
+#include "kernel/manufacturing/core/IssueSeverity.h"
+#include "kernel/manufacturing/core/PrintIssue.h"
+#include "kernel/manufacturing/core/PrintIssueType.h"
+#include "kernel/manufacturing/profiles/PrintTechnology.h"
+
+//========manufacturing==============================
+
+
 namespace {
 
     using locus::application::DocumentSession;
@@ -1584,6 +1597,184 @@ namespace {
 
 int main(int argc, char** argv)
 {
+
+    //=============================================================================
+// Manufacturing Core Smoke Test
+//=============================================================================
+
+    {
+        using namespace locus::kernel;
+        using namespace locus::kernel::manufacturing;
+
+        std::cout
+            << "\n=== Locus3D Manufacturing Core Smoke Test ===\n\n";
+
+        AnalysisReport report;
+
+        std::cout << "=== Empty report ===\n";
+
+        if (!report.has_issues() &&
+            report.issue_count() == 0 &&
+            !report.has_errors() &&
+            !report.has_warnings()) {
+            std::cout << "[OK] novo report inicia vazio\n";
+        }
+        else {
+            std::cout << "[FAIL] novo report deveria iniciar vazio\n";
+        }
+
+        IssueLocation boundaryLocation;
+
+        geometry::EdgeHandle edgeA{ 10 };
+        geometry::EdgeHandle edgeB{ 11 };
+        geometry::EdgeHandle edgeC{ 12 };
+
+        boundaryLocation.edges.push_back(edgeA);
+        boundaryLocation.edges.push_back(edgeB);
+        boundaryLocation.edges.push_back(edgeC);
+
+        std::cout << "\n=== IssueLocation ===\n";
+
+        if (!boundaryLocation.empty() &&
+            boundaryLocation.has_mesh_elements() &&
+            !boundaryLocation.has_samples() &&
+            !boundaryLocation.has_region() &&
+            boundaryLocation.mesh_element_count() == 3) {
+            std::cout
+                << "[OK] localizacao preserva referencias de arestas\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] localizacao de arestas inconsistente\n";
+        }
+
+        PrintIssue boundaryIssue{
+            PrintIssueType::OpenBoundary,
+            IssueSeverity::Error,
+            "Open boundary detected.",
+            boundaryLocation
+        };
+
+        if (boundaryIssue.has_location() &&
+            !boundaryIssue.has_measurement()) {
+            std::cout
+                << "[OK] issue preserva localizacao sem medida opcional\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] estado inicial do issue inconsistente\n";
+        }
+
+        report.add_issue(boundaryIssue);
+
+        PrintIssue thinWallIssue{
+            PrintIssueType::ThinWall,
+            IssueSeverity::Warning,
+            "Wall thickness is below the configured limit."
+        };
+
+        thinWallIssue.measurement = IssueMeasurement{
+            IssueMeasurementKind::Length,
+            0.25,
+            0.40
+        };
+
+        report.add_issue(thinWallIssue);
+
+        std::cout << "\n=== AnalysisReport issues ===\n";
+
+        if (report.issue_count() == 2) {
+            std::cout << "[OK] report armazena dois issues\n";
+        }
+        else {
+            std::cout << "[FAIL] contagem total de issues incorreta\n";
+        }
+
+        if (report.issue_count(PrintIssueType::OpenBoundary) == 1 &&
+            report.issue_count(PrintIssueType::ThinWall) == 1) {
+            std::cout << "[OK] consulta por tipo funciona\n";
+        }
+        else {
+            std::cout << "[FAIL] consulta por tipo inconsistente\n";
+        }
+
+        if (report.error_count() == 1 &&
+            report.warning_count() == 1 &&
+            report.info_count() == 0) {
+            std::cout << "[OK] contagem por severidade funciona\n";
+        }
+        else {
+            std::cout << "[FAIL] contagem por severidade inconsistente\n";
+        }
+
+        if (report.has_issue_type(PrintIssueType::OpenBoundary) &&
+            report.has_issue_type(PrintIssueType::ThinWall) &&
+            !report.has_issue_type(PrintIssueType::SelfIntersection)) {
+            std::cout << "[OK] deteccao de tipos presentes funciona\n";
+        }
+        else {
+            std::cout << "[FAIL] deteccao de tipos presentes inconsistente\n";
+        }
+
+        const auto& measurement =
+            report.issues()[1].measurement;
+
+        if (measurement.has_value() &&
+            measurement->kind == IssueMeasurementKind::Length &&
+            measurement->value == 0.25 &&
+            measurement->has_limit() &&
+            measurement->limit.value() == 0.40) {
+            std::cout
+                << "[OK] medida e limite de thin wall foram preservados\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] medida de manufacturing inconsistente\n";
+        }
+
+        std::cout << "\n=== AnalysisMetrics ===\n";
+
+        report.metrics().volume = 125.0;
+        report.metrics().surfaceArea = 250.0;
+        report.metrics().connectedComponentCount = 2;
+        report.metrics().analysisTriangleCount = 24;
+
+        if (report.metrics().has_volume() &&
+            report.metrics().has_surface_area() &&
+            report.metrics().has_connected_component_count() &&
+            report.metrics().has_analysis_triangle_count() &&
+            report.metrics().volume.value() == 125.0 &&
+            report.metrics().connectedComponentCount.value() == 2) {
+            std::cout << "[OK] metricas opcionais funcionam\n";
+        }
+        else {
+            std::cout << "[FAIL] metricas opcionais inconsistentes\n";
+        }
+
+        std::cout << "\n=== Clear report ===\n";
+
+        report.clear();
+
+        if (!report.has_issues() &&
+            report.issue_count() == 0 &&
+            !report.metrics().has_volume() &&
+            !report.metrics().has_surface_area() &&
+            !report.metrics().has_connected_component_count() &&
+            !report.metrics().has_analysis_triangle_count()) {
+            std::cout << "[OK] clear remove issues e metricas\n";
+        }
+        else {
+            std::cout << "[FAIL] clear nao restaurou o report\n";
+        }
+
+        std::cout
+            << "\n=== Manufacturing Core Smoke Test Finished ===\n\n";
+    }
+
+    //=============================================================================
+    // End Manufacturing Core Smoke Test
+    //=============================================================================
+
     if (argc > 1 &&
         std::string_view{ argv[1] } == "--transform-smoke-test") {
         return run_transform_history_smoke_test() ? 0 : 1;
