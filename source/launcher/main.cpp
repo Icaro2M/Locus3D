@@ -58,6 +58,7 @@
 #include "kernel/manufacturing/mesh/MeshHandleMapping.h"
 #include "kernel/geometry/spatial/BVHQuery.h"
 #include "kernel/math/Ray.h"
+#include "kernel/manufacturing/analyzers/topology/ManifoldAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1614,8 +1615,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-// Manufacturing AnalysisMesh BVH Smoke Test
-//=============================================================================
+   // Manufacturing ManifoldAnalyzer Smoke Test
+   //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1623,163 +1624,314 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing AnalysisMesh BVH Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing ManifoldAnalyzer Smoke Test ===\n\n";
+
+        ManifoldAnalyzer analyzer;
 
         //---------------------------------------------------------------------
-        // Quad acceleration
+        // Analyzer metadata
         //---------------------------------------------------------------------
 
-        std::cout << "=== Quad acceleration ===\n";
+        std::cout << "=== Analyzer metadata ===\n";
 
-        LEM mesh;
-
-        const VertexHandle v0 =
-            mesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.0f });
-
-        const VertexHandle v1 =
-            mesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.0f });
-
-        const VertexHandle v2 =
-            mesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle v3 =
-            mesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 0.0f });
-
-        const FaceHandle face =
-            mesh.add_face({ v0, v1, v2, v3 });
-
-        const AnalysisMesh analysis =
-            AnalysisMeshBuilder::build(mesh);
-
-        if (analysis.triangle_count() == 2 &&
-            analysis.has_bvh() &&
-            analysis.bvh().triangle_count() == 2) {
-
+        if (analyzer.name() == "ManifoldAnalyzer") {
             std::cout
-                << "[OK] BVH usa os dois triangulos da AnalysisMesh\n";
+                << "[OK] analyzer possui nome estavel\n";
         }
         else {
             std::cout
-                << "[FAIL] BVH da AnalysisMesh inconsistente\n";
+                << "[FAIL] nome do analyzer inconsistente\n";
         }
 
-        bool allMappedToSourceFace = true;
+        //---------------------------------------------------------------------
+        // Missing mesh
+        //---------------------------------------------------------------------
 
-        for (const BVHTriangle& triangle :
-            analysis.bvh().triangles()) {
+        std::cout << "\n=== Missing mesh ===\n";
 
-            if (triangle.face != face) {
-                allMappedToSourceFace = false;
-                break;
-            }
-        }
+        AnalysisContext missingContext;
+        AnalysisReport missingReport;
 
-        if (allMappedToSourceFace) {
+        analyzer.analyze(
+            missingContext,
+            missingReport);
+
+        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] BVH preserva FaceHandle original\n";
+                << "[OK] contexto sem LEM nao gera issues\n";
         }
         else {
             std::cout
-                << "[FAIL] BVH perdeu FaceHandle original\n";
+                << "[FAIL] analyzer executou sem LEM\n";
         }
 
         //---------------------------------------------------------------------
-        // Raycast through derived BVH
+        // Empty mesh
         //---------------------------------------------------------------------
 
-        std::cout << "\n=== Raycast against AnalysisMesh BVH ===\n";
+        std::cout << "\n=== Empty mesh ===\n";
 
-        math::Ray ray;
-        ray.origin =
-            glm::vec3{ 0.0f, 0.0f, 2.0f };
+        LEM emptyMesh;
 
-        ray.direction =
-            glm::vec3{ 0.0f, 0.0f, -1.0f };
+        AnalysisContext emptyContext;
+        emptyContext.mesh = &emptyMesh;
 
-        const auto hit =
-            BVHQuery::raycast_faces(
-                analysis.bvh(),
-                ray);
+        AnalysisReport emptyReport;
 
-        if (hit.hit &&
-            hit.face == face) {
+        analyzer.analyze(
+            emptyContext,
+            emptyReport);
 
+        if (!emptyReport.has_issues()) {
             std::cout
-                << "[OK] raycast da AnalysisMesh encontra a face original\n";
+                << "[OK] LEM vazia nao gera issues\n";
         }
         else {
             std::cout
-                << "[FAIL] raycast da AnalysisMesh nao encontrou a face esperada\n";
+                << "[FAIL] LEM vazia gerou issues inesperados\n";
         }
 
         //---------------------------------------------------------------------
-        // Bounds consistency
+        // Loose edge
         //---------------------------------------------------------------------
 
-        std::cout << "\n=== Bounds consistency ===\n";
+        std::cout << "\n=== Loose edge ===\n";
 
-        if (analysis.has_bounds() &&
-            analysis.has_bvh() &&
-            analysis.bvh().bounds().is_valid()) {
+        LEM looseMesh;
 
-            const glm::vec3 analysisSize =
-                analysis.bounds().size();
+        const VertexHandle looseV0 =
+            looseMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-            const glm::vec3 bvhSize =
-                analysis.bvh().bounds().size();
+        const VertexHandle looseV1 =
+            looseMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-            if (analysisSize == bvhSize) {
+        const EdgeHandle looseEdge =
+            looseMesh.find_or_create_edge(
+                looseV0,
+                looseV1);
+
+        AnalysisContext looseContext;
+        looseContext.mesh = &looseMesh;
+
+        AnalysisReport looseReport;
+
+        analyzer.analyze(
+            looseContext,
+            looseReport);
+
+        if (looseReport.issue_count() == 1 &&
+            looseReport.issue_count(PrintIssueType::LooseEdge) == 1 &&
+            looseReport.warning_count() == 1) {
+
+            std::cout
+                << "[OK] loose edge foi detectada\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] loose edge nao foi classificada corretamente\n";
+        }
+
+        if (looseReport.issue_count() == 1) {
+            const PrintIssue& issue =
+                looseReport.issues().front();
+
+            if (issue.location.edges.size() == 1 &&
+                issue.location.edges.front() == looseEdge &&
+                issue.location.vertices.size() == 2) {
+
                 std::cout
-                    << "[OK] bounds da AnalysisMesh e BVH coincidem\n";
+                    << "[OK] loose edge preserva localizacao visualizavel\n";
             }
             else {
                 std::cout
-                    << "[FAIL] bounds da AnalysisMesh e BVH divergem\n";
+                    << "[FAIL] localizacao da loose edge inconsistente\n";
             }
         }
+
+        //---------------------------------------------------------------------
+        // Boundary edge must NOT be reported here
+        //---------------------------------------------------------------------
+
+        std::cout << "\n=== Boundary separation ===\n";
+
+        LEM triangleMesh;
+
+        const VertexHandle tv0 =
+            triangleMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle tv1 =
+            triangleMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle tv2 =
+            triangleMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const FaceHandle triangleFace =
+            triangleMesh.add_face(
+                { tv0, tv1, tv2 });
+
+        AnalysisContext triangleContext;
+        triangleContext.mesh = &triangleMesh;
+
+        AnalysisReport triangleReport;
+
+        analyzer.analyze(
+            triangleContext,
+            triangleReport);
+
+        if (triangleFace.is_valid() &&
+            !triangleReport.has_issues()) {
+
+            std::cout
+                << "[OK] edges de boundary ficam reservadas ao WatertightAnalyzer\n";
+        }
         else {
             std::cout
-                << "[FAIL] bounds deveriam estar validos\n";
+                << "[FAIL] ManifoldAnalyzer reportou boundary como manifold issue\n";
         }
 
         //---------------------------------------------------------------------
-        // Empty rebuild clears acceleration
+        // Non-manifold edge
         //---------------------------------------------------------------------
 
-        std::cout << "\n=== Empty rebuild ===\n";
+        std::cout << "\n=== Non-manifold edge ===\n";
 
-        AnalysisMesh reusable =
-            AnalysisMeshBuilder::build(mesh);
+        LEM nonManifoldMesh;
 
-        LEM empty;
+        const VertexHandle a =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        AnalysisMeshBuilder::build_into(
-            empty,
-            reusable);
+        const VertexHandle b =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        if (reusable.empty() &&
-            !reusable.has_bvh() &&
-            reusable.bvh().empty() &&
-            reusable.bvh().triangle_count() == 0) {
+        const VertexHandle c =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle d =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
+
+        const VertexHandle e =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 0.0f, -1.0f, 0.0f });
+
+        const FaceHandle face0 =
+            nonManifoldMesh.add_face(
+                { a, b, c });
+
+        const FaceHandle face1 =
+            nonManifoldMesh.add_face(
+                { b, a, d });
+
+        const FaceHandle face2 =
+            nonManifoldMesh.add_face(
+                { a, b, e });
+
+        const EdgeHandle sharedEdge =
+            nonManifoldMesh.find_edge(
+                a,
+                b);
+
+        const auto radialLoops =
+            TopologyTraversal::edge_loops(
+                nonManifoldMesh,
+                sharedEdge);
+
+        AnalysisContext nonManifoldContext;
+        nonManifoldContext.mesh =
+            &nonManifoldMesh;
+
+        AnalysisReport nonManifoldReport;
+
+        analyzer.analyze(
+            nonManifoldContext,
+            nonManifoldReport);
+
+        if (face0.is_valid() &&
+            face1.is_valid() &&
+            face2.is_valid() &&
+            sharedEdge.is_valid() &&
+            radialLoops.size() == 3) {
 
             std::cout
-                << "[OK] rebuild vazio limpa triangulacao e BVH\n";
+                << "[OK] fixture possui edge com tres loops radiais\n";
         }
         else {
             std::cout
-                << "[FAIL] rebuild vazio preservou aceleracao antiga\n";
+                << "[FAIL] fixture non-manifold nao foi criada corretamente\n";
+        }
+
+        if (nonManifoldReport.issue_count(
+            PrintIssueType::NonManifoldEdge) == 1 &&
+            nonManifoldReport.error_count() == 1) {
+
+            std::cout
+                << "[OK] non-manifold edge foi detectada\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] non-manifold edge nao foi reportada corretamente\n";
+        }
+
+        bool foundSharedEdge = false;
+        bool foundAllFaces = false;
+
+        for (const PrintIssue& issue :
+            nonManifoldReport.issues()) {
+
+            if (issue.type !=
+                PrintIssueType::NonManifoldEdge) {
+                continue;
+            }
+
+            foundSharedEdge =
+                issue.location.edges.size() == 1 &&
+                issue.location.edges.front() ==
+                sharedEdge;
+
+            foundAllFaces =
+                issue.location.faces.size() == 3;
+
+            if (issue.has_measurement() &&
+                issue.measurement->kind ==
+                IssueMeasurementKind::Count &&
+                issue.measurement->value == 3.0 &&
+                issue.measurement->limit.has_value() &&
+                issue.measurement->limit.value() == 2.0) {
+
+                std::cout
+                    << "[OK] issue informa uso radial 3 contra limite 2\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] medida radial do issue inconsistente\n";
+            }
+
+            break;
+        }
+
+        if (foundSharedEdge && foundAllFaces) {
+            std::cout
+                << "[OK] issue preserva edge e faces para visualizacao\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] localizacao non-manifold incompleta\n";
         }
 
         std::cout
-            << "\n=== Manufacturing AnalysisMesh BVH Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing ManifoldAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing AnalysisMesh BVH Smoke Test
+    // End Manufacturing ManifoldAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
