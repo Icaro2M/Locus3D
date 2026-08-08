@@ -325,7 +325,7 @@ source\kernel
     |   |       IThinWallAnalyzer.h
     |   |       ThinWallQuality.h
     |   |       ThinWallResult.h
-    |   |       ThinWallAnalyzerFactory.h [!]
+    |   |       ThinWallAnalyzerFactory.h
     |   |       RaycastThinWallAnalyzer.h
     |   |
     |   \---process

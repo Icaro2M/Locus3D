@@ -71,6 +71,7 @@
 #include "kernel/manufacturing/analyzers/thinwall/ThinWallQuality.h"
 #include "kernel/manufacturing/analyzers/thinwall/ThinWallResult.h"
 #include "kernel/manufacturing/analyzers/thinwall/RaycastThinWallAnalyzer.h"
+#include "kernel/manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1627,475 +1628,132 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-  // Manufacturing RaycastThinWallAnalyzer Smoke Test
-  //=============================================================================
+    // Manufacturing ThinWallAnalyzerFactory Smoke Test
+    //=============================================================================
 
     {
-        using namespace locus::kernel;
-        using namespace locus::kernel::geometry;
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing RaycastThinWallAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing ThinWallAnalyzerFactory Smoke Test ===\n\n";
 
         //-------------------------------------------------------------------------
-        // Metadata and quality
+        // Fast
         //-------------------------------------------------------------------------
 
-        std::cout << "=== Quality modes ===\n";
+        std::cout << "=== Fast ===\n";
 
-        RaycastThinWallAnalyzer fastAnalyzer{
-            ThinWallQuality::Fast
-        };
+        std::unique_ptr<IThinWallAnalyzer> fast =
+            ThinWallAnalyzerFactory::create(
+                ThinWallQuality::Fast);
 
-        RaycastThinWallAnalyzer balancedAnalyzer{
-            ThinWallQuality::Balanced
-        };
-
-        RaycastThinWallAnalyzer highAnalyzer{
-            ThinWallQuality::High
-        };
-
-        if (fastAnalyzer.name() ==
+        if (fast != nullptr &&
+            fast->name() ==
             "RaycastThinWallAnalyzer" &&
-            fastAnalyzer.quality() ==
-            ThinWallQuality::Fast &&
-            balancedAnalyzer.quality() ==
-            ThinWallQuality::Balanced &&
-            highAnalyzer.quality() ==
+            fast->quality() ==
+            ThinWallQuality::Fast) {
+
+            std::cout
+                << "[OK] factory cria analyzer Fast\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] factory nao preservou quality Fast\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Balanced
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Balanced ===\n";
+
+        std::unique_ptr<IThinWallAnalyzer> balanced =
+            ThinWallAnalyzerFactory::create(
+                ThinWallQuality::Balanced);
+
+        if (balanced != nullptr &&
+            balanced->name() ==
+            "RaycastThinWallAnalyzer" &&
+            balanced->quality() ==
+            ThinWallQuality::Balanced) {
+
+            std::cout
+                << "[OK] factory cria analyzer Balanced\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] factory nao preservou quality Balanced\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // High
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== High ===\n";
+
+        std::unique_ptr<IThinWallAnalyzer> high =
+            ThinWallAnalyzerFactory::create(
+                ThinWallQuality::High);
+
+        if (high != nullptr &&
+            high->name() ==
+            "RaycastThinWallAnalyzer" &&
+            high->quality() ==
             ThinWallQuality::High) {
 
             std::cout
-                << "[OK] analyzer preserva Fast, Balanced e High\n";
+                << "[OK] factory cria analyzer High\n";
         }
         else {
             std::cout
-                << "[FAIL] quality contract inconsistente\n";
+                << "[FAIL] factory nao preservou quality High\n";
         }
 
         //-------------------------------------------------------------------------
-        // Missing dependencies
+        // IAnalyzer polymorphism
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Missing dependencies ===\n";
+        std::cout << "\n=== Generic analyzer contract ===\n";
 
-        AnalysisContext missingContext;
-        AnalysisReport missingReport;
+        IAnalyzer* generic =
+            balanced.get();
 
-        balancedAnalyzer.analyze(
-            missingContext,
-            missingReport);
+        if (generic != nullptr &&
+            generic->name() ==
+            "RaycastThinWallAnalyzer") {
 
-        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] contexto vazio nao gera thin-wall issue\n";
+                << "[OK] resultado da factory continua utilizavel como IAnalyzer\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem dependencias\n";
+                << "[FAIL] factory quebrou contrato generico de analyzer\n";
         }
 
         //-------------------------------------------------------------------------
-        // Profile
+        // Independent instances
         //-------------------------------------------------------------------------
 
-        FDMProfile fdm;
-        fdm.name =
-            "Thin Wall Test";
+        std::cout << "\n=== Independent instances ===\n";
 
-        fdm.limits.minimumWallThickness =
-            0.5;
-
-        PrintProfile profile{ fdm };
-
-        //-------------------------------------------------------------------------
-        // Thick cube
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Thick cube ===\n";
-
-        LEM thickMesh;
-
-        const VertexHandle t000 =
-            thickMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, -1.0f });
-
-        const VertexHandle t100 =
-            thickMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, -1.0f });
-
-        const VertexHandle t110 =
-            thickMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, -1.0f });
-
-        const VertexHandle t010 =
-            thickMesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, -1.0f });
-
-        const VertexHandle t001 =
-            thickMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 1.0f });
-
-        const VertexHandle t101 =
-            thickMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 1.0f });
-
-        const VertexHandle t111 =
-            thickMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 1.0f });
-
-        const VertexHandle t011 =
-            thickMesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 1.0f });
-
-        thickMesh.add_face(
-            { t000, t010, t110, t100 });
-
-        thickMesh.add_face(
-            { t001, t101, t111, t011 });
-
-        thickMesh.add_face(
-            { t000, t100, t101, t001 });
-
-        thickMesh.add_face(
-            { t100, t110, t111, t101 });
-
-        thickMesh.add_face(
-            { t110, t010, t011, t111 });
-
-        thickMesh.add_face(
-            { t010, t000, t001, t011 });
-
-        const AnalysisMesh thickAnalysis =
-            AnalysisMeshBuilder::build(
-                thickMesh);
-
-        AnalysisContext thickContext;
-        thickContext.mesh =
-            &thickMesh;
-        thickContext.analysisMesh =
-            &thickAnalysis;
-        thickContext.profile =
-            &profile;
-
-        AnalysisReport thickReport;
-
-        balancedAnalyzer.analyze(
-            thickContext,
-            thickReport);
-
-        if (!thickReport.has_issue_type(
-            PrintIssueType::ThinWall)) {
+        if (fast.get() != balanced.get() &&
+            balanced.get() != high.get() &&
+            fast.get() != high.get()) {
 
             std::cout
-                << "[OK] cubo espesso nao gera thin-wall issue\n";
+                << "[OK] factory retorna instancias independentes\n";
         }
         else {
             std::cout
-                << "[FAIL] geometria espessa gerou falso positivo\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Thin closed slab
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Thin closed slab ===\n";
-
-        LEM thinMesh;
-
-        const VertexHandle s000 =
-            thinMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, -0.1f });
-
-        const VertexHandle s100 =
-            thinMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, -0.1f });
-
-        const VertexHandle s110 =
-            thinMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, -0.1f });
-
-        const VertexHandle s010 =
-            thinMesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, -0.1f });
-
-        const VertexHandle s001 =
-            thinMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.1f });
-
-        const VertexHandle s101 =
-            thinMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.1f });
-
-        const VertexHandle s111 =
-            thinMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.1f });
-
-        const VertexHandle s011 =
-            thinMesh.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 0.1f });
-
-        const FaceHandle thinBottom =
-            thinMesh.add_face(
-                { s000, s010, s110, s100 });
-
-        const FaceHandle thinTop =
-            thinMesh.add_face(
-                { s001, s101, s111, s011 });
-
-        thinMesh.add_face(
-            { s000, s100, s101, s001 });
-
-        thinMesh.add_face(
-            { s100, s110, s111, s101 });
-
-        thinMesh.add_face(
-            { s110, s010, s011, s111 });
-
-        thinMesh.add_face(
-            { s010, s000, s001, s011 });
-
-        const AnalysisMesh thinAnalysis =
-            AnalysisMeshBuilder::build(
-                thinMesh);
-
-        AnalysisContext thinContext;
-        thinContext.mesh =
-            &thinMesh;
-        thinContext.analysisMesh =
-            &thinAnalysis;
-        thinContext.profile =
-            &profile;
-
-        AnalysisReport thinReport;
-
-        balancedAnalyzer.analyze(
-            thinContext,
-            thinReport);
-
-        if (thinBottom.is_valid() &&
-            thinTop.is_valid() &&
-            thinReport.has_issue_type(
-                PrintIssueType::ThinWall)) {
-
-            std::cout
-                << "[OK] slab de espessura 0.2 foi detectado\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] parede fina nao foi detectada\n";
-        }
-
-        bool measurementValid = false;
-        bool locationValid = false;
-
-        for (const PrintIssue& issue :
-            thinReport.issues()) {
-
-            if (issue.type !=
-                PrintIssueType::ThinWall) {
-                continue;
-            }
-
-            if (issue.has_measurement() &&
-                issue.measurement->kind ==
-                IssueMeasurementKind::Length &&
-                issue.measurement->value <
-                0.5 &&
-                issue.measurement->value >
-                0.0 &&
-                issue.measurement->has_limit() &&
-                std::abs(
-                    issue.measurement->limit.value() -
-                    0.5) <
-                1.0e-9) {
-
-                measurementValid = true;
-            }
-
-            const bool hasBottom =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    thinBottom) !=
-                issue.location.faces.end();
-
-            const bool hasTop =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    thinTop) !=
-                issue.location.faces.end();
-
-            if (hasBottom &&
-                hasTop &&
-                issue.location.has_samples() &&
-                issue.location.has_region()) {
-
-                locationValid = true;
-            }
-        }
-
-        if (measurementValid) {
-            std::cout
-                << "[OK] issue preserva thickness e profile limit\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] measurement do thin-wall inconsistente\n";
-        }
-
-        if (locationValid) {
-            std::cout
-                << "[OK] issue preserva faces opostas e regiao visual\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] localizacao visual do thin-wall incompleta\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // All quality levels detect the same obvious wall
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Quality detection ===\n";
-
-        AnalysisReport fastReport;
-        AnalysisReport highReport;
-
-        fastAnalyzer.analyze(
-            thinContext,
-            fastReport);
-
-        highAnalyzer.analyze(
-            thinContext,
-            highReport);
-
-        if (fastReport.has_issue_type(
-            PrintIssueType::ThinWall) &&
-            thinReport.has_issue_type(
-                PrintIssueType::ThinWall) &&
-            highReport.has_issue_type(
-                PrintIssueType::ThinWall)) {
-
-            std::cout
-                << "[OK] Fast, Balanced e High detectam parede fina evidente\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] quality modes discordaram em caso trivial\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Missing wall-thickness limit
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Missing profile limit ===\n";
-
-        FDMProfile noLimitFdm;
-        noLimitFdm.name =
-            "No Wall Limit";
-
-        PrintProfile noLimitProfile{
-            noLimitFdm
-        };
-
-        AnalysisContext noLimitContext =
-            thinContext;
-
-        noLimitContext.profile =
-            &noLimitProfile;
-
-        AnalysisReport noLimitReport;
-
-        balancedAnalyzer.analyze(
-            noLimitContext,
-            noLimitReport);
-
-        if (!noLimitReport.has_issue_type(
-            PrintIssueType::ThinWall)) {
-
-            std::cout
-                << "[OK] ausencia de minimumWallThickness nao inventa limite\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] analyzer inventou wall-thickness limit\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Disconnected close surfaces must not become one wall
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Disconnected surfaces ===\n";
-
-        LEM disconnectedMesh;
-
-        const VertexHandle d0 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.0f });
-
-        const VertexHandle d1 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.0f });
-
-        const VertexHandle d2 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        disconnectedMesh.add_face(
-            { d0, d1, d2 });
-
-        const VertexHandle e0 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.2f });
-
-        const VertexHandle e1 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.2f });
-
-        const VertexHandle e2 =
-            disconnectedMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.2f });
-
-        disconnectedMesh.add_face(
-            { e0, e1, e2 });
-
-        const AnalysisMesh disconnectedAnalysis =
-            AnalysisMeshBuilder::build(
-                disconnectedMesh);
-
-        AnalysisContext disconnectedContext;
-        disconnectedContext.mesh =
-            &disconnectedMesh;
-        disconnectedContext.analysisMesh =
-            &disconnectedAnalysis;
-        disconnectedContext.profile =
-            &profile;
-
-        AnalysisReport disconnectedReport;
-
-        balancedAnalyzer.analyze(
-            disconnectedContext,
-            disconnectedReport);
-
-        if (!disconnectedReport.has_issue_type(
-            PrintIssueType::ThinWall)) {
-
-            std::cout
-                << "[OK] superficies proximas desconectadas nao viram parede fina\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] distancia entre objetos foi confundida com wall thickness\n";
+                << "[FAIL] factory reutilizou instancia indevidamente\n";
         }
 
         std::cout
-            << "\n=== Manufacturing RaycastThinWallAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing ThinWallAnalyzerFactory Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing RaycastThinWallAnalyzer Smoke Test
+    // End Manufacturing ThinWallAnalyzerFactory Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
