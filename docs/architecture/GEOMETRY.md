@@ -317,7 +317,7 @@ source\kernel
     |   |
     |   +---geometry
     |   |       DegenerateGeometryAnalyzer.h
-    |   |       SelfIntersectionAnalyzer.h [!]
+    |   |       SelfIntersectionAnalyzer.h
     |   |
     |   +---thinwall
     |   |       IThinWallAnalyzer.h [!]

@@ -64,6 +64,7 @@
 #include "kernel/manufacturing/analyzers/topology/OrientationAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/IslandAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
+#include "kernel/manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1620,8 +1621,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing DegenerateGeometryAnalyzer Smoke Test
-    //=============================================================================
+// Manufacturing SelfIntersectionAnalyzer Smoke Test
+//=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1629,30 +1630,15 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing DegenerateGeometryAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing SelfIntersectionAnalyzer Smoke Test ===\n\n";
 
-        DegenerateGeometryAnalyzer analyzer;
-
-        //-------------------------------------------------------------------------
-        // Metadata
-        //-------------------------------------------------------------------------
-
-        std::cout << "=== Analyzer metadata ===\n";
-
-        if (analyzer.name() == "DegenerateGeometryAnalyzer") {
-            std::cout
-                << "[OK] analyzer possui nome estavel\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] nome do analyzer inconsistente\n";
-        }
+        SelfIntersectionAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
-        // Missing mesh
+        // Missing dependencies
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Missing mesh ===\n";
+        std::cout << "=== Missing dependencies ===\n";
 
         AnalysisContext missingContext;
         AnalysisReport missingReport;
@@ -1663,301 +1649,402 @@ int main(int argc, char** argv)
 
         if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] contexto sem LEM nao gera issues\n";
+                << "[OK] contexto vazio nao gera self-intersection\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem LEM\n";
+                << "[FAIL] analyzer executou sem dependencias\n";
         }
 
         //-------------------------------------------------------------------------
-        // Healthy triangle
+        // Two separated triangles
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Healthy triangle ===\n";
+        std::cout << "\n=== Separated triangles ===\n";
 
-        LEM healthyMesh;
+        LEM separatedMesh;
 
-        const VertexHandle h0 =
-            healthyMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle sa0 =
+            separatedMesh.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, 0.0f });
 
-        const VertexHandle h1 =
-            healthyMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle sa1 =
+            separatedMesh.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, 0.0f });
 
-        const VertexHandle h2 =
-            healthyMesh.add_vertex(
+        const VertexHandle sa2 =
+            separatedMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const FaceHandle healthyFace =
-            healthyMesh.add_face(
-                { h0, h1, h2 });
+        const FaceHandle separatedA =
+            separatedMesh.add_face(
+                { sa0, sa1, sa2 });
 
-        const AnalysisMesh healthyAnalysis =
+        const VertexHandle sb0 =
+            separatedMesh.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, 3.0f });
+
+        const VertexHandle sb1 =
+            separatedMesh.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, 3.0f });
+
+        const VertexHandle sb2 =
+            separatedMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 3.0f });
+
+        const FaceHandle separatedB =
+            separatedMesh.add_face(
+                { sb0, sb1, sb2 });
+
+        const AnalysisMesh separatedAnalysis =
             AnalysisMeshBuilder::build(
-                healthyMesh);
+                separatedMesh);
 
-        AnalysisContext healthyContext;
-        healthyContext.mesh =
-            &healthyMesh;
-        healthyContext.analysisMesh =
-            &healthyAnalysis;
+        AnalysisContext separatedContext;
+        separatedContext.mesh =
+            &separatedMesh;
+        separatedContext.analysisMesh =
+            &separatedAnalysis;
 
-        AnalysisReport healthyReport;
+        AnalysisReport separatedReport;
 
         analyzer.analyze(
-            healthyContext,
-            healthyReport);
+            separatedContext,
+            separatedReport);
 
-        if (healthyFace.is_valid() &&
-            !healthyReport.has_issue_type(
-                PrintIssueType::DegenerateGeometry)) {
+        if (separatedA.is_valid() &&
+            separatedB.is_valid() &&
+            !separatedReport.has_issue_type(
+                PrintIssueType::SelfIntersection)) {
 
             std::cout
-                << "[OK] triangulo normal nao e considerado degenerado\n";
+                << "[OK] superficies separadas nao intersectam\n";
         }
         else {
             std::cout
-                << "[FAIL] geometria valida gerou falso positivo\n";
+                << "[FAIL] falso positivo entre superficies separadas\n";
         }
 
         //-------------------------------------------------------------------------
-        // Zero-length edge
+        // Non-coplanar crossing triangles
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Zero-length edge ===\n";
+        std::cout << "\n=== Crossing triangles ===\n";
 
-        LEM edgeMesh;
+        LEM crossingMesh;
 
-        const VertexHandle e0 =
-            edgeMesh.add_vertex(
-                glm::vec3{ 1.0f, 2.0f, 3.0f });
+        // Horizontal triangle.
+        const VertexHandle ca0 =
+            crossingMesh.add_vertex(
+                glm::vec3{ -2.0f, -1.0f, 0.0f });
 
-        const VertexHandle e1 =
-            edgeMesh.add_vertex(
-                glm::vec3{ 1.0f, 2.0f, 3.0f });
+        const VertexHandle ca1 =
+            crossingMesh.add_vertex(
+                glm::vec3{ 2.0f, -1.0f, 0.0f });
 
-        const EdgeHandle zeroEdge =
-            edgeMesh.find_or_create_edge(
-                e0,
-                e1);
+        const VertexHandle ca2 =
+            crossingMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.0f });
 
-        AnalysisContext edgeContext;
-        edgeContext.mesh =
-            &edgeMesh;
+        const FaceHandle crossingA =
+            crossingMesh.add_face(
+                { ca0, ca1, ca2 });
 
-        AnalysisReport edgeReport;
+        // Vertical triangle passing through the horizontal one.
+        const VertexHandle cb0 =
+            crossingMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, -1.0f });
+
+        const VertexHandle cb1 =
+            crossingMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
+
+        const VertexHandle cb2 =
+            crossingMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.5f });
+
+        const FaceHandle crossingB =
+            crossingMesh.add_face(
+                { cb0, cb1, cb2 });
+
+        const AnalysisMesh crossingAnalysis =
+            AnalysisMeshBuilder::build(
+                crossingMesh);
+
+        AnalysisContext crossingContext;
+        crossingContext.mesh =
+            &crossingMesh;
+        crossingContext.analysisMesh =
+            &crossingAnalysis;
+
+        AnalysisReport crossingReport;
 
         analyzer.analyze(
-            edgeContext,
-            edgeReport);
+            crossingContext,
+            crossingReport);
 
-        if (zeroEdge.is_valid() &&
-            edgeReport.issue_count(
-                PrintIssueType::DegenerateGeometry) == 1 &&
-            edgeReport.error_count() == 1) {
+        if (crossingA.is_valid() &&
+            crossingB.is_valid() &&
+            crossingReport.issue_count(
+                PrintIssueType::SelfIntersection) == 1 &&
+            crossingReport.error_count() == 1) {
 
             std::cout
-                << "[OK] edge de comprimento zero foi detectada\n";
+                << "[OK] triangulos cruzados foram detectados\n";
         }
         else {
             std::cout
-                << "[FAIL] edge degenerada nao foi detectada corretamente\n";
+                << "[FAIL] self-intersection nao foi detectada\n";
         }
 
-        if (edgeReport.issue_count() == 1) {
+        if (crossingReport.issue_count() == 1) {
             const PrintIssue& issue =
-                edgeReport.issues().front();
+                crossingReport.issues().front();
 
-            if (issue.location.edges.size() == 1 &&
-                issue.location.edges.front() == zeroEdge &&
-                issue.location.vertices.size() == 2 &&
-                issue.has_measurement() &&
-                issue.measurement->kind ==
-                IssueMeasurementKind::Length &&
-                issue.measurement->value <= 1.0e-9) {
+            const bool hasA =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    crossingA) !=
+                issue.location.faces.end();
+
+            const bool hasB =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    crossingB) !=
+                issue.location.faces.end();
+
+            if (issue.location.faces.size() == 2 &&
+                hasA &&
+                hasB &&
+                issue.location.has_samples()) {
 
                 std::cout
-                    << "[OK] edge degenerada preserva localizacao e comprimento\n";
+                    << "[OK] issue preserva ambas as faces e ponto de interseccao\n";
             }
             else {
                 std::cout
-                    << "[FAIL] diagnostico da edge degenerada incompleto\n";
+                    << "[FAIL] localizacao da self-intersection incompleta\n";
             }
         }
 
         //-------------------------------------------------------------------------
-        // Collinear triangle
+        // Adjacent faces must not be reported
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Zero-area face ===\n";
+        std::cout << "\n=== Adjacent face contact ===\n";
 
-        LEM zeroAreaMesh;
+        LEM adjacentMesh;
 
-        const VertexHandle z0 =
-            zeroAreaMesh.add_vertex(
+        const VertexHandle aa =
+            adjacentMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle z1 =
-            zeroAreaMesh.add_vertex(
+        const VertexHandle ab =
+            adjacentMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle z2 =
-            zeroAreaMesh.add_vertex(
-                glm::vec3{ 2.0f, 0.0f, 0.0f });
+        const VertexHandle ac =
+            adjacentMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const FaceHandle zeroAreaFace =
-            zeroAreaMesh.add_face(
-                { z0, z1, z2 });
+        const VertexHandle ad =
+            adjacentMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        const AnalysisMesh zeroAreaAnalysis =
+        const FaceHandle adjacentA =
+            adjacentMesh.add_face(
+                { aa, ab, ac });
+
+        const FaceHandle adjacentB =
+            adjacentMesh.add_face(
+                { ab, aa, ad });
+
+        const AnalysisMesh adjacentAnalysis =
             AnalysisMeshBuilder::build(
-                zeroAreaMesh);
+                adjacentMesh);
 
-        AnalysisContext zeroAreaContext;
-        zeroAreaContext.mesh =
-            &zeroAreaMesh;
-        zeroAreaContext.analysisMesh =
-            &zeroAreaAnalysis;
+        AnalysisContext adjacentContext;
+        adjacentContext.mesh =
+            &adjacentMesh;
+        adjacentContext.analysisMesh =
+            &adjacentAnalysis;
 
-        AnalysisReport zeroAreaReport;
+        AnalysisReport adjacentReport;
 
         analyzer.analyze(
-            zeroAreaContext,
-            zeroAreaReport);
+            adjacentContext,
+            adjacentReport);
 
-        bool foundDegenerateFace = false;
-
-        for (const PrintIssue& issue :
-            zeroAreaReport.issues()) {
-
-            if (issue.type !=
-                PrintIssueType::DegenerateGeometry) {
-                continue;
-            }
-
-            if (std::find(
-                issue.location.faces.begin(),
-                issue.location.faces.end(),
-                zeroAreaFace) !=
-                issue.location.faces.end()) {
-
-                foundDegenerateFace = true;
-                break;
-            }
-        }
-
-        if (zeroAreaFace.is_valid() &&
-            foundDegenerateFace) {
+        if (adjacentA.is_valid() &&
+            adjacentB.is_valid() &&
+            !adjacentReport.has_issue_type(
+                PrintIssueType::SelfIntersection)) {
 
             std::cout
-                << "[OK] face colinear foi detectada como degenerada\n";
+                << "[OK] shared edge normal nao vira self-intersection\n";
         }
         else {
             std::cout
-                << "[FAIL] face de area zero nao foi detectada\n";
+                << "[FAIL] contato topologico normal gerou falso positivo\n";
         }
 
         //-------------------------------------------------------------------------
-        // AnalysisMesh optional for edge-only analysis
+        // Coplanar overlap
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Optional AnalysisMesh ===\n";
+        std::cout << "\n=== Coplanar overlap ===\n";
 
-        LEM edgeOnlyMesh;
+        LEM coplanarMesh;
 
-        const VertexHandle o0 =
-            edgeOnlyMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle pa0 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ -2.0f, -1.0f, 0.0f });
 
-        const VertexHandle o1 =
-            edgeOnlyMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle pa1 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ 2.0f, -1.0f, 0.0f });
 
-        edgeOnlyMesh.find_or_create_edge(
-            o0,
-            o1);
+        const VertexHandle pa2 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.0f });
 
-        AnalysisContext edgeOnlyContext;
-        edgeOnlyContext.mesh =
-            &edgeOnlyMesh;
+        const FaceHandle coplanarA =
+            coplanarMesh.add_face(
+                { pa0, pa1, pa2 });
 
-        AnalysisReport edgeOnlyReport;
+        const VertexHandle pb0 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ -1.0f, 0.0f, 0.0f });
 
-        analyzer.analyze(
-            edgeOnlyContext,
-            edgeOnlyReport);
+        const VertexHandle pb1 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        if (edgeOnlyReport.issue_count(
-            PrintIssueType::DegenerateGeometry) == 1) {
+        const VertexHandle pb2 =
+            coplanarMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.5f, 0.0f });
 
-            std::cout
-                << "[OK] edge analysis nao exige AnalysisMesh\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] dependencia opcional de AnalysisMesh incorreta\n";
-        }
+        const FaceHandle coplanarB =
+            coplanarMesh.add_face(
+                { pb0, pb1, pb2 });
 
-        //-------------------------------------------------------------------------
-        // Small but valid geometry
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Small but valid geometry ===\n";
-
-        LEM smallMesh;
-
-        const VertexHandle s0 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle s1 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.001f, 0.0f, 0.0f });
-
-        const VertexHandle s2 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.001f, 0.0f });
-
-        const FaceHandle smallFace =
-            smallMesh.add_face(
-                { s0, s1, s2 });
-
-        const AnalysisMesh smallAnalysis =
+        const AnalysisMesh coplanarAnalysis =
             AnalysisMeshBuilder::build(
-                smallMesh);
+                coplanarMesh);
 
-        AnalysisContext smallContext;
-        smallContext.mesh =
-            &smallMesh;
-        smallContext.analysisMesh =
-            &smallAnalysis;
+        AnalysisContext coplanarContext;
+        coplanarContext.mesh =
+            &coplanarMesh;
+        coplanarContext.analysisMesh =
+            &coplanarAnalysis;
 
-        AnalysisReport smallReport;
+        AnalysisReport coplanarReport;
 
         analyzer.analyze(
-            smallContext,
-            smallReport);
+            coplanarContext,
+            coplanarReport);
 
-        if (smallFace.is_valid() &&
-            !smallReport.has_issue_type(
-                PrintIssueType::DegenerateGeometry)) {
+        if (coplanarA.is_valid() &&
+            coplanarB.is_valid() &&
+            coplanarReport.issue_count(
+                PrintIssueType::SelfIntersection) == 1) {
 
             std::cout
-                << "[OK] geometria pequena mas valida nao e confundida com degeneracao\n";
+                << "[OK] overlap coplanar foi detectado\n";
         }
         else {
             std::cout
-                << "[FAIL] manufacturing confundiu tamanho pequeno com degeneracao\n";
+                << "[FAIL] overlap coplanar nao foi detectado\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // One face pair with several derived triangles
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Duplicate suppression ===\n";
+
+        LEM duplicateMesh;
+
+        // Large quad in XY.
+        const VertexHandle qa0 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ -2.0f, -2.0f, 0.0f });
+
+        const VertexHandle qa1 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 2.0f, -2.0f, 0.0f });
+
+        const VertexHandle qa2 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 2.0f, 2.0f, 0.0f });
+
+        const VertexHandle qa3 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ -2.0f, 2.0f, 0.0f });
+
+        const FaceHandle quadA =
+            duplicateMesh.add_face(
+                { qa0, qa1, qa2, qa3 });
+
+        // Vertical quad crossing it.
+        const VertexHandle qb0 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 0.0f, -2.0f, -1.0f });
+
+        const VertexHandle qb1 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, -1.0f });
+
+        const VertexHandle qb2 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 1.0f });
+
+        const VertexHandle qb3 =
+            duplicateMesh.add_vertex(
+                glm::vec3{ 0.0f, -2.0f, 1.0f });
+
+        const FaceHandle quadB =
+            duplicateMesh.add_face(
+                { qb0, qb1, qb2, qb3 });
+
+        const AnalysisMesh duplicateAnalysis =
+            AnalysisMeshBuilder::build(
+                duplicateMesh);
+
+        AnalysisContext duplicateContext;
+        duplicateContext.mesh =
+            &duplicateMesh;
+        duplicateContext.analysisMesh =
+            &duplicateAnalysis;
+
+        AnalysisReport duplicateReport;
+
+        analyzer.analyze(
+            duplicateContext,
+            duplicateReport);
+
+        if (quadA.is_valid() &&
+            quadB.is_valid() &&
+            duplicateAnalysis.triangle_count() == 4 &&
+            duplicateReport.issue_count(
+                PrintIssueType::SelfIntersection) == 1) {
+
+            std::cout
+                << "[OK] varios triangle hits geram um issue por par de faces\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] supressao de self-intersection duplicada falhou\n";
         }
 
         std::cout
-            << "\n=== Manufacturing DegenerateGeometryAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing SelfIntersectionAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing DegenerateGeometryAnalyzer Smoke Test
+    // End Manufacturing SelfIntersectionAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
