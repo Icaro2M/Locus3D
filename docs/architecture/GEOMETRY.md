@@ -330,13 +330,12 @@ source\kernel
     |   |
     |   \---process
     |           OverhangAnalyzer.h
-    |           MinimumFeatureSizeAnalyzer.h [!]
     |           SupportRequirementAnalyzer.h [!]
-    |           VolumeAnalyzer.h [!]
     |
     \---pipeline
-            AnalysisPipeline.h [!]
-            AnalysisScheduler.h [!]
+            AnalysisPipeline.h
+            AnalysisPipeline.cpp
+            AnalysisOptions.h
 ```
 
 ---

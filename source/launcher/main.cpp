@@ -73,6 +73,7 @@
 #include "kernel/manufacturing/analyzers/thinwall/RaycastThinWallAnalyzer.h"
 #include "kernel/manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h"
 #include "kernel/manufacturing/analyzers/process/OverhangAnalyzer.h"
+#include "kernel/manufacturing/pipeline/AnalysisPipeline.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1629,8 +1630,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
- // Manufacturing OverhangAnalyzer Smoke Test
- //=============================================================================
+    // Manufacturing AnalysisPipeline Smoke Test
+    //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1638,82 +1639,145 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing OverhangAnalyzer Smoke Test ===\n\n";
-
-        OverhangAnalyzer analyzer;
+            << "\n=== Locus3D Manufacturing AnalysisPipeline Smoke Test ===\n\n";
 
         //-------------------------------------------------------------------------
-        // Metadata and build direction
+        // Closed tetrahedron without profile
         //-------------------------------------------------------------------------
 
-        std::cout << "=== Metadata ===\n";
+        std::cout << "=== Closed tetrahedron ===\n";
 
-        if (analyzer.name() ==
-            "OverhangAnalyzer" &&
-            glm::length(
-                analyzer.build_direction() -
-                glm::vec3{ 0.0f, 0.0f, 1.0f }) <
-            1.0e-6f) {
+        LEM tetrahedron;
+
+        const VertexHandle t0 =
+            tetrahedron.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle t1 =
+            tetrahedron.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle t2 =
+            tetrahedron.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle t3 =
+            tetrahedron.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
+
+        tetrahedron.add_face({ t0, t2, t1 });
+        tetrahedron.add_face({ t0, t1, t3 });
+        tetrahedron.add_face({ t1, t2, t3 });
+        tetrahedron.add_face({ t2, t0, t3 });
+
+        AnalysisReport tetraReport =
+            AnalysisPipeline::analyze(
+                tetrahedron);
+
+        if (tetraReport.metrics()
+            .has_analysis_triangle_count() &&
+            tetraReport.metrics()
+            .analysisTriangleCount.value() == 4) {
 
             std::cout
-                << "[OK] analyzer usa +Z como build direction padrao\n";
+                << "[OK] pipeline constroi uma triangulacao canonica\n";
         }
         else {
             std::cout
-                << "[FAIL] metadata ou build direction inconsistente\n";
+                << "[FAIL] triangle count do pipeline incorreto\n";
         }
 
-        OverhangAnalyzer normalizedAnalyzer{
-            glm::vec3{
-                0.0f,
-                0.0f,
-                10.0f
-            }
-        };
-
-        if (std::abs(
-            glm::length(
-                normalizedAnalyzer.build_direction()) -
-            1.0f) <
-            1.0e-6f) {
+        if (tetraReport.metrics().has_volume() &&
+            std::abs(
+                tetraReport.metrics().volume.value() -
+                (1.0 / 6.0)) <
+            1.0e-9) {
 
             std::cout
-                << "[OK] build direction e normalizada\n";
+                << "[OK] pipeline calcula volume quando prerequisites passam\n";
         }
         else {
             std::cout
-                << "[FAIL] build direction nao foi normalizada\n";
+                << "[FAIL] volume integrado do pipeline incorreto\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Missing dependencies
-        //-------------------------------------------------------------------------
+        if (!tetraReport.has_issue_type(
+            PrintIssueType::OpenBoundary) &&
+            !tetraReport.has_issue_type(
+                PrintIssueType::NonManifoldEdge) &&
+            !tetraReport.has_issue_type(
+                PrintIssueType::InconsistentNormals)) {
 
-        std::cout << "\n=== Missing dependencies ===\n";
-
-        AnalysisContext missingContext;
-        AnalysisReport missingReport;
-
-        analyzer.analyze(
-            missingContext,
-            missingReport);
-
-        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] contexto vazio nao gera overhang issue\n";
+                << "[OK] topologia fechada atravessa pipeline sem falsos positivos\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem dependencias\n";
+                << "[FAIL] pipeline introduziu topology issue indevido\n";
         }
 
         //-------------------------------------------------------------------------
-        // Profile
+        // Open surface blocks volume
         //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Open surface ===\n";
+
+        LEM openMesh;
+
+        const VertexHandle o0 =
+            openMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle o1 =
+            openMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle o2 =
+            openMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        openMesh.add_face(
+            { o0, o1, o2 });
+
+        AnalysisReport openReport =
+            AnalysisPipeline::analyze(
+                openMesh);
+
+        if (openReport.has_issue_type(
+            PrintIssueType::OpenBoundary)) {
+
+            std::cout
+                << "[OK] pipeline preserva diagnostico de open boundary\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] open boundary nao chegou ao report consolidado\n";
+        }
+
+        if (!openReport.metrics().has_volume()) {
+            std::cout
+                << "[OK] topology issue bloqueia volume nao confiavel\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] pipeline publicou volume de superficie aberta\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Profile-dependent analysis
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Profile integration ===\n";
 
         FDMProfile fdm;
         fdm.name =
-            "Overhang Test";
+            "Pipeline Test";
+
+        fdm.limits.minimumFeatureSize =
+            0.5;
+
+        fdm.limits.minimumWallThickness =
+            0.5;
 
         fdm.limits
             .maximumUnsupportedOverhangAngleDegrees =
@@ -1723,368 +1787,161 @@ int main(int argc, char** argv)
             fdm
         };
 
-        //-------------------------------------------------------------------------
-        // Vertical wall
-        //-------------------------------------------------------------------------
+        LEM featureMesh;
 
-        std::cout << "\n=== Vertical wall ===\n";
-
-        LEM verticalMesh;
-
-        const VertexHandle v0 =
-            verticalMesh.add_vertex(
+        const VertexHandle f0 =
+            featureMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle v1 =
-            verticalMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        const VertexHandle f1 =
+            featureMesh.add_vertex(
+                glm::vec3{ 0.2f, 0.0f, 0.0f });
 
-        const VertexHandle v2 =
-            verticalMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 1.0f });
+        featureMesh.find_or_create_edge(
+            f0,
+            f1);
 
-        const VertexHandle v3 =
-            verticalMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
+        AnalysisReport featureReport =
+            AnalysisPipeline::analyze(
+                featureMesh,
+                profile);
 
-        verticalMesh.add_face(
-            { v0, v1, v2, v3 });
-
-        const AnalysisMesh verticalAnalysis =
-            AnalysisMeshBuilder::build(
-                verticalMesh);
-
-        AnalysisContext verticalContext;
-        verticalContext.mesh =
-            &verticalMesh;
-        verticalContext.analysisMesh =
-            &verticalAnalysis;
-        verticalContext.profile =
-            &profile;
-
-        AnalysisReport verticalReport;
-
-        analyzer.analyze(
-            verticalContext,
-            verticalReport);
-
-        if (!verticalReport.has_issue_type(
-            PrintIssueType::Overhang)) {
+        if (featureReport.has_issue_type(
+            PrintIssueType::MinimumFeatureSize)) {
 
             std::cout
-                << "[OK] parede vertical possui overhang angle zero\n";
+                << "[OK] pipeline encaminha PrintProfile aos analyzers dependentes\n";
         }
         else {
             std::cout
-                << "[FAIL] parede vertical foi classificada como overhang\n";
+                << "[FAIL] profile nao chegou ao feature analyzer\n";
         }
 
         //-------------------------------------------------------------------------
-        // Upward horizontal surface
+        // Options disable analysis
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Upward surface ===\n";
+        std::cout << "\n=== AnalysisOptions ===\n";
 
-        LEM upwardMesh;
+        AnalysisOptions disabledOptions;
 
-        const VertexHandle u0 =
-            upwardMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        disabledOptions.analyzeMinimumFeatureSize =
+            false;
 
-        const VertexHandle u1 =
-            upwardMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+        AnalysisReport disabledReport =
+            AnalysisPipeline::analyze(
+                featureMesh,
+                profile,
+                disabledOptions);
 
-        const VertexHandle u2 =
-            upwardMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle u3 =
-            upwardMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        upwardMesh.add_face(
-            { u0, u1, u2, u3 });
-
-        const AnalysisMesh upwardAnalysis =
-            AnalysisMeshBuilder::build(
-                upwardMesh);
-
-        AnalysisContext upwardContext;
-        upwardContext.mesh =
-            &upwardMesh;
-        upwardContext.analysisMesh =
-            &upwardAnalysis;
-        upwardContext.profile =
-            &profile;
-
-        AnalysisReport upwardReport;
-
-        analyzer.analyze(
-            upwardContext,
-            upwardReport);
-
-        if (!upwardReport.has_issue_type(
-            PrintIssueType::Overhang)) {
+        if (!disabledReport.has_issue_type(
+            PrintIssueType::MinimumFeatureSize)) {
 
             std::cout
-                << "[OK] superficie horizontal upward nao e overhang\n";
+                << "[OK] AnalysisOptions desabilita analyzer individual\n";
         }
         else {
             std::cout
-                << "[FAIL] superficie upward gerou falso positivo\n";
+                << "[FAIL] analyzer desabilitado ainda executou\n";
         }
 
         //-------------------------------------------------------------------------
-        // Downward horizontal surface
+        // Disabled prerequisite blocks dependent metric
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Downward surface ===\n";
+        std::cout << "\n=== Prerequisite safety ===\n";
 
-        LEM downwardMesh;
+        AnalysisOptions unsafeVolumeOptions;
 
-        const VertexHandle d0 =
-            downwardMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        unsafeVolumeOptions.analyzeNormalConsistency =
+            false;
 
-        const VertexHandle d1 =
-            downwardMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        AnalysisReport unsafeVolumeReport =
+            AnalysisPipeline::analyze(
+                tetrahedron,
+                unsafeVolumeOptions);
 
-        const VertexHandle d2 =
-            downwardMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle d3 =
-            downwardMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
-
-        const FaceHandle downwardFace =
-            downwardMesh.add_face(
-                { d0, d1, d2, d3 });
-
-        const AnalysisMesh downwardAnalysis =
-            AnalysisMeshBuilder::build(
-                downwardMesh);
-
-        AnalysisContext downwardContext;
-        downwardContext.mesh =
-            &downwardMesh;
-        downwardContext.analysisMesh =
-            &downwardAnalysis;
-        downwardContext.profile =
-            &profile;
-
-        AnalysisReport downwardReport;
-
-        analyzer.analyze(
-            downwardContext,
-            downwardReport);
-
-        if (downwardFace.is_valid() &&
-            downwardReport.issue_count(
-                PrintIssueType::Overhang) == 1 &&
-            downwardReport.warning_count() == 1) {
+        if (!unsafeVolumeReport.metrics()
+            .has_volume()) {
 
             std::cout
-                << "[OK] superficie horizontal downward foi detectada\n";
+                << "[OK] prerequisite desabilitada impede volume nao verificado\n";
         }
         else {
             std::cout
-                << "[FAIL] overhang horizontal nao foi detectado\n";
-        }
-
-        if (downwardReport.issue_count() == 1) {
-            const PrintIssue& issue =
-                downwardReport.issues().front();
-
-            if (issue.has_measurement() &&
-                issue.measurement->kind ==
-                IssueMeasurementKind::AngleDegrees &&
-                std::abs(
-                    issue.measurement->value -
-                    90.0) <
-                1.0e-4 &&
-                issue.measurement->has_limit() &&
-                std::abs(
-                    issue.measurement->limit.value() -
-                    45.0) <
-                1.0e-9) {
-
-                std::cout
-                    << "[OK] horizontal downward mede aproximadamente 90 graus\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] medida angular do overhang inconsistente\n";
-            }
-
-            if (std::find(
-                issue.location.faces.begin(),
-                issue.location.faces.end(),
-                downwardFace) !=
-                issue.location.faces.end() &&
-                issue.location.has_samples() &&
-                issue.location.has_region()) {
-
-                std::cout
-                    << "[OK] issue preserva face e regiao visual\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] localizacao visual do overhang incompleta\n";
-            }
+                << "[FAIL] pipeline assumiu prerequisite nao executada\n";
         }
 
         //-------------------------------------------------------------------------
-        // Connected overhang faces should form one issue
+        // Existing report is replaced by analyze_into
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Connected overhang region ===\n";
+        std::cout << "\n=== analyze_into snapshot semantics ===\n";
 
-        LEM connectedMesh;
+        AnalysisReport reusableReport;
 
-        const VertexHandle c0 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        reusableReport.add_issue(
+            PrintIssue{
+                PrintIssueType::ThinWall,
+                IssueSeverity::Warning,
+                "Old result."
+            });
 
-        const VertexHandle c1 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        AnalysisPipeline::analyze_into(
+            tetrahedron,
+            reusableReport);
 
-        const VertexHandle c2 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle c3 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
-
-        const FaceHandle connectedA =
-            connectedMesh.add_face(
-                { c0, c1, c2 });
-
-        const FaceHandle connectedB =
-            connectedMesh.add_face(
-                { c0, c2, c3 });
-
-        const AnalysisMesh connectedAnalysis =
-            AnalysisMeshBuilder::build(
-                connectedMesh);
-
-        AnalysisContext connectedContext;
-        connectedContext.mesh =
-            &connectedMesh;
-        connectedContext.analysisMesh =
-            &connectedAnalysis;
-        connectedContext.profile =
-            &profile;
-
-        AnalysisReport connectedReport;
-
-        analyzer.analyze(
-            connectedContext,
-            connectedReport);
-
-        if (connectedA.is_valid() &&
-            connectedB.is_valid() &&
-            connectedReport.issue_count(
-                PrintIssueType::Overhang) == 1) {
+        if (!reusableReport.has_issue_type(
+            PrintIssueType::ThinWall) &&
+            reusableReport.metrics()
+            .has_volume()) {
 
             std::cout
-                << "[OK] faces de overhang conectadas formam uma regiao\n";
+                << "[OK] analyze_into substitui snapshot anterior\n";
         }
         else {
             std::cout
-                << "[FAIL] regiao conectada foi fragmentada\n";
+                << "[FAIL] analyze_into preservou dados obsoletos\n";
         }
 
-        if (connectedReport.issue_count() == 1 &&
-            connectedReport.issues()
-            .front().location.faces.size() == 2) {
+        //-------------------------------------------------------------------------
+        // Thin-wall quality is routed by pipeline
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Thin-wall options routing ===\n";
+
+        AnalysisOptions highOptions;
+        highOptions.thinWallQuality =
+            ThinWallQuality::High;
+
+        /*
+         * This test verifies that High can travel through the public pipeline API.
+         * Detailed detection behavior is already covered by the dedicated
+         * RaycastThinWallAnalyzer smoke test.
+         */
+        AnalysisReport highReport =
+            AnalysisPipeline::analyze(
+                tetrahedron,
+                profile,
+                highOptions);
+
+        if (highReport.metrics()
+            .has_analysis_triangle_count()) {
 
             std::cout
-                << "[OK] issue preserva todas as faces da regiao\n";
+                << "[OK] pipeline aceita ThinWallQuality configuravel\n";
         }
         else {
             std::cout
-                << "[FAIL] faces da regiao de overhang incompletas\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Missing profile limit
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Missing profile limit ===\n";
-
-        FDMProfile noLimitFdm;
-        noLimitFdm.name =
-            "No Overhang Limit";
-
-        PrintProfile noLimitProfile{
-            noLimitFdm
-        };
-
-        AnalysisContext noLimitContext =
-            downwardContext;
-
-        noLimitContext.profile =
-            &noLimitProfile;
-
-        AnalysisReport noLimitReport;
-
-        analyzer.analyze(
-            noLimitContext,
-            noLimitReport);
-
-        if (!noLimitReport.has_issue_type(
-            PrintIssueType::Overhang)) {
-
-            std::cout
-                << "[OK] profile sem limite nao inventa overhang threshold\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] analyzer inventou limite angular\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Different build direction
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Alternative build direction ===\n";
-
-        OverhangAnalyzer xAnalyzer{
-            glm::vec3{
-                -1.0f,
-                0.0f,
-                0.0f
-            }
-        };
-
-        AnalysisReport xReport;
-
-        xAnalyzer.analyze(
-            verticalContext,
-            xReport);
-
-        if (xReport.has_issue_type(
-            PrintIssueType::Overhang)) {
-
-            std::cout
-                << "[OK] resultado responde a orientacao de construcao\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] build direction alternativa foi ignorada\n";
+                << "[FAIL] pipeline falhou com ThinWallQuality High\n";
         }
 
         std::cout
-            << "\n=== Manufacturing OverhangAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing AnalysisPipeline Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing OverhangAnalyzer Smoke Test
+    // End Manufacturing AnalysisPipeline Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
