@@ -310,7 +310,7 @@ source\kernel
     +---analyzers
     |   +---topology
     |   |       ManifoldAnalyzer.h
-    |   |       WatertightAnalyzer.h [!]
+    |   |       WatertightAnalyzer.h
     |   |       NormalConsistencyAnalyzer.h [!]
     |   |       IslandAnalyzer.h [!]
     |   |
