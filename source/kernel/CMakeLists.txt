@@ -140,7 +140,10 @@ target_sources(locus3d_geometry PRIVATE
     "manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
     "manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
     "manufacturing/analyzers/geometry/VolumeAnalyzer.h"
-    "manufacturing/analyzers/geometry/MinimumFeatureSizeAnalyzer.h")
+    "manufacturing/analyzers/geometry/MinimumFeatureSizeAnalyzer.h"
+    "manufacturing/analyzers/thinwall/ThinWallQuality.h"
+    "manufacturing/analyzers/thinwall/ThinWallResult.h"
+    "manufacturing/analyzers/thinwall/IThinWallAnalyzer.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

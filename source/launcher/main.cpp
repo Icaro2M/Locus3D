@@ -67,6 +67,9 @@
 #include "kernel/manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/VolumeAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/MinimumFeatureSizeAnalyzer.h"
+#include "kernel/manufacturing/analyzers/thinwall/IThinWallAnalyzer.h"
+#include "kernel/manufacturing/analyzers/thinwall/ThinWallQuality.h"
+#include "kernel/manufacturing/analyzers/thinwall/ThinWallResult.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1623,7 +1626,7 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-  // Manufacturing MinimumFeatureSizeAnalyzer Smoke Test
+  // Manufacturing Thin Wall Contract Smoke Test
   //=============================================================================
 
     {
@@ -1632,451 +1635,235 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing MinimumFeatureSizeAnalyzer Smoke Test ===\n\n";
-
-        MinimumFeatureSizeAnalyzer analyzer;
+            << "\n=== Locus3D Manufacturing Thin Wall Contract Smoke Test ===\n\n";
 
         //-------------------------------------------------------------------------
-        // Metadata
+        // ThinWallResult basic state
         //-------------------------------------------------------------------------
 
-        std::cout << "=== Analyzer metadata ===\n";
+        std::cout << "=== ThinWallResult ===\n";
 
-        if (analyzer.name() == "MinimumFeatureSizeAnalyzer") {
+        ThinWallResult emptyResult;
+
+        if (!emptyResult.is_valid() &&
+            !emptyResult.has_opposite_surface()) {
+
             std::cout
-                << "[OK] analyzer possui nome estavel\n";
+                << "[OK] resultado vazio inicia invalido\n";
         }
         else {
             std::cout
-                << "[FAIL] nome do analyzer inconsistente\n";
+                << "[FAIL] estado inicial do ThinWallResult inconsistente\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Missing dependencies
-        //-------------------------------------------------------------------------
+        const FaceHandle sourceFace{ 10 };
+        const FaceHandle oppositeFace{ 20 };
 
-        std::cout << "\n=== Missing dependencies ===\n";
+        ThinWallResult result;
+        result.sourceFace = sourceFace;
+        result.oppositeFace = oppositeFace;
 
-        AnalysisContext missingContext;
-        AnalysisReport missingReport;
+        result.sourcePosition =
+            glm::vec3{ 0.0f, 0.0f, 0.0f };
 
-        analyzer.analyze(
-            missingContext,
-            missingReport);
+        result.oppositePosition =
+            glm::vec3{ 0.0f, 0.0f, 0.3f };
 
-        if (!missingReport.has_issues()) {
+        result.direction =
+            glm::vec3{ 0.0f, 0.0f, 1.0f };
+
+        result.thickness = 0.3;
+        result.confidence = 0.9;
+
+        if (result.is_valid() &&
+            result.has_opposite_surface() &&
+            result.sourceFace == sourceFace &&
+            result.oppositeFace == oppositeFace) {
+
             std::cout
-                << "[OK] contexto vazio nao gera feature issue\n";
+                << "[OK] resultado preserva faces source e opposite\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem dependencias\n";
+                << "[FAIL] handles do ThinWallResult inconsistentes\n";
         }
 
-        LEM noProfileMesh;
+        if (std::abs(result.thickness - 0.3) < 1.0e-9 &&
+            std::abs(result.confidence - 0.9) < 1.0e-9) {
 
-        const VertexHandle np0 =
-            noProfileMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle np1 =
-            noProfileMesh.add_vertex(
-                glm::vec3{ 0.1f, 0.0f, 0.0f });
-
-        noProfileMesh.find_or_create_edge(
-            np0,
-            np1);
-
-        AnalysisContext noProfileContext;
-        noProfileContext.mesh =
-            &noProfileMesh;
-
-        AnalysisReport noProfileReport;
-
-        analyzer.analyze(
-            noProfileContext,
-            noProfileReport);
-
-        if (!noProfileReport.has_issues()) {
             std::cout
-                << "[OK] ausencia de PrintProfile impede comparacao arbitraria\n";
+                << "[OK] resultado preserva thickness e confidence\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer inventou limite sem profile\n";
+                << "[FAIL] medidas do ThinWallResult inconsistentes\n";
         }
 
         //-------------------------------------------------------------------------
-        // Profile without feature-size limit
+        // Approximate result without opposite face
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Profile without limit ===\n";
+        std::cout << "\n=== Approximate result ===\n";
 
-        FDMProfile noLimitFdm;
-        noLimitFdm.name =
-            "No feature limit";
+        ThinWallResult approximate;
 
-        PrintProfile noLimitProfile{
-            noLimitFdm
+        approximate.sourceFace =
+            FaceHandle{ 30 };
+
+        approximate.sourcePosition =
+            glm::vec3{ 1.0f, 2.0f, 3.0f };
+
+        approximate.direction =
+            glm::vec3{ 0.0f, 1.0f, 0.0f };
+
+        approximate.thickness =
+            0.25;
+
+        approximate.confidence =
+            0.4;
+
+        if (approximate.is_valid() &&
+            !approximate.has_opposite_surface()) {
+
+            std::cout
+                << "[OK] aproximacao pode ser valida sem opposite face\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] contrato de aproximacao inconsistente\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Invalid measurement
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Invalid measurement ===\n";
+
+        ThinWallResult invalidThickness;
+
+        invalidThickness.sourceFace =
+            FaceHandle{ 40 };
+
+        invalidThickness.thickness =
+            -1.0;
+
+        if (!invalidThickness.is_valid()) {
+            std::cout
+                << "[OK] thickness negativo e rejeitado\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] thickness negativo foi considerado valido\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // IThinWallAnalyzer polymorphic contract
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== IThinWallAnalyzer contract ===\n";
+
+        class TestThinWallAnalyzer final :
+            public IThinWallAnalyzer {
+        public:
+            [[nodiscard]] std::string_view
+                name() const noexcept override
+            {
+                return "TestThinWallAnalyzer";
+            }
+
+            [[nodiscard]] ThinWallQuality
+                quality() const noexcept override
+            {
+                return ThinWallQuality::Balanced;
+            }
+
+            void analyze(
+                const AnalysisContext& context,
+                AnalysisReport& report) const override
+            {
+                if (!context.has_mesh()) {
+                    return;
+                }
+
+                PrintIssue issue{
+                    PrintIssueType::ThinWall,
+                    IssueSeverity::Warning,
+                    "Test thin-wall issue."
+                };
+
+                issue.measurement =
+                    IssueMeasurement{
+                        IssueMeasurementKind::Length,
+                        0.3,
+                        0.5
+                };
+
+                report.add_issue(
+                    std::move(issue));
+            }
         };
 
-        AnalysisContext noLimitContext;
-        noLimitContext.mesh =
-            &noProfileMesh;
-        noLimitContext.profile =
-            &noLimitProfile;
+        TestThinWallAnalyzer analyzer;
 
-        AnalysisReport noLimitReport;
+        if (analyzer.name() ==
+            "TestThinWallAnalyzer" &&
+            analyzer.quality() ==
+            ThinWallQuality::Balanced) {
 
-        analyzer.analyze(
-            noLimitContext,
-            noLimitReport);
-
-        if (!noLimitReport.has_issues()) {
             std::cout
-                << "[OK] limite ausente nao e interpretado como zero\n";
+                << "[OK] thin-wall analyzer preserva nome e quality\n";
         }
         else {
             std::cout
-                << "[FAIL] profile sem limite gerou issue\n";
+                << "[FAIL] metadata de IThinWallAnalyzer inconsistente\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Configured profile
-        //-------------------------------------------------------------------------
+        LEM mesh;
 
-        FDMProfile fdm;
-        fdm.name =
-            "Minimum Feature Test";
+        AnalysisContext context;
+        context.mesh = &mesh;
 
-        fdm.limits.minimumFeatureSize =
-            0.5;
+        AnalysisReport report;
 
-        PrintProfile profile{ fdm };
+        IThinWallAnalyzer* thinWallInterface =
+            &analyzer;
 
-        //-------------------------------------------------------------------------
-        // Feature above limit
-        //-------------------------------------------------------------------------
+        IAnalyzer* genericInterface =
+            &analyzer;
 
-        std::cout << "\n=== Feature above limit ===\n";
+        thinWallInterface->analyze(
+            context,
+            report);
 
-        LEM largeMesh;
-
-        const VertexHandle l0 =
-            largeMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle l1 =
-            largeMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
-
-        const VertexHandle l2 =
-            largeMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        largeMesh.add_face(
-            { l0, l1, l2 });
-
-        AnalysisContext largeContext;
-        largeContext.mesh =
-            &largeMesh;
-        largeContext.profile =
-            &profile;
-
-        AnalysisReport largeReport;
-
-        analyzer.analyze(
-            largeContext,
-            largeReport);
-
-        if (!largeReport.has_issue_type(
-            PrintIssueType::MinimumFeatureSize)) {
+        if (report.issue_count(
+            PrintIssueType::ThinWall) == 1 &&
+            report.warning_count() == 1) {
 
             std::cout
-                << "[OK] features acima do limite nao sao reportadas\n";
+                << "[OK] IThinWallAnalyzer executa manufacturing analysis\n";
         }
         else {
             std::cout
-                << "[FAIL] geometria grande gerou falso positivo\n";
+                << "[FAIL] contrato analyze de thin-wall inconsistente\n";
         }
 
-        //-------------------------------------------------------------------------
-        // One undersized edge in a surface
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== One undersized feature ===\n";
-
-        LEM smallMesh;
-
-        const VertexHandle s0 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle s1 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.2f, 0.0f, 0.0f });
-
-        const VertexHandle s2 =
-            smallMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.0f });
-
-        const FaceHandle smallFace =
-            smallMesh.add_face(
-                { s0, s1, s2 });
-
-        const EdgeHandle shortEdge =
-            smallMesh.find_edge(
-                s0,
-                s1);
-
-        AnalysisContext smallContext;
-        smallContext.mesh =
-            &smallMesh;
-        smallContext.profile =
-            &profile;
-
-        AnalysisReport smallReport;
-
-        analyzer.analyze(
-            smallContext,
-            smallReport);
-
-        if (smallFace.is_valid() &&
-            shortEdge.is_valid() &&
-            smallReport.issue_count(
-                PrintIssueType::MinimumFeatureSize) == 1 &&
-            smallReport.warning_count() == 1) {
+        if (genericInterface->name() ==
+            "TestThinWallAnalyzer") {
 
             std::cout
-                << "[OK] edge abaixo do limite foi detectada\n";
+                << "[OK] thin-wall analyzer continua utilizavel como IAnalyzer\n";
         }
         else {
             std::cout
-                << "[FAIL] feature pequena nao foi reportada corretamente\n";
-        }
-
-        if (smallReport.issue_count() == 1) {
-            const PrintIssue& issue =
-                smallReport.issues().front();
-
-            const bool hasShortEdge =
-                std::find(
-                    issue.location.edges.begin(),
-                    issue.location.edges.end(),
-                    shortEdge) !=
-                issue.location.edges.end();
-
-            if (hasShortEdge &&
-                issue.location.vertices.size() == 2 &&
-                issue.location.faces.size() == 1 &&
-                issue.location.has_samples() &&
-                issue.location.has_region()) {
-
-                std::cout
-                    << "[OK] feature preserva edge, vertices, face e regiao visual\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] localizacao visual da feature incompleta\n";
-            }
-
-            if (issue.has_measurement() &&
-                issue.measurement->kind ==
-                IssueMeasurementKind::Length &&
-                std::abs(
-                    issue.measurement->value -
-                    0.2) < 1.0e-6 &&
-                issue.measurement->has_limit() &&
-                std::abs(
-                    issue.measurement->limit.value() -
-                    0.5) < 1.0e-9) {
-
-                std::cout
-                    << "[OK] issue preserva tamanho medido e limite do profile\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] medida da feature inconsistente\n";
-            }
-        }
-
-        //-------------------------------------------------------------------------
-        // Connected short edges become one feature
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Connected undersized edges ===\n";
-
-        LEM connectedMesh;
-
-        const VertexHandle c0 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle c1 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 0.2f, 0.0f, 0.0f });
-
-        const VertexHandle c2 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 0.2f, 0.2f, 0.0f });
-
-        const VertexHandle c3 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 2.0f, 2.0f, 0.0f });
-
-        connectedMesh.find_or_create_edge(
-            c0,
-            c1);
-
-        connectedMesh.find_or_create_edge(
-            c1,
-            c2);
-
-        connectedMesh.find_or_create_edge(
-            c2,
-            c3);
-
-        AnalysisContext connectedContext;
-        connectedContext.mesh =
-            &connectedMesh;
-        connectedContext.profile =
-            &profile;
-
-        AnalysisReport connectedReport;
-
-        analyzer.analyze(
-            connectedContext,
-            connectedReport);
-
-        if (connectedReport.issue_count(
-            PrintIssueType::MinimumFeatureSize) == 1) {
-
-            std::cout
-                << "[OK] edges pequenas conectadas formam uma unica feature\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] feature conectada foi fragmentada em varios issues\n";
-        }
-
-        if (connectedReport.issue_count() == 1 &&
-            connectedReport.issues()
-            .front().location.edges.size() == 2 &&
-            connectedReport.issues()
-            .front().location.vertices.size() == 3) {
-
-            std::cout
-                << "[OK] feature conectada preserva todo o pequeno detalhe\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] localizacao da feature conectada inconsistente\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Disconnected short features
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Independent undersized features ===\n";
-
-        LEM independentMesh;
-
-        const VertexHandle a0 =
-            independentMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle a1 =
-            independentMesh.add_vertex(
-                glm::vec3{ 0.2f, 0.0f, 0.0f });
-
-        independentMesh.find_or_create_edge(
-            a0,
-            a1);
-
-        const VertexHandle b0 =
-            independentMesh.add_vertex(
-                glm::vec3{ 5.0f, 0.0f, 0.0f });
-
-        const VertexHandle b1 =
-            independentMesh.add_vertex(
-                glm::vec3{ 5.3f, 0.0f, 0.0f });
-
-        independentMesh.find_or_create_edge(
-            b0,
-            b1);
-
-        AnalysisContext independentContext;
-        independentContext.mesh =
-            &independentMesh;
-        independentContext.profile =
-            &profile;
-
-        AnalysisReport independentReport;
-
-        analyzer.analyze(
-            independentContext,
-            independentReport);
-
-        if (independentReport.issue_count(
-            PrintIssueType::MinimumFeatureSize) == 2) {
-
-            std::cout
-                << "[OK] features pequenas desconectadas geram issues independentes\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] features independentes foram agrupadas incorretamente\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Degenerate geometry remains separate
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Degenerate separation ===\n";
-
-        LEM degenerateMesh;
-
-        const VertexHandle d0 =
-            degenerateMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 1.0f });
-
-        const VertexHandle d1 =
-            degenerateMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 1.0f });
-
-        degenerateMesh.find_or_create_edge(
-            d0,
-            d1);
-
-        AnalysisContext degenerateContext;
-        degenerateContext.mesh =
-            &degenerateMesh;
-        degenerateContext.profile =
-            &profile;
-
-        AnalysisReport degenerateReport;
-
-        analyzer.analyze(
-            degenerateContext,
-            degenerateReport);
-
-        if (!degenerateReport.has_issue_type(
-            PrintIssueType::MinimumFeatureSize)) {
-
-            std::cout
-                << "[OK] edge degenerada continua responsabilidade do DegenerateGeometryAnalyzer\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] feature analyzer duplicou geometria degenerada\n";
+                << "[FAIL] heranca de IAnalyzer inconsistente\n";
         }
 
         std::cout
-            << "\n=== Manufacturing MinimumFeatureSizeAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing Thin Wall Contract Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing MinimumFeatureSizeAnalyzer Smoke Test
+    // End Manufacturing Thin Wall Contract Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

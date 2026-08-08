@@ -322,12 +322,12 @@ source\kernel
     |   |       MinimumFeatureSizeAnalyzer.h
     |   |
     |   +---thinwall
-    |   |       IThinWallAnalyzer.h [!]
-    |   |       ThinWallQuality.h [!]
+    |   |       IThinWallAnalyzer.h
+    |   |       ThinWallQuality.h
+    |   |       ThinWallResult.h
     |   |       ThinWallAnalyzerFactory.h [!]
     |   |       CurvatureApproxAnalyzer.h [!]
     |   |       RaycastThinWallAnalyzer.h [!]
-    |   |       ComputeThinWallAnalyzer.h [!]
     |   |
     |   \---process
     |           OverhangAnalyzer.h [!]
