@@ -33,6 +33,7 @@ namespace locus::editor {
         using kernel::geometry::TopologyTraversal;
         using kernel::geometry::VertexHandle;
         using kernel::manufacturing::PrintIssue;
+        using kernel::manufacturing::PrintIssueType;
 
         struct SelectedStyle {
             ManufacturingVisualStyle style{};
@@ -180,23 +181,17 @@ namespace locus::editor {
             }
         }
 
-        void append_sample_marker(
-            graphics::PointMarkerBatch& batch,
-            const glm::vec3& position,
-            const ManufacturingVisualStyle& style,
-            const ManufacturingDisplaySettings& settings,
-            ManufacturingRenderResult* result)
+        [[nodiscard]] bool issue_type_is_edge_only(
+            PrintIssueType type) noexcept
         {
-            graphics::PointMarker marker{};
-            marker.position = position;
-            marker.fillColor = with_alpha(style.color, style.markerAlpha);
-            marker.borderColor = settings.markerBorderColor;
-            marker.radiusPixels = style.markerRadiusPixels;
-            marker.borderWidthPixels = style.markerBorderWidthPixels;
-            batch.markers.push_back(marker);
-
-            if (result != nullptr) {
-                ++result->markerCount;
+            switch (type) {
+            case PrintIssueType::LooseEdge:
+            case PrintIssueType::OpenBoundary:
+            case PrintIssueType::NonManifoldEdge:
+            case PrintIssueType::MinimumFeatureSize:
+                return true;
+            default:
+                return false;
             }
         }
 
@@ -261,8 +256,10 @@ namespace locus::editor {
                 const ManufacturingVisualStyle style =
                     settings.style_for(issue.type);
 
-                for (const FaceHandle face : issue.location.faces) {
-                    select_style(faceStyles, face.id.value, style);
+                if (!issue_type_is_edge_only(issue.type)) {
+                    for (const FaceHandle face : issue.location.faces) {
+                        select_style(faceStyles, face.id.value, style);
+                    }
                 }
 
                 for (const EdgeHandle edge : issue.location.edges) {
@@ -271,15 +268,6 @@ namespace locus::editor {
 
                 for (const VertexHandle vertex : issue.location.vertices) {
                     select_style(vertexStyles, vertex.id.value, style);
-                }
-
-                for (const glm::vec3& sample : issue.location.samples) {
-                    append_sample_marker(
-                        batches.markers,
-                        sample,
-                        style,
-                        settings,
-                        result);
                 }
             }
 
