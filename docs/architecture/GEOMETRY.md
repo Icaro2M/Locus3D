@@ -312,6 +312,7 @@ source\kernel
     |   |       ManifoldAnalyzer.h
     |   |       WatertightAnalyzer.h
     |   |       NormalConsistencyAnalyzer.h
+    |   |       OrientationAnalyzer.h
     |   |       IslandAnalyzer.h [!]
     |   |
     |   +---geometry

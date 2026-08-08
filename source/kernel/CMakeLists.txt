@@ -134,7 +134,8 @@ target_sources(locus3d_geometry PRIVATE
     "manufacturing/mesh/AnalysisMeshBuilder.h"
     "manufacturing/analyzers/topology/ManifoldAnalyzer.h"
     "manufacturing/analyzers/topology/WatertightAnalyzer.h"
-    "manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h")
+    "manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h"
+    "manufacturing/analyzers/topology/OrientationAnalyzer.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

@@ -61,6 +61,7 @@
 #include "kernel/manufacturing/analyzers/topology/ManifoldAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/WatertightAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h"
+#include "kernel/manufacturing/analyzers/topology/OrientationAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1617,8 +1618,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-   // Manufacturing NormalConsistencyAnalyzer Smoke Test
-   //=============================================================================
+    // Manufacturing OrientationAnalyzer Smoke Test
+    //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1626,9 +1627,9 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing NormalConsistencyAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing OrientationAnalyzer Smoke Test ===\n\n";
 
-        NormalConsistencyAnalyzer analyzer;
+        OrientationAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
         // Metadata
@@ -1636,7 +1637,7 @@ int main(int argc, char** argv)
 
         std::cout << "=== Analyzer metadata ===\n";
 
-        if (analyzer.name() == "NormalConsistencyAnalyzer") {
+        if (analyzer.name() == "OrientationAnalyzer") {
             std::cout
                 << "[OK] analyzer possui nome estavel\n";
         }
@@ -1646,331 +1647,325 @@ int main(int argc, char** argv)
         }
 
         //-------------------------------------------------------------------------
-        // Missing mesh
+        // Missing dependencies
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Missing mesh ===\n";
+        std::cout << "\n=== Missing dependencies ===\n";
 
-        AnalysisContext missingContext;
-        AnalysisReport missingReport;
+        AnalysisContext emptyContext;
+        AnalysisReport emptyReport;
 
         analyzer.analyze(
-            missingContext,
-            missingReport);
+            emptyContext,
+            emptyReport);
 
-        if (!missingReport.has_issues()) {
+        if (!emptyReport.has_issues()) {
             std::cout
-                << "[OK] contexto sem LEM nao gera issues\n";
+                << "[OK] contexto vazio nao gera orientation issue\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem LEM\n";
+                << "[FAIL] analyzer executou sem dependencias\n";
+        }
+
+        LEM dependencyMesh;
+
+        AnalysisContext meshOnlyContext;
+        meshOnlyContext.mesh = &dependencyMesh;
+
+        AnalysisReport meshOnlyReport;
+
+        analyzer.analyze(
+            meshOnlyContext,
+            meshOnlyReport);
+
+        if (!meshOnlyReport.has_issues()) {
+            std::cout
+                << "[OK] LEM sem AnalysisMesh nao gera diagnostico\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] analyzer executou sem AnalysisMesh\n";
         }
 
         //-------------------------------------------------------------------------
-        // Consistent adjacent faces
+        // Correct outward tetrahedron
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Consistent adjacent faces ===\n";
+        std::cout << "\n=== Outward tetrahedron ===\n";
 
-        LEM consistentMesh;
+        LEM outwardMesh;
 
-        const VertexHandle ca =
-            consistentMesh.add_vertex(
+        const VertexHandle o0 =
+            outwardMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle cb =
-            consistentMesh.add_vertex(
+        const VertexHandle o1 =
+            outwardMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle cc =
-            consistentMesh.add_vertex(
+        const VertexHandle o2 =
+            outwardMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle cd =
-            consistentMesh.add_vertex(
-                glm::vec3{ 0.0f, -1.0f, 0.0f });
+        const VertexHandle o3 =
+            outwardMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        // First face traverses shared edge A -> B.
-        const FaceHandle consistentFaceA =
-            consistentMesh.add_face(
-                { ca, cb, cc });
+        outwardMesh.add_face({ o0, o2, o1 });
+        outwardMesh.add_face({ o0, o1, o3 });
+        outwardMesh.add_face({ o1, o2, o3 });
+        outwardMesh.add_face({ o2, o0, o3 });
 
-        // Second face traverses shared edge B -> A.
-        const FaceHandle consistentFaceB =
-            consistentMesh.add_face(
-                { cb, ca, cd });
+        const AnalysisMesh outwardAnalysis =
+            AnalysisMeshBuilder::build(
+                outwardMesh);
 
-        const EdgeHandle consistentSharedEdge =
-            consistentMesh.find_edge(
-                ca,
-                cb);
+        AnalysisContext outwardContext;
+        outwardContext.mesh = &outwardMesh;
+        outwardContext.analysisMesh =
+            &outwardAnalysis;
 
-        AnalysisContext consistentContext;
-        consistentContext.mesh =
-            &consistentMesh;
-
-        AnalysisReport consistentReport;
+        AnalysisReport outwardReport;
 
         analyzer.analyze(
-            consistentContext,
-            consistentReport);
+            outwardContext,
+            outwardReport);
 
-        if (consistentFaceA.is_valid() &&
-            consistentFaceB.is_valid() &&
-            consistentSharedEdge.is_valid() &&
-            TopologyTraversal::edge_loops(
-                consistentMesh,
-                consistentSharedEdge).size() == 2) {
+        if (!outwardReport.has_issue_type(
+            PrintIssueType::InvertedOrientation)) {
 
             std::cout
-                << "[OK] fixture possui duas faces manifold adjacentes\n";
+                << "[OK] tetraedro outward nao foi marcado como invertido\n";
         }
         else {
             std::cout
-                << "[FAIL] fixture consistente invalida\n";
-        }
-
-        if (!consistentReport.has_issue_type(
-            PrintIssueType::InconsistentNormals)) {
-
-            std::cout
-                << "[OK] direcoes opostas no shared edge sao consistentes\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] faces consistentes foram reportadas\n";
+                << "[FAIL] tetraedro outward foi classificado como invertido\n";
         }
 
         //-------------------------------------------------------------------------
-        // Inconsistent adjacent faces
+        // Fully inverted tetrahedron
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Inconsistent adjacent faces ===\n";
+        std::cout << "\n=== Inverted tetrahedron ===\n";
 
-        LEM inconsistentMesh;
+        LEM invertedMesh;
 
-        const VertexHandle ia =
-            inconsistentMesh.add_vertex(
+        const VertexHandle i0 =
+            invertedMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle ib =
-            inconsistentMesh.add_vertex(
+        const VertexHandle i1 =
+            invertedMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle ic =
-            inconsistentMesh.add_vertex(
+        const VertexHandle i2 =
+            invertedMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle id =
-            inconsistentMesh.add_vertex(
-                glm::vec3{ 0.0f, -1.0f, 0.0f });
+        const VertexHandle i3 =
+            invertedMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        // Both faces traverse the common edge A -> B.
-        const FaceHandle inconsistentFaceA =
-            inconsistentMesh.add_face(
-                { ia, ib, ic });
+        // Every face uses the reverse winding of the outward fixture.
+        invertedMesh.add_face({ i1, i2, i0 });
+        invertedMesh.add_face({ i3, i1, i0 });
+        invertedMesh.add_face({ i3, i2, i1 });
+        invertedMesh.add_face({ i3, i0, i2 });
 
-        const FaceHandle inconsistentFaceB =
-            inconsistentMesh.add_face(
-                { ia, ib, id });
+        const AnalysisMesh invertedAnalysis =
+            AnalysisMeshBuilder::build(
+                invertedMesh);
 
-        const EdgeHandle inconsistentSharedEdge =
-            inconsistentMesh.find_edge(
-                ia,
-                ib);
+        AnalysisContext invertedContext;
+        invertedContext.mesh =
+            &invertedMesh;
+        invertedContext.analysisMesh =
+            &invertedAnalysis;
 
-        AnalysisContext inconsistentContext;
-        inconsistentContext.mesh =
-            &inconsistentMesh;
-
-        AnalysisReport inconsistentReport;
+        AnalysisReport invertedReport;
 
         analyzer.analyze(
-            inconsistentContext,
-            inconsistentReport);
+            invertedContext,
+            invertedReport);
 
-        if (inconsistentFaceA.is_valid() &&
-            inconsistentFaceB.is_valid() &&
-            inconsistentSharedEdge.is_valid() &&
-            TopologyTraversal::edge_loops(
-                inconsistentMesh,
-                inconsistentSharedEdge).size() == 2) {
+        if (invertedReport.issue_count(
+            PrintIssueType::InvertedOrientation) == 1 &&
+            invertedReport.error_count() == 1) {
 
             std::cout
-                << "[OK] fixture inconsistente possui shared edge manifold\n";
+                << "[OK] casca completamente invertida foi detectada\n";
         }
         else {
             std::cout
-                << "[FAIL] fixture inconsistente invalida\n";
+                << "[FAIL] casca invertida nao foi detectada\n";
         }
 
-        if (inconsistentReport.issue_count(
-            PrintIssueType::InconsistentNormals) == 1 &&
-            inconsistentReport.error_count() == 1) {
-
-            std::cout
-                << "[OK] winding local inconsistente foi detectado\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] winding inconsistente nao foi reportado corretamente\n";
-        }
-
-        if (inconsistentReport.issue_count() == 1) {
+        if (invertedReport.issue_count() == 1) {
             const PrintIssue& issue =
-                inconsistentReport.issues().front();
+                invertedReport.issues().front();
 
-            const bool hasFaceA =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    inconsistentFaceA) !=
-                issue.location.faces.end();
-
-            const bool hasFaceB =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    inconsistentFaceB) !=
-                issue.location.faces.end();
-
-            if (issue.location.edges.size() == 1 &&
-                issue.location.edges.front() ==
-                inconsistentSharedEdge &&
-                issue.location.vertices.size() == 2 &&
-                issue.location.faces.size() == 2 &&
-                hasFaceA &&
-                hasFaceB) {
-
+            if (issue.location.faces.size() == 4) {
                 std::cout
-                    << "[OK] conflito preserva edge, vertices e ambas as faces\n";
+                    << "[OK] issue preserva todas as faces da casca invertida\n";
             }
             else {
                 std::cout
-                    << "[FAIL] localizacao visual da inconsistencia incompleta\n";
+                    << "[FAIL] localizacao da casca invertida incompleta\n";
+            }
+
+            if (issue.has_measurement() &&
+                issue.measurement->kind ==
+                IssueMeasurementKind::Volume &&
+                issue.measurement->value < 0.0) {
+
+                std::cout
+                    << "[OK] orientation issue preserva volume assinado negativo\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] volume assinado do issue inconsistente\n";
             }
         }
 
         //-------------------------------------------------------------------------
-        // Boundary edges are ignored
+        // Open surface must not be classified
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Boundary separation ===\n";
+        std::cout << "\n=== Open surface separation ===\n";
 
-        LEM boundaryMesh;
+        LEM openMesh;
 
-        const VertexHandle ba =
-            boundaryMesh.add_vertex(
+        const VertexHandle p0 =
+            openMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle bb =
-            boundaryMesh.add_vertex(
+        const VertexHandle p1 =
+            openMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle bc =
-            boundaryMesh.add_vertex(
+        const VertexHandle p2 =
+            openMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const FaceHandle boundaryFace =
-            boundaryMesh.add_face(
-                { ba, bb, bc });
+        openMesh.add_face(
+            { p0, p2, p1 });
 
-        AnalysisContext boundaryContext;
-        boundaryContext.mesh =
-            &boundaryMesh;
+        const AnalysisMesh openAnalysis =
+            AnalysisMeshBuilder::build(
+                openMesh);
 
-        AnalysisReport boundaryReport;
+        AnalysisContext openContext;
+        openContext.mesh = &openMesh;
+        openContext.analysisMesh =
+            &openAnalysis;
+
+        AnalysisReport openReport;
 
         analyzer.analyze(
-            boundaryContext,
-            boundaryReport);
+            openContext,
+            openReport);
 
-        if (boundaryFace.is_valid() &&
-            !boundaryReport.has_issue_type(
-                PrintIssueType::InconsistentNormals)) {
+        if (!openReport.has_issue_type(
+            PrintIssueType::InvertedOrientation)) {
 
             std::cout
-                << "[OK] boundary continua responsabilidade do WatertightAnalyzer\n";
+                << "[OK] superficie aberta nao recebe orientacao global arbitraria\n";
         }
         else {
             std::cout
-                << "[FAIL] boundary gerou falso conflito de winding\n";
+                << "[FAIL] superficie aberta foi classificada como inside-out\n";
         }
 
         //-------------------------------------------------------------------------
-        // Non-manifold edges are ignored
+        // Two disconnected closed shells
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Non-manifold separation ===\n";
+        std::cout << "\n=== Independent closed components ===\n";
 
-        LEM nonManifoldMesh;
+        LEM multiMesh;
 
-        const VertexHandle na =
-            nonManifoldMesh.add_vertex(
+        // Correct tetrahedron.
+        const VertexHandle a0 =
+            multiMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
-
-        const VertexHandle nb =
-            nonManifoldMesh.add_vertex(
+        const VertexHandle a1 =
+            multiMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
-
-        const VertexHandle nc =
-            nonManifoldMesh.add_vertex(
+        const VertexHandle a2 =
+            multiMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        const VertexHandle nd =
-            nonManifoldMesh.add_vertex(
+        const VertexHandle a3 =
+            multiMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        const VertexHandle ne =
-            nonManifoldMesh.add_vertex(
-                glm::vec3{ 0.0f, -1.0f, 0.0f });
+        multiMesh.add_face({ a0, a2, a1 });
+        multiMesh.add_face({ a0, a1, a3 });
+        multiMesh.add_face({ a1, a2, a3 });
+        multiMesh.add_face({ a2, a0, a3 });
 
-        nonManifoldMesh.add_face(
-            { na, nb, nc });
+        // Inverted tetrahedron translated along X.
+        const VertexHandle b0 =
+            multiMesh.add_vertex(
+                glm::vec3{ 3.0f, 0.0f, 0.0f });
+        const VertexHandle b1 =
+            multiMesh.add_vertex(
+                glm::vec3{ 4.0f, 0.0f, 0.0f });
+        const VertexHandle b2 =
+            multiMesh.add_vertex(
+                glm::vec3{ 3.0f, 1.0f, 0.0f });
+        const VertexHandle b3 =
+            multiMesh.add_vertex(
+                glm::vec3{ 3.0f, 0.0f, 1.0f });
 
-        nonManifoldMesh.add_face(
-            { nb, na, nd });
+        multiMesh.add_face({ b1, b2, b0 });
+        multiMesh.add_face({ b3, b1, b0 });
+        multiMesh.add_face({ b3, b2, b1 });
+        multiMesh.add_face({ b3, b0, b2 });
 
-        nonManifoldMesh.add_face(
-            { na, nb, ne });
+        const AnalysisMesh multiAnalysis =
+            AnalysisMeshBuilder::build(
+                multiMesh);
 
-        const EdgeHandle nonManifoldEdge =
-            nonManifoldMesh.find_edge(
-                na,
-                nb);
+        AnalysisContext multiContext;
+        multiContext.mesh = &multiMesh;
+        multiContext.analysisMesh =
+            &multiAnalysis;
 
-        AnalysisContext nonManifoldContext;
-        nonManifoldContext.mesh =
-            &nonManifoldMesh;
-
-        AnalysisReport nonManifoldReport;
+        AnalysisReport multiReport;
 
         analyzer.analyze(
-            nonManifoldContext,
-            nonManifoldReport);
+            multiContext,
+            multiReport);
 
-        if (nonManifoldEdge.is_valid() &&
-            TopologyTraversal::edge_loops(
-                nonManifoldMesh,
-                nonManifoldEdge).size() == 3 &&
-            !nonManifoldReport.has_issue_type(
-                PrintIssueType::InconsistentNormals)) {
+        if (multiReport.issue_count(
+            PrintIssueType::InvertedOrientation) == 1) {
 
             std::cout
-                << "[OK] non-manifold continua responsabilidade do ManifoldAnalyzer\n";
+                << "[OK] apenas a casca invertida gera orientation issue\n";
         }
         else {
             std::cout
-                << "[FAIL] non-manifold gerou conflito local indevido\n";
+                << "[FAIL] componentes independentes nao foram classificados corretamente\n";
+        }
+
+        if (multiReport.issue_count() == 1 &&
+            multiReport.issues().front().location.faces.size() == 4) {
+
+            std::cout
+                << "[OK] issue fica restrito ao componente invertido\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] orientation issue contaminou outra casca\n";
         }
 
         std::cout
-            << "\n=== Manufacturing NormalConsistencyAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing OrientationAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing NormalConsistencyAnalyzer Smoke Test
+    // End Manufacturing OrientationAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
