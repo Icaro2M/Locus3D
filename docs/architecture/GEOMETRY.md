@@ -316,7 +316,7 @@ source\kernel
     |   |       IslandAnalyzer.h
     |   |
     |   +---geometry
-    |   |       DegenerateGeometryAnalyzer.h [!]
+    |   |       DegenerateGeometryAnalyzer.h
     |   |       SelfIntersectionAnalyzer.h [!]
     |   |
     |   +---thinwall

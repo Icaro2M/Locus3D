@@ -63,6 +63,7 @@
 #include "kernel/manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/OrientationAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/IslandAnalyzer.h"
+#include "kernel/manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1619,8 +1620,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-// Manufacturing IslandAnalyzer Smoke Test
-//=============================================================================
+    // Manufacturing DegenerateGeometryAnalyzer Smoke Test
+    //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1628,9 +1629,9 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing IslandAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing DegenerateGeometryAnalyzer Smoke Test ===\n\n";
 
-        IslandAnalyzer analyzer;
+        DegenerateGeometryAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
         // Metadata
@@ -1638,7 +1639,7 @@ int main(int argc, char** argv)
 
         std::cout << "=== Analyzer metadata ===\n";
 
-        if (analyzer.name() == "IslandAnalyzer") {
+        if (analyzer.name() == "DegenerateGeometryAnalyzer") {
             std::cout
                 << "[OK] analyzer possui nome estavel\n";
         }
@@ -1660,12 +1661,9 @@ int main(int argc, char** argv)
             missingContext,
             missingReport);
 
-        if (!missingReport.has_issues() &&
-            !missingReport.metrics()
-            .has_connected_component_count()) {
-
+        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] contexto sem LEM nao produz resultados\n";
+                << "[OK] contexto sem LEM nao gera issues\n";
         }
         else {
             std::cout
@@ -1673,327 +1671,293 @@ int main(int argc, char** argv)
         }
 
         //-------------------------------------------------------------------------
-        // Empty mesh
+        // Healthy triangle
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Empty mesh ===\n";
+        std::cout << "\n=== Healthy triangle ===\n";
 
-        LEM emptyMesh;
+        LEM healthyMesh;
 
-        AnalysisContext emptyContext;
-        emptyContext.mesh = &emptyMesh;
-
-        AnalysisReport emptyReport;
-
-        analyzer.analyze(
-            emptyContext,
-            emptyReport);
-
-        if (!emptyReport.has_issues() &&
-            emptyReport.metrics()
-            .has_connected_component_count() &&
-            emptyReport.metrics()
-            .connectedComponentCount.value() == 0) {
-
-            std::cout
-                << "[OK] LEM vazia possui zero componentes de superficie\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] resultado da LEM vazia inconsistente\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Single component
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Single connected component ===\n";
-
-        LEM connectedMesh;
-
-        const VertexHandle c0 =
-            connectedMesh.add_vertex(
+        const VertexHandle h0 =
+            healthyMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle c1 =
-            connectedMesh.add_vertex(
+        const VertexHandle h1 =
+            healthyMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle c2 =
-            connectedMesh.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle c3 =
-            connectedMesh.add_vertex(
+        const VertexHandle h2 =
+            healthyMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const FaceHandle connectedA =
-            connectedMesh.add_face(
-                { c0, c1, c2 });
+        const FaceHandle healthyFace =
+            healthyMesh.add_face(
+                { h0, h1, h2 });
 
-        const FaceHandle connectedB =
-            connectedMesh.add_face(
-                { c0, c2, c3 });
+        const AnalysisMesh healthyAnalysis =
+            AnalysisMeshBuilder::build(
+                healthyMesh);
 
-        AnalysisContext connectedContext;
-        connectedContext.mesh =
-            &connectedMesh;
+        AnalysisContext healthyContext;
+        healthyContext.mesh =
+            &healthyMesh;
+        healthyContext.analysisMesh =
+            &healthyAnalysis;
 
-        AnalysisReport connectedReport;
+        AnalysisReport healthyReport;
 
         analyzer.analyze(
-            connectedContext,
-            connectedReport);
+            healthyContext,
+            healthyReport);
 
-        if (connectedA.is_valid() &&
-            connectedB.is_valid() &&
-            connectedReport.metrics()
-            .connectedComponentCount.value() == 1 &&
-            !connectedReport.has_issue_type(
-                PrintIssueType::DisconnectedIsland)) {
+        if (healthyFace.is_valid() &&
+            !healthyReport.has_issue_type(
+                PrintIssueType::DegenerateGeometry)) {
 
             std::cout
-                << "[OK] faces conectadas formam uma unica componente\n";
+                << "[OK] triangulo normal nao e considerado degenerado\n";
         }
         else {
             std::cout
-                << "[FAIL] componente conectada foi classificada incorretamente\n";
+                << "[FAIL] geometria valida gerou falso positivo\n";
         }
 
         //-------------------------------------------------------------------------
-        // Principal component + one island
+        // Zero-length edge
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Principal component and island ===\n";
+        std::cout << "\n=== Zero-length edge ===\n";
 
-        LEM islandMesh;
+        LEM edgeMesh;
 
-        // Principal component: two connected triangles.
-        const VertexHandle p0 =
-            islandMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle e0 =
+            edgeMesh.add_vertex(
+                glm::vec3{ 1.0f, 2.0f, 3.0f });
 
-        const VertexHandle p1 =
-            islandMesh.add_vertex(
-                glm::vec3{ 2.0f, 0.0f, 0.0f });
+        const VertexHandle e1 =
+            edgeMesh.add_vertex(
+                glm::vec3{ 1.0f, 2.0f, 3.0f });
 
-        const VertexHandle p2 =
-            islandMesh.add_vertex(
-                glm::vec3{ 2.0f, 2.0f, 0.0f });
+        const EdgeHandle zeroEdge =
+            edgeMesh.find_or_create_edge(
+                e0,
+                e1);
 
-        const VertexHandle p3 =
-            islandMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.0f });
+        AnalysisContext edgeContext;
+        edgeContext.mesh =
+            &edgeMesh;
 
-        const FaceHandle principalA =
-            islandMesh.add_face(
-                { p0, p1, p2 });
-
-        const FaceHandle principalB =
-            islandMesh.add_face(
-                { p0, p2, p3 });
-
-        // Disconnected island: one triangle.
-        const VertexHandle i0 =
-            islandMesh.add_vertex(
-                glm::vec3{ 5.0f, 0.0f, 0.0f });
-
-        const VertexHandle i1 =
-            islandMesh.add_vertex(
-                glm::vec3{ 6.0f, 0.0f, 0.0f });
-
-        const VertexHandle i2 =
-            islandMesh.add_vertex(
-                glm::vec3{ 5.0f, 1.0f, 0.0f });
-
-        const FaceHandle islandFace =
-            islandMesh.add_face(
-                { i0, i1, i2 });
-
-        AnalysisContext islandContext;
-        islandContext.mesh =
-            &islandMesh;
-
-        AnalysisReport islandReport;
+        AnalysisReport edgeReport;
 
         analyzer.analyze(
-            islandContext,
-            islandReport);
+            edgeContext,
+            edgeReport);
 
-        if (principalA.is_valid() &&
-            principalB.is_valid() &&
-            islandFace.is_valid() &&
-            islandReport.metrics()
-            .connectedComponentCount.value() == 2) {
+        if (zeroEdge.is_valid() &&
+            edgeReport.issue_count(
+                PrintIssueType::DegenerateGeometry) == 1 &&
+            edgeReport.error_count() == 1) {
 
             std::cout
-                << "[OK] duas componentes desconectadas foram identificadas\n";
+                << "[OK] edge de comprimento zero foi detectada\n";
         }
         else {
             std::cout
-                << "[FAIL] contagem de componentes incorreta\n";
+                << "[FAIL] edge degenerada nao foi detectada corretamente\n";
         }
 
-        if (islandReport.issue_count(
-            PrintIssueType::DisconnectedIsland) == 1 &&
-            islandReport.warning_count() == 1) {
-
-            std::cout
-                << "[OK] apenas a componente secundaria gera island issue\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] quantidade de island issues incorreta\n";
-        }
-
-        if (islandReport.issue_count() == 1) {
+        if (edgeReport.issue_count() == 1) {
             const PrintIssue& issue =
-                islandReport.issues().front();
+                edgeReport.issues().front();
 
-            const bool containsIslandFace =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    islandFace) !=
-                issue.location.faces.end();
-
-            const bool containsPrincipalA =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    principalA) !=
-                issue.location.faces.end();
-
-            const bool containsPrincipalB =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    principalB) !=
-                issue.location.faces.end();
-
-            if (issue.location.faces.size() == 1 &&
-                issue.location.edges.size() == 3 &&
-                issue.location.vertices.size() == 3 &&
-                containsIslandFace &&
-                !containsPrincipalA &&
-                !containsPrincipalB) {
-
-                std::cout
-                    << "[OK] issue fica restrito a ilha desconectada\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] localizacao da ilha contaminou componente principal\n";
-            }
-
-            if (issue.has_measurement() &&
+            if (issue.location.edges.size() == 1 &&
+                issue.location.edges.front() == zeroEdge &&
+                issue.location.vertices.size() == 2 &&
+                issue.has_measurement() &&
                 issue.measurement->kind ==
-                IssueMeasurementKind::Count &&
-                issue.measurement->value == 1.0 &&
-                !issue.measurement->has_limit()) {
+                IssueMeasurementKind::Length &&
+                issue.measurement->value <= 1.0e-9) {
 
                 std::cout
-                    << "[OK] issue registra quantidade de faces da ilha\n";
+                    << "[OK] edge degenerada preserva localizacao e comprimento\n";
             }
             else {
                 std::cout
-                    << "[FAIL] metrica da ilha inconsistente\n";
+                    << "[FAIL] diagnostico da edge degenerada incompleto\n";
             }
         }
 
         //-------------------------------------------------------------------------
-        // Multiple independent islands
+        // Collinear triangle
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Multiple islands ===\n";
+        std::cout << "\n=== Zero-area face ===\n";
 
-        LEM multipleMesh;
+        LEM zeroAreaMesh;
 
-        // Main component: quad = one face, but we make it larger in face count
-        // using two triangles.
-        const VertexHandle m0 =
-            multipleMesh.add_vertex(
+        const VertexHandle z0 =
+            zeroAreaMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle m1 =
-            multipleMesh.add_vertex(
+        const VertexHandle z1 =
+            zeroAreaMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle z2 =
+            zeroAreaMesh.add_vertex(
                 glm::vec3{ 2.0f, 0.0f, 0.0f });
 
-        const VertexHandle m2 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 2.0f, 2.0f, 0.0f });
+        const FaceHandle zeroAreaFace =
+            zeroAreaMesh.add_face(
+                { z0, z1, z2 });
 
-        const VertexHandle m3 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.0f });
+        const AnalysisMesh zeroAreaAnalysis =
+            AnalysisMeshBuilder::build(
+                zeroAreaMesh);
 
-        multipleMesh.add_face(
-            { m0, m1, m2 });
+        AnalysisContext zeroAreaContext;
+        zeroAreaContext.mesh =
+            &zeroAreaMesh;
+        zeroAreaContext.analysisMesh =
+            &zeroAreaAnalysis;
 
-        multipleMesh.add_face(
-            { m0, m2, m3 });
-
-        // Island A.
-        const VertexHandle a0 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 4.0f, 0.0f, 0.0f });
-
-        const VertexHandle a1 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 5.0f, 0.0f, 0.0f });
-
-        const VertexHandle a2 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 4.0f, 1.0f, 0.0f });
-
-        multipleMesh.add_face(
-            { a0, a1, a2 });
-
-        // Island B.
-        const VertexHandle b0 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 7.0f, 0.0f, 0.0f });
-
-        const VertexHandle b1 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 8.0f, 0.0f, 0.0f });
-
-        const VertexHandle b2 =
-            multipleMesh.add_vertex(
-                glm::vec3{ 7.0f, 1.0f, 0.0f });
-
-        multipleMesh.add_face(
-            { b0, b1, b2 });
-
-        AnalysisContext multipleContext;
-        multipleContext.mesh =
-            &multipleMesh;
-
-        AnalysisReport multipleReport;
+        AnalysisReport zeroAreaReport;
 
         analyzer.analyze(
-            multipleContext,
-            multipleReport);
+            zeroAreaContext,
+            zeroAreaReport);
 
-        if (multipleReport.metrics()
-            .connectedComponentCount.value() == 3 &&
-            multipleReport.issue_count(
-                PrintIssueType::DisconnectedIsland) == 2) {
+        bool foundDegenerateFace = false;
+
+        for (const PrintIssue& issue :
+            zeroAreaReport.issues()) {
+
+            if (issue.type !=
+                PrintIssueType::DegenerateGeometry) {
+                continue;
+            }
+
+            if (std::find(
+                issue.location.faces.begin(),
+                issue.location.faces.end(),
+                zeroAreaFace) !=
+                issue.location.faces.end()) {
+
+                foundDegenerateFace = true;
+                break;
+            }
+        }
+
+        if (zeroAreaFace.is_valid() &&
+            foundDegenerateFace) {
 
             std::cout
-                << "[OK] tres componentes geram duas ilhas secundarias\n";
+                << "[OK] face colinear foi detectada como degenerada\n";
         }
         else {
             std::cout
-                << "[FAIL] multiplas ilhas foram classificadas incorretamente\n";
+                << "[FAIL] face de area zero nao foi detectada\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // AnalysisMesh optional for edge-only analysis
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Optional AnalysisMesh ===\n";
+
+        LEM edgeOnlyMesh;
+
+        const VertexHandle o0 =
+            edgeOnlyMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle o1 =
+            edgeOnlyMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        edgeOnlyMesh.find_or_create_edge(
+            o0,
+            o1);
+
+        AnalysisContext edgeOnlyContext;
+        edgeOnlyContext.mesh =
+            &edgeOnlyMesh;
+
+        AnalysisReport edgeOnlyReport;
+
+        analyzer.analyze(
+            edgeOnlyContext,
+            edgeOnlyReport);
+
+        if (edgeOnlyReport.issue_count(
+            PrintIssueType::DegenerateGeometry) == 1) {
+
+            std::cout
+                << "[OK] edge analysis nao exige AnalysisMesh\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] dependencia opcional de AnalysisMesh incorreta\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Small but valid geometry
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Small but valid geometry ===\n";
+
+        LEM smallMesh;
+
+        const VertexHandle s0 =
+            smallMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle s1 =
+            smallMesh.add_vertex(
+                glm::vec3{ 0.001f, 0.0f, 0.0f });
+
+        const VertexHandle s2 =
+            smallMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.001f, 0.0f });
+
+        const FaceHandle smallFace =
+            smallMesh.add_face(
+                { s0, s1, s2 });
+
+        const AnalysisMesh smallAnalysis =
+            AnalysisMeshBuilder::build(
+                smallMesh);
+
+        AnalysisContext smallContext;
+        smallContext.mesh =
+            &smallMesh;
+        smallContext.analysisMesh =
+            &smallAnalysis;
+
+        AnalysisReport smallReport;
+
+        analyzer.analyze(
+            smallContext,
+            smallReport);
+
+        if (smallFace.is_valid() &&
+            !smallReport.has_issue_type(
+                PrintIssueType::DegenerateGeometry)) {
+
+            std::cout
+                << "[OK] geometria pequena mas valida nao e confundida com degeneracao\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] manufacturing confundiu tamanho pequeno com degeneracao\n";
         }
 
         std::cout
-            << "\n=== Manufacturing IslandAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing DegenerateGeometryAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing IslandAnalyzer Smoke Test
+    // End Manufacturing DegenerateGeometryAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
