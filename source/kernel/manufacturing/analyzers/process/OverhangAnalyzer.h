@@ -22,6 +22,7 @@
 #include <glm/vec3.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -174,6 +175,14 @@ namespace locus::kernel::manufacturing {
         {
             std::vector<FaceOverhang> result;
 
+            const float buildPlaneProjection =
+                minimum_build_plane_projection(
+                    analysisMesh);
+
+            const float buildPlaneTolerance =
+                build_plane_tolerance(
+                    analysisMesh);
+
             for (std::size_t triangleIndex = 0;
                 triangleIndex < analysisMesh.triangle_count();
                 ++triangleIndex) {
@@ -209,6 +218,15 @@ namespace locus::kernel::manufacturing {
                 const glm::vec3& c =
                     analysisMesh.vertex(
                         triangle.c).position;
+
+                if (triangle_on_build_plane(
+                    a,
+                    b,
+                    c,
+                    buildPlaneProjection,
+                    buildPlaneTolerance)) {
+                    continue;
+                }
 
                 const glm::vec3 cross =
                     glm::cross(
@@ -271,6 +289,93 @@ namespace locus::kernel::manufacturing {
             }
 
             return result;
+        }
+
+        /**
+         * @brief Computes the lowest model projection along the build axis.
+         */
+        [[nodiscard]] float minimum_build_plane_projection(
+            const AnalysisMesh& analysisMesh) const noexcept
+        {
+            if (!analysisMesh.has_bounds()) {
+                return
+                    std::numeric_limits<float>::quiet_NaN();
+            }
+
+            const math::Bounds& bounds =
+                analysisMesh.bounds();
+
+            const std::array<glm::vec3, 8> corners{
+                glm::vec3{ bounds.min.x, bounds.min.y, bounds.min.z },
+                glm::vec3{ bounds.min.x, bounds.min.y, bounds.max.z },
+                glm::vec3{ bounds.min.x, bounds.max.y, bounds.min.z },
+                glm::vec3{ bounds.min.x, bounds.max.y, bounds.max.z },
+                glm::vec3{ bounds.max.x, bounds.min.y, bounds.min.z },
+                glm::vec3{ bounds.max.x, bounds.min.y, bounds.max.z },
+                glm::vec3{ bounds.max.x, bounds.max.y, bounds.min.z },
+                glm::vec3{ bounds.max.x, bounds.max.y, bounds.max.z }
+            };
+
+            float minimum =
+                std::numeric_limits<float>::max();
+
+            for (const glm::vec3& corner :
+            corners) {
+                minimum =
+                    std::min(
+                        minimum,
+                        glm::dot(
+                            corner,
+                            buildDirection_));
+            }
+
+            return minimum;
+        }
+
+        /**
+         * @brief Returns a scale-aware tolerance for build-plane contact.
+         */
+        [[nodiscard]] static float build_plane_tolerance(
+            const AnalysisMesh& analysisMesh) noexcept
+        {
+            if (!analysisMesh.has_bounds()) {
+                return 0.0f;
+            }
+
+            const float diagonal =
+                glm::length(
+                    analysisMesh.bounds().size());
+
+            return
+                std::max(
+                    1.0e-5f,
+                    diagonal * 1.0e-5f);
+        }
+
+        /**
+         * @brief Checks whether an overhang candidate is on the build plate.
+         */
+        [[nodiscard]] bool triangle_on_build_plane(
+            const glm::vec3& a,
+            const glm::vec3& b,
+            const glm::vec3& c,
+            float buildPlaneProjection,
+            float tolerance) const noexcept
+        {
+            if (!std::isfinite(buildPlaneProjection)) {
+                return false;
+            }
+
+            return
+                glm::dot(
+                    a,
+                    buildDirection_) <= buildPlaneProjection + tolerance &&
+                glm::dot(
+                    b,
+                    buildDirection_) <= buildPlaneProjection + tolerance &&
+                glm::dot(
+                    c,
+                    buildDirection_) <= buildPlaneProjection + tolerance;
         }
 
         /**
