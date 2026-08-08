@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "editor/sync/ManufacturingSync.h"
 #include "editor/sync/PickingSync.h"
 #include "editor/sync/RenderSceneSync.h"
 
@@ -106,6 +107,20 @@ namespace locus::editor {
         [[nodiscard]] const graphics::RenderScene& render_scene() const;
 
         /**
+         * @brief Returns manufacturing analysis synchronization state.
+         *
+         * @return Mutable manufacturing sync reference.
+         */
+        [[nodiscard]] ManufacturingSync& manufacturing_sync();
+
+        /**
+         * @brief Returns manufacturing analysis synchronization state.
+         *
+         * @return Read-only manufacturing sync reference.
+         */
+        [[nodiscard]] const ManufacturingSync& manufacturing_sync() const;
+
+        /**
          * @brief Returns editor-to-graphics picking identifier mappings.
          *
          * @return Mutable picking synchronization state.
@@ -161,6 +176,7 @@ namespace locus::editor {
 
     private:
         RenderSceneSync renderSceneSync_{};
+        ManufacturingSync manufacturingSync_{};
         PickingSync pickingSync_{};
         EditorSyncResult lastResult_{};
     };

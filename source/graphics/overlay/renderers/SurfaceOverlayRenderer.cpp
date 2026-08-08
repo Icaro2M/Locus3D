@@ -201,6 +201,10 @@ namespace locus::graphics
             BlendFactor::OneMinusSourceAlpha);
         RenderState::set_cull_face(config_.cullFace);
         RenderState::set_polygon_mode(RenderPolygonMode::Fill);
+        RenderState::set_polygon_offset_fill(config_.polygonOffsetFill);
+        RenderState::set_polygon_offset(
+            config_.polygonOffsetFactor,
+            config_.polygonOffsetUnits);
 
         shader_->bind();
         const glm::mat4 mvp = viewProjection * modelMatrix_;

@@ -710,6 +710,10 @@ namespace locus::application {
                 viewport.toggle_face_orientation();
                 return {};
 
+            case ShortcutAction::ToggleManufacturingAnalysis:
+                viewport.toggle_manufacturing_analysis(document);
+                return {};
+
             case ShortcutAction::ActivateTranslateTool:
                 return activate_transform_tool(
                     document,

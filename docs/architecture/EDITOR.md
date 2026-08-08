@@ -78,7 +78,9 @@ source\editor
 |       SceneTree.cpp 
 |       SceneNodeId.h 
 |       NodeTransform.h 
-|       NodeTransform.cpp 
+|       NodeTransform.cpp
+|       SceneTransform.h 
+|       SceneTransform.cpp 
 |       NodePivot.h 
 |       NodeMetadata.h 
 |       NodeType.h 
@@ -361,6 +363,10 @@ source\editor
 |       AngleSnapProvider.cpp
 |
 +---render
+|       ManufacturingDisplaySettings.h
+|       ManufacturingDisplaySettings.cpp
+|
++---render
 |       RenderAdapterTypes.h
 |       RenderMeshUploadAdapter.h
 |       RenderMeshUploadAdapter.cpp
@@ -378,6 +384,8 @@ source\editor
 |       PreviewRenderAdapter.cpp
 |       PickingRenderAdapter.h
 |       PickingRenderAdapter.cpp
+|       ManufacturingRenderAdapter.h
+|       ManufacturingRenderAdapter.cpp
 |
 +---sync
 |       EditorSync.h
@@ -386,8 +394,8 @@ source\editor
 |       RenderSceneSync.cpp
 |       PickingSync.h
 |       PickingSync.cpp
-|       ManufacturingSync.h [!]
-|       ManufacturingSync.cpp [!]
+|       ManufacturingSync.h
+|       ManufacturingSync.cpp
 |
 \---io [!]
         IDocumentSerializer.h [!]

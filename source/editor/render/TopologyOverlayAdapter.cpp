@@ -8,6 +8,7 @@
 #include "editor/scene/EditorScene.h"
 #include "editor/scene/MeshNode.h"
 #include "editor/scene/SceneNode.h"
+#include "editor/scene/SceneTransforms.h"
 #include "editor/selection/SelectionState.h"
 #include "kernel/geometry/mesh/LEM.h"
 #include "kernel/geometry/render/MeshTriangulator.h"
@@ -52,23 +53,6 @@ namespace locus::editor {
             Hovered,
             Selected
         };
-
-        [[nodiscard]] glm::mat4 node_world_matrix(
-            const EditorScene& scene,
-            SceneNodeId node)
-        {
-            const SceneNode* sceneNode = scene.find_node(node);
-            if (sceneNode == nullptr) {
-                return glm::mat4{ 1.0f };
-            }
-
-            const glm::mat4 local = sceneNode->transform().matrix();
-            if (sceneNode->parent().is_invalid()) {
-                return local;
-            }
-
-            return node_world_matrix(scene, sceneNode->parent()) * local;
-        }
 
         [[nodiscard]] glm::vec3 transform_point(
             const glm::mat4& matrix,
@@ -382,14 +366,11 @@ namespace locus::editor {
             }
         }
 
-        [[nodiscard]] glm::mat4 node_local_matrix(
+        [[nodiscard]] glm::mat4 node_world_matrix(
             const EditorScene& scene,
             SceneNodeId node)
         {
-            const SceneNode* sceneNode = scene.find_node(node);
-            return sceneNode != nullptr
-                ? sceneNode->transform().matrix()
-                : glm::mat4{ 1.0f };
+            return SceneTransforms::world_matrix(scene, node);
         }
 
         void append_face_surface(
@@ -737,7 +718,7 @@ namespace locus::editor {
         }
 
         const std::vector<FaceHandle> faces = TopologyTraversal::faces(mesh);
-        const glm::mat4 model = node_local_matrix(scene, activeMesh);
+        const glm::mat4 model = node_world_matrix(scene, activeMesh);
         batches.hovered.modelMatrix = model;
         batches.selected.modelMatrix = model;
 

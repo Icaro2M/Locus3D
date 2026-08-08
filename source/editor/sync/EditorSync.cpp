@@ -25,6 +25,16 @@ namespace locus::editor {
         return renderSceneSync_.render_scene();
     }
 
+    ManufacturingSync& EditorSync::manufacturing_sync()
+    {
+        return manufacturingSync_;
+    }
+
+    const ManufacturingSync& EditorSync::manufacturing_sync() const
+    {
+        return manufacturingSync_;
+    }
+
     PickingSync& EditorSync::picking_sync()
     {
         return pickingSync_;
@@ -43,6 +53,7 @@ namespace locus::editor {
     void EditorSync::clear()
     {
         renderSceneSync_.clear();
+        manufacturingSync_.clear();
         pickingSync_.clear();
 
         lastResult_ = {};

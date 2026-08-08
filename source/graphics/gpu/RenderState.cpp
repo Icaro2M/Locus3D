@@ -78,6 +78,23 @@ namespace locus::graphics
         glPolygonMode(GL_FRONT_AND_BACK, gl_polygon_mode(mode));
     }
 
+    void RenderState::set_polygon_offset_fill(bool enabled)
+    {
+        if (enabled)
+        {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        }
+        else
+        {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+    }
+
+    void RenderState::set_polygon_offset(float factor, float units)
+    {
+        glPolygonOffset(factor, units);
+    }
+
     void RenderState::set_line_width(float width)
     {
         glLineWidth(width);
@@ -138,6 +155,8 @@ namespace locus::graphics
         set_front_face(FrontFace::CounterClockwise);
 
         set_polygon_mode(RenderPolygonMode::Fill);
+        set_polygon_offset_fill(false);
+        set_polygon_offset(0.0f, 0.0f);
         set_line_width(1.0f);
         set_point_size(1.0f);
 

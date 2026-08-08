@@ -32,6 +32,9 @@ namespace locus::graphics
         DepthFunc depthFunc = DepthFunc::LessEqual;
         bool blend = true;
         bool cullFace = false;
+        bool polygonOffsetFill = true;
+        float polygonOffsetFactor = -1.0f;
+        float polygonOffsetUnits = -1.0f;
     };
 
     /**

@@ -12,6 +12,7 @@
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/gizmo/GizmoState.h"
 #include "editor/render/MeshNodeRenderAdapter.h"
+#include "editor/render/ManufacturingRenderAdapter.h"
 #include "editor/render/OverlayRenderAdapter.h"
 #include "editor/render/PreviewRenderAdapter.h"
 #include "editor/render/SelectionRenderAdapter.h"
@@ -193,6 +194,27 @@ namespace locus::application {
         {
             for (graphics::ScreenSpaceLine& line : input.lines) {
                 line.color.a *= 0.26f;
+            }
+
+            return input;
+        }
+
+        [[nodiscard]] graphics::SurfaceOverlayBatch make_occluded_surfaces(
+            graphics::SurfaceOverlayBatch input)
+        {
+            for (graphics::SurfaceOverlayVertex& vertex : input.vertices) {
+                vertex.color.a *= 0.24f;
+            }
+
+            return input;
+        }
+
+        [[nodiscard]] graphics::PointMarkerBatch make_occluded_markers(
+            graphics::PointMarkerBatch input)
+        {
+            for (graphics::PointMarker& marker : input.markers) {
+                marker.fillColor.a *= 0.34f;
+                marker.borderColor.a *= 0.34f;
             }
 
             return input;
@@ -699,6 +721,57 @@ namespace locus::application {
         }
         append_startup_log("EditorViewport: surface overlay renderer created");
 
+        const auto manufacturingSurfaceRendererResult =
+            manufacturingSurfaceRenderer_.create(shaderManager_);
+
+        if (!manufacturingSurfaceRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the manufacturing surface overlay renderer",
+                manufacturingSurfaceRendererResult.error());
+        }
+
+        graphics::SurfaceOverlayRendererConfig manufacturingXRaySurfaceConfig{};
+        manufacturingXRaySurfaceConfig.depthTest = false;
+        manufacturingXRaySurfaceConfig.depthWrite = false;
+        const auto manufacturingXRaySurfaceRendererResult =
+            manufacturingXRaySurfaceRenderer_.create(
+                shaderManager_,
+                manufacturingXRaySurfaceConfig);
+
+        if (!manufacturingXRaySurfaceRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the manufacturing x-ray surface overlay renderer",
+                manufacturingXRaySurfaceRendererResult.error());
+        }
+
+        const auto manufacturingLineRendererResult =
+            manufacturingLineRenderer_.create(shaderManager_);
+
+        if (!manufacturingLineRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the manufacturing line overlay renderer",
+                manufacturingLineRendererResult.error());
+        }
+
+        const auto manufacturingOccludedLineRendererResult =
+            manufacturingOccludedLineRenderer_.create(shaderManager_);
+
+        if (!manufacturingOccludedLineRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the manufacturing occluded line overlay renderer",
+                manufacturingOccludedLineRendererResult.error());
+        }
+
+        append_startup_log("EditorViewport: manufacturing overlay renderers created");
+
         auto selectionShapeShaderResult = shaderManager_.load(
             "viewport/selection_shape",
             "viewport/selection_shape_vert.glsl",
@@ -900,6 +973,12 @@ namespace locus::application {
 
         axisRenderer_.destroy();
         gizmoRenderer_.destroy();
+        manufacturingOccludedMarkerRenderer_.destroy();
+        manufacturingMarkerRenderer_.destroy();
+        manufacturingOccludedLineRenderer_.destroy();
+        manufacturingLineRenderer_.destroy();
+        manufacturingXRaySurfaceRenderer_.destroy();
+        manufacturingSurfaceRenderer_.destroy();
         topologyVertexRenderer_.destroy();
         topologyLineRenderer_.destroy();
         topologySurfaceRenderer_.destroy();
@@ -1024,6 +1103,29 @@ namespace locus::application {
             !displaySettings_.showFaceOrientation);
     }
 
+    void EditorViewport::toggle_manufacturing_analysis(
+        DocumentSession& document)
+    {
+        set_manufacturing_analysis_enabled(
+            document,
+            !manufacturing_analysis_enabled(document));
+    }
+
+    void EditorViewport::set_manufacturing_analysis_enabled(
+        DocumentSession& document,
+        bool enabled)
+    {
+        editor::ManufacturingSync& manufacturing =
+            document.editor_sync().manufacturing_sync();
+
+        if (manufacturing.enabled() == enabled) {
+            return;
+        }
+
+        manufacturing.set_enabled(enabled);
+        document.editor().mark_dirty(editor::EditorDirtyFlags::Manufacturing);
+    }
+
     void EditorViewport::set_shading_mode(ViewportShadingMode mode) noexcept
     {
         displaySettings_.shadingMode = mode;
@@ -1078,6 +1180,12 @@ namespace locus::application {
     bool EditorViewport::face_orientation_enabled() const noexcept
     {
         return displaySettings_.showFaceOrientation;
+    }
+
+    bool EditorViewport::manufacturing_analysis_enabled(
+        const DocumentSession& document) const noexcept
+    {
+        return document.editor_sync().manufacturing_sync().enabled();
     }
 
     ViewOrientation EditorViewport::view_orientation() const noexcept
@@ -1326,6 +1434,124 @@ namespace locus::application {
             }
         }
 
+        editor::ManufacturingSync& manufacturingSync =
+            document.editor_sync().manufacturing_sync();
+
+        if (manufacturingSync.enabled()) {
+            (void)manufacturingSync.sync_if_needed(document.editor());
+        }
+
+        editor::ManufacturingRenderResult manufacturingRenderResult{};
+        const editor::ManufacturingOverlayBatches manufacturingOverlays =
+            editor::ManufacturingRenderAdapter::build_overlays(
+                document.editor().scene(),
+                manufacturingSync,
+                &manufacturingRenderResult);
+
+        const bool manufacturingXRay =
+            manufacturingSync.display_settings().visibility ==
+            editor::ManufacturingOverlayVisibility::XRay;
+
+        const graphics::SurfaceOverlayBatch occludedManufacturingSurfaces =
+            manufacturingXRay
+                ? make_occluded_surfaces(manufacturingOverlays.surfaces)
+                : graphics::SurfaceOverlayBatch{};
+        const graphics::ScreenSpaceLineBatch occludedManufacturingLines =
+            manufacturingXRay
+                ? make_occluded_lines(manufacturingOverlays.lines)
+                : graphics::ScreenSpaceLineBatch{};
+        const graphics::PointMarkerBatch occludedManufacturingMarkers =
+            manufacturingXRay
+                ? make_occluded_markers(manufacturingOverlays.markers)
+                : graphics::PointMarkerBatch{};
+
+        if (manufacturingSurfaceRenderer_.is_valid()) {
+            const auto manufacturingSurfaceUploadResult =
+                manufacturingSurfaceRenderer_.set_batch(
+                    manufacturingOverlays.surfaces);
+
+            if (!manufacturingSurfaceUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing surface overlays",
+                    manufacturingSurfaceUploadResult.error());
+            }
+        }
+
+        if (manufacturingXRaySurfaceRenderer_.is_valid()) {
+            const auto manufacturingXRaySurfaceUploadResult =
+                manufacturingXRaySurfaceRenderer_.set_batch(
+                    occludedManufacturingSurfaces);
+
+            if (!manufacturingXRaySurfaceUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing x-ray surface overlays",
+                    manufacturingXRaySurfaceUploadResult.error());
+            }
+        }
+
+        if (manufacturingLineRenderer_.is_valid()) {
+            const auto manufacturingLineUploadResult =
+                manufacturingLineRenderer_.set_lines(
+                    manufacturingOverlays.lines);
+
+            if (!manufacturingLineUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing line overlays",
+                    manufacturingLineUploadResult.error());
+            }
+        }
+
+        if (manufacturingOccludedLineRenderer_.is_valid()) {
+            const auto manufacturingOccludedLineUploadResult =
+                manufacturingOccludedLineRenderer_.set_lines(
+                    occludedManufacturingLines);
+
+            if (!manufacturingOccludedLineUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing occluded line overlays",
+                    manufacturingOccludedLineUploadResult.error());
+            }
+        }
+
+        if (!manufacturingOverlays.markers.empty()) {
+            const auto markerRendererResult =
+                ensure_manufacturing_marker_renderers();
+
+            if (!markerRendererResult) {
+                return markerRendererResult.error();
+            }
+        }
+
+        if (manufacturingMarkerRenderer_.is_valid()) {
+            const auto manufacturingMarkerUploadResult =
+                manufacturingMarkerRenderer_.set_markers(
+                    manufacturingOverlays.markers);
+
+            if (!manufacturingMarkerUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing point marker overlays",
+                    manufacturingMarkerUploadResult.error());
+            }
+        }
+
+        if (manufacturingOccludedMarkerRenderer_.is_valid()) {
+            const auto manufacturingOccludedMarkerUploadResult =
+                manufacturingOccludedMarkerRenderer_.set_markers(
+                    occludedManufacturingMarkers);
+
+            if (!manufacturingOccludedMarkerUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload manufacturing occluded point marker overlays",
+                    manufacturingOccludedMarkerUploadResult.error());
+            }
+        }
+
         renderQueue_.clear();
         graphics::RenderQueue sceneSurfaceQueue{};
         graphics::RenderScene outlineScene{};
@@ -1457,6 +1683,14 @@ namespace locus::application {
                 viewport_.camera().view_projection_matrix());
         }
 
+        if (manufacturingXRay) {
+            manufacturingXRaySurfaceRenderer_.render(
+                viewport_.camera().view_projection_matrix());
+        }
+
+        manufacturingSurfaceRenderer_.render(
+            viewport_.camera().view_projection_matrix());
+
         if (shadingConfig.topologyOccludedEdges &&
             topologyLineRenderer_.is_valid()) {
             const auto occludedUploadResult =
@@ -1499,6 +1733,32 @@ namespace locus::application {
             viewport_.state().rect,
             graphics::DepthFunc::LessEqual,
             shadingConfig.topologyDepthTest);
+
+        if (manufacturingXRay) {
+            manufacturingOccludedLineRenderer_.render(
+                viewport_.camera().view_projection_matrix(),
+                viewport_.state().rect,
+                graphics::DepthFunc::Greater,
+                true);
+
+            manufacturingOccludedMarkerRenderer_.render(
+                viewport_.camera().view_projection_matrix(),
+                viewport_.state().rect,
+                graphics::DepthFunc::Greater,
+                true);
+        }
+
+        manufacturingLineRenderer_.render(
+            viewport_.camera().view_projection_matrix(),
+            viewport_.state().rect,
+            graphics::DepthFunc::LessEqual,
+            true);
+
+        manufacturingMarkerRenderer_.render(
+            viewport_.camera().view_projection_matrix(),
+            viewport_.state().rect,
+            graphics::DepthFunc::LessEqual,
+            true);
 
         graphics::RenderQueue gizmoQueue;
         gizmoQueue.reserve(gizmoScene.object_count());
@@ -1887,6 +2147,48 @@ namespace locus::application {
         }
 
         invalidate_picking();
+        return {};
+    }
+
+    ApplicationResult<void> EditorViewport::ensure_manufacturing_marker_renderers()
+    {
+        if (manufacturingMarkerRenderer_.is_valid() &&
+            manufacturingOccludedMarkerRenderer_.is_valid()) {
+            return {};
+        }
+
+        graphics::PointMarkerRendererConfig markerConfig{};
+
+        if (!manufacturingMarkerRenderer_.is_valid()) {
+            const auto result =
+                manufacturingMarkerRenderer_.create(
+                    shaderManager_,
+                    markerConfig);
+
+            if (!result) {
+                manufacturingMarkerRenderer_.destroy();
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to create the manufacturing point marker renderer",
+                    result.error());
+            }
+        }
+
+        if (!manufacturingOccludedMarkerRenderer_.is_valid()) {
+            const auto result =
+                manufacturingOccludedMarkerRenderer_.create(
+                    shaderManager_,
+                    markerConfig);
+
+            if (!result) {
+                manufacturingOccludedMarkerRenderer_.destroy();
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to create the manufacturing occluded point marker renderer",
+                    result.error());
+            }
+        }
+
         return {};
     }
 

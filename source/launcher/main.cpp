@@ -1568,6 +1568,7 @@ namespace {
             << "J Bridge Edge in Edge context, "
             << "R LoopCut in Edge context, "
             << "I Inset in Face context, "
+            << "M Manufacturing Analysis, "
             << "W/E/R/T transform gizmo in Object context, "
             << "Esc Cancel, Ctrl+Z Undo, Ctrl+Shift+Z Redo.\n"
             << "Test path: press 1 and click Cube A; press 4 and click "

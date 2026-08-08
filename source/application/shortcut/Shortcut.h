@@ -43,6 +43,7 @@ namespace locus::application {
         BottomView,
         ToggleViewportShading,
         ToggleFaceOrientation,
+        ToggleManufacturingAnalysis,
         Undo,
         Redo,
         Save,

@@ -143,6 +143,21 @@ namespace locus::graphics
         static void set_polygon_mode(RenderPolygonMode mode);
 
         /**
+         * @brief Enables or disables filled polygon depth offset.
+         *
+         * @param enabled True to enable polygon offset for filled polygons.
+         */
+        static void set_polygon_offset_fill(bool enabled);
+
+        /**
+         * @brief Sets the filled polygon depth offset parameters.
+         *
+         * @param factor Scale factor for the maximum depth slope.
+         * @param units Constant depth offset units.
+         */
+        static void set_polygon_offset(float factor, float units);
+
+        /**
          * @brief Sets line rasterization width.
          *
          * @param width Line width in pixels.

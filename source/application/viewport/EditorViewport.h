@@ -188,6 +188,23 @@ namespace locus::application {
         void toggle_face_orientation() noexcept;
 
         /**
+         * @brief Toggles manufacturing analysis visualization for a document.
+         *
+         * @param document Document whose manufacturing state changes.
+         */
+        void toggle_manufacturing_analysis(DocumentSession& document);
+
+        /**
+         * @brief Enables or disables manufacturing analysis visualization.
+         *
+         * @param document Document whose manufacturing state changes.
+         * @param enabled True to show manufacturing diagnostics.
+         */
+        void set_manufacturing_analysis_enabled(
+            DocumentSession& document,
+            bool enabled);
+
+        /**
          * @brief Sets the primary viewport shading mode.
          *
          * @param mode Requested shading mode.
@@ -235,6 +252,15 @@ namespace locus::application {
          * @return True when Face Orientation display is enabled.
          */
         [[nodiscard]] bool face_orientation_enabled() const noexcept;
+
+        /**
+         * @brief Checks whether manufacturing analysis visualization is enabled.
+         *
+         * @param document Document whose manufacturing state is inspected.
+         * @return True when manufacturing diagnostics are visible.
+         */
+        [[nodiscard]] bool manufacturing_analysis_enabled(
+            const DocumentSession& document) const noexcept;
 
         /**
          * @brief Returns the current orientation tag.
@@ -349,6 +375,7 @@ namespace locus::application {
 
     private:
         [[nodiscard]] ApplicationResult<void> ensure_picking_buffer();
+        [[nodiscard]] ApplicationResult<void> ensure_manufacturing_marker_renderers();
         void invalidate_picking() noexcept;
         void clear_hover(
             DocumentSession& document,
@@ -369,6 +396,12 @@ namespace locus::application {
         graphics::SurfaceOverlayRenderer topologySurfaceRenderer_{};
         graphics::ScreenSpaceLineRenderer topologyLineRenderer_{};
         graphics::PointMarkerRenderer topologyVertexRenderer_{};
+        graphics::SurfaceOverlayRenderer manufacturingSurfaceRenderer_{};
+        graphics::SurfaceOverlayRenderer manufacturingXRaySurfaceRenderer_{};
+        graphics::ScreenSpaceLineRenderer manufacturingLineRenderer_{};
+        graphics::ScreenSpaceLineRenderer manufacturingOccludedLineRenderer_{};
+        graphics::PointMarkerRenderer manufacturingMarkerRenderer_{};
+        graphics::PointMarkerRenderer manufacturingOccludedMarkerRenderer_{};
         graphics::SelectionShapeRenderer selectionShapeRenderer_{};
         graphics::Viewport viewport_{};
         graphics::OrbitCameraRig orbitRig_{};
