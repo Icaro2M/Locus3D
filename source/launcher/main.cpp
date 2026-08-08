@@ -62,6 +62,7 @@
 #include "kernel/manufacturing/analyzers/topology/WatertightAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/OrientationAnalyzer.h"
+#include "kernel/manufacturing/analyzers/topology/IslandAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1618,8 +1619,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing OrientationAnalyzer Smoke Test
-    //=============================================================================
+// Manufacturing IslandAnalyzer Smoke Test
+//=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1627,9 +1628,9 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing OrientationAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing IslandAnalyzer Smoke Test ===\n\n";
 
-        OrientationAnalyzer analyzer;
+        IslandAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
         // Metadata
@@ -1637,7 +1638,7 @@ int main(int argc, char** argv)
 
         std::cout << "=== Analyzer metadata ===\n";
 
-        if (analyzer.name() == "OrientationAnalyzer") {
+        if (analyzer.name() == "IslandAnalyzer") {
             std::cout
                 << "[OK] analyzer possui nome estavel\n";
         }
@@ -1647,325 +1648,352 @@ int main(int argc, char** argv)
         }
 
         //-------------------------------------------------------------------------
-        // Missing dependencies
+        // Missing mesh
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Missing dependencies ===\n";
+        std::cout << "\n=== Missing mesh ===\n";
+
+        AnalysisContext missingContext;
+        AnalysisReport missingReport;
+
+        analyzer.analyze(
+            missingContext,
+            missingReport);
+
+        if (!missingReport.has_issues() &&
+            !missingReport.metrics()
+            .has_connected_component_count()) {
+
+            std::cout
+                << "[OK] contexto sem LEM nao produz resultados\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] analyzer executou sem LEM\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Empty mesh
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Empty mesh ===\n";
+
+        LEM emptyMesh;
 
         AnalysisContext emptyContext;
+        emptyContext.mesh = &emptyMesh;
+
         AnalysisReport emptyReport;
 
         analyzer.analyze(
             emptyContext,
             emptyReport);
 
-        if (!emptyReport.has_issues()) {
+        if (!emptyReport.has_issues() &&
+            emptyReport.metrics()
+            .has_connected_component_count() &&
+            emptyReport.metrics()
+            .connectedComponentCount.value() == 0) {
+
             std::cout
-                << "[OK] contexto vazio nao gera orientation issue\n";
+                << "[OK] LEM vazia possui zero componentes de superficie\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem dependencias\n";
-        }
-
-        LEM dependencyMesh;
-
-        AnalysisContext meshOnlyContext;
-        meshOnlyContext.mesh = &dependencyMesh;
-
-        AnalysisReport meshOnlyReport;
-
-        analyzer.analyze(
-            meshOnlyContext,
-            meshOnlyReport);
-
-        if (!meshOnlyReport.has_issues()) {
-            std::cout
-                << "[OK] LEM sem AnalysisMesh nao gera diagnostico\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] analyzer executou sem AnalysisMesh\n";
+                << "[FAIL] resultado da LEM vazia inconsistente\n";
         }
 
         //-------------------------------------------------------------------------
-        // Correct outward tetrahedron
+        // Single component
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Outward tetrahedron ===\n";
+        std::cout << "\n=== Single connected component ===\n";
 
-        LEM outwardMesh;
+        LEM connectedMesh;
 
-        const VertexHandle o0 =
-            outwardMesh.add_vertex(
+        const VertexHandle c0 =
+            connectedMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle o1 =
-            outwardMesh.add_vertex(
+        const VertexHandle c1 =
+            connectedMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle o2 =
-            outwardMesh.add_vertex(
+        const VertexHandle c2 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f });
+
+        const VertexHandle c3 =
+            connectedMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle o3 =
-            outwardMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
+        const FaceHandle connectedA =
+            connectedMesh.add_face(
+                { c0, c1, c2 });
 
-        outwardMesh.add_face({ o0, o2, o1 });
-        outwardMesh.add_face({ o0, o1, o3 });
-        outwardMesh.add_face({ o1, o2, o3 });
-        outwardMesh.add_face({ o2, o0, o3 });
+        const FaceHandle connectedB =
+            connectedMesh.add_face(
+                { c0, c2, c3 });
 
-        const AnalysisMesh outwardAnalysis =
-            AnalysisMeshBuilder::build(
-                outwardMesh);
+        AnalysisContext connectedContext;
+        connectedContext.mesh =
+            &connectedMesh;
 
-        AnalysisContext outwardContext;
-        outwardContext.mesh = &outwardMesh;
-        outwardContext.analysisMesh =
-            &outwardAnalysis;
-
-        AnalysisReport outwardReport;
+        AnalysisReport connectedReport;
 
         analyzer.analyze(
-            outwardContext,
-            outwardReport);
+            connectedContext,
+            connectedReport);
 
-        if (!outwardReport.has_issue_type(
-            PrintIssueType::InvertedOrientation)) {
+        if (connectedA.is_valid() &&
+            connectedB.is_valid() &&
+            connectedReport.metrics()
+            .connectedComponentCount.value() == 1 &&
+            !connectedReport.has_issue_type(
+                PrintIssueType::DisconnectedIsland)) {
 
             std::cout
-                << "[OK] tetraedro outward nao foi marcado como invertido\n";
+                << "[OK] faces conectadas formam uma unica componente\n";
         }
         else {
             std::cout
-                << "[FAIL] tetraedro outward foi classificado como invertido\n";
+                << "[FAIL] componente conectada foi classificada incorretamente\n";
         }
 
         //-------------------------------------------------------------------------
-        // Fully inverted tetrahedron
+        // Principal component + one island
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Inverted tetrahedron ===\n";
+        std::cout << "\n=== Principal component and island ===\n";
 
-        LEM invertedMesh;
+        LEM islandMesh;
 
-        const VertexHandle i0 =
-            invertedMesh.add_vertex(
+        // Principal component: two connected triangles.
+        const VertexHandle p0 =
+            islandMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle p1 =
+            islandMesh.add_vertex(
+                glm::vec3{ 2.0f, 0.0f, 0.0f });
+
+        const VertexHandle p2 =
+            islandMesh.add_vertex(
+                glm::vec3{ 2.0f, 2.0f, 0.0f });
+
+        const VertexHandle p3 =
+            islandMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.0f });
+
+        const FaceHandle principalA =
+            islandMesh.add_face(
+                { p0, p1, p2 });
+
+        const FaceHandle principalB =
+            islandMesh.add_face(
+                { p0, p2, p3 });
+
+        // Disconnected island: one triangle.
+        const VertexHandle i0 =
+            islandMesh.add_vertex(
+                glm::vec3{ 5.0f, 0.0f, 0.0f });
 
         const VertexHandle i1 =
-            invertedMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+            islandMesh.add_vertex(
+                glm::vec3{ 6.0f, 0.0f, 0.0f });
 
         const VertexHandle i2 =
-            invertedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+            islandMesh.add_vertex(
+                glm::vec3{ 5.0f, 1.0f, 0.0f });
 
-        const VertexHandle i3 =
-            invertedMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
+        const FaceHandle islandFace =
+            islandMesh.add_face(
+                { i0, i1, i2 });
 
-        // Every face uses the reverse winding of the outward fixture.
-        invertedMesh.add_face({ i1, i2, i0 });
-        invertedMesh.add_face({ i3, i1, i0 });
-        invertedMesh.add_face({ i3, i2, i1 });
-        invertedMesh.add_face({ i3, i0, i2 });
+        AnalysisContext islandContext;
+        islandContext.mesh =
+            &islandMesh;
 
-        const AnalysisMesh invertedAnalysis =
-            AnalysisMeshBuilder::build(
-                invertedMesh);
-
-        AnalysisContext invertedContext;
-        invertedContext.mesh =
-            &invertedMesh;
-        invertedContext.analysisMesh =
-            &invertedAnalysis;
-
-        AnalysisReport invertedReport;
+        AnalysisReport islandReport;
 
         analyzer.analyze(
-            invertedContext,
-            invertedReport);
+            islandContext,
+            islandReport);
 
-        if (invertedReport.issue_count(
-            PrintIssueType::InvertedOrientation) == 1 &&
-            invertedReport.error_count() == 1) {
+        if (principalA.is_valid() &&
+            principalB.is_valid() &&
+            islandFace.is_valid() &&
+            islandReport.metrics()
+            .connectedComponentCount.value() == 2) {
 
             std::cout
-                << "[OK] casca completamente invertida foi detectada\n";
+                << "[OK] duas componentes desconectadas foram identificadas\n";
         }
         else {
             std::cout
-                << "[FAIL] casca invertida nao foi detectada\n";
+                << "[FAIL] contagem de componentes incorreta\n";
         }
 
-        if (invertedReport.issue_count() == 1) {
-            const PrintIssue& issue =
-                invertedReport.issues().front();
+        if (islandReport.issue_count(
+            PrintIssueType::DisconnectedIsland) == 1 &&
+            islandReport.warning_count() == 1) {
 
-            if (issue.location.faces.size() == 4) {
+            std::cout
+                << "[OK] apenas a componente secundaria gera island issue\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] quantidade de island issues incorreta\n";
+        }
+
+        if (islandReport.issue_count() == 1) {
+            const PrintIssue& issue =
+                islandReport.issues().front();
+
+            const bool containsIslandFace =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    islandFace) !=
+                issue.location.faces.end();
+
+            const bool containsPrincipalA =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    principalA) !=
+                issue.location.faces.end();
+
+            const bool containsPrincipalB =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    principalB) !=
+                issue.location.faces.end();
+
+            if (issue.location.faces.size() == 1 &&
+                issue.location.edges.size() == 3 &&
+                issue.location.vertices.size() == 3 &&
+                containsIslandFace &&
+                !containsPrincipalA &&
+                !containsPrincipalB) {
+
                 std::cout
-                    << "[OK] issue preserva todas as faces da casca invertida\n";
+                    << "[OK] issue fica restrito a ilha desconectada\n";
             }
             else {
                 std::cout
-                    << "[FAIL] localizacao da casca invertida incompleta\n";
+                    << "[FAIL] localizacao da ilha contaminou componente principal\n";
             }
 
             if (issue.has_measurement() &&
                 issue.measurement->kind ==
-                IssueMeasurementKind::Volume &&
-                issue.measurement->value < 0.0) {
+                IssueMeasurementKind::Count &&
+                issue.measurement->value == 1.0 &&
+                !issue.measurement->has_limit()) {
 
                 std::cout
-                    << "[OK] orientation issue preserva volume assinado negativo\n";
+                    << "[OK] issue registra quantidade de faces da ilha\n";
             }
             else {
                 std::cout
-                    << "[FAIL] volume assinado do issue inconsistente\n";
+                    << "[FAIL] metrica da ilha inconsistente\n";
             }
         }
 
         //-------------------------------------------------------------------------
-        // Open surface must not be classified
+        // Multiple independent islands
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Open surface separation ===\n";
+        std::cout << "\n=== Multiple islands ===\n";
 
-        LEM openMesh;
+        LEM multipleMesh;
 
-        const VertexHandle p0 =
-            openMesh.add_vertex(
+        // Main component: quad = one face, but we make it larger in face count
+        // using two triangles.
+        const VertexHandle m0 =
+            multipleMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle p1 =
-            openMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle m1 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 2.0f, 0.0f, 0.0f });
 
-        const VertexHandle p2 =
-            openMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        const VertexHandle m2 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 2.0f, 2.0f, 0.0f });
 
-        openMesh.add_face(
-            { p0, p2, p1 });
+        const VertexHandle m3 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.0f });
 
-        const AnalysisMesh openAnalysis =
-            AnalysisMeshBuilder::build(
-                openMesh);
+        multipleMesh.add_face(
+            { m0, m1, m2 });
 
-        AnalysisContext openContext;
-        openContext.mesh = &openMesh;
-        openContext.analysisMesh =
-            &openAnalysis;
+        multipleMesh.add_face(
+            { m0, m2, m3 });
 
-        AnalysisReport openReport;
-
-        analyzer.analyze(
-            openContext,
-            openReport);
-
-        if (!openReport.has_issue_type(
-            PrintIssueType::InvertedOrientation)) {
-
-            std::cout
-                << "[OK] superficie aberta nao recebe orientacao global arbitraria\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] superficie aberta foi classificada como inside-out\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Two disconnected closed shells
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Independent closed components ===\n";
-
-        LEM multiMesh;
-
-        // Correct tetrahedron.
+        // Island A.
         const VertexHandle a0 =
-            multiMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 0.0f });
-        const VertexHandle a1 =
-            multiMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
-        const VertexHandle a2 =
-            multiMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-        const VertexHandle a3 =
-            multiMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
-
-        multiMesh.add_face({ a0, a2, a1 });
-        multiMesh.add_face({ a0, a1, a3 });
-        multiMesh.add_face({ a1, a2, a3 });
-        multiMesh.add_face({ a2, a0, a3 });
-
-        // Inverted tetrahedron translated along X.
-        const VertexHandle b0 =
-            multiMesh.add_vertex(
-                glm::vec3{ 3.0f, 0.0f, 0.0f });
-        const VertexHandle b1 =
-            multiMesh.add_vertex(
+            multipleMesh.add_vertex(
                 glm::vec3{ 4.0f, 0.0f, 0.0f });
+
+        const VertexHandle a1 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 5.0f, 0.0f, 0.0f });
+
+        const VertexHandle a2 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 4.0f, 1.0f, 0.0f });
+
+        multipleMesh.add_face(
+            { a0, a1, a2 });
+
+        // Island B.
+        const VertexHandle b0 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 7.0f, 0.0f, 0.0f });
+
+        const VertexHandle b1 =
+            multipleMesh.add_vertex(
+                glm::vec3{ 8.0f, 0.0f, 0.0f });
+
         const VertexHandle b2 =
-            multiMesh.add_vertex(
-                glm::vec3{ 3.0f, 1.0f, 0.0f });
-        const VertexHandle b3 =
-            multiMesh.add_vertex(
-                glm::vec3{ 3.0f, 0.0f, 1.0f });
+            multipleMesh.add_vertex(
+                glm::vec3{ 7.0f, 1.0f, 0.0f });
 
-        multiMesh.add_face({ b1, b2, b0 });
-        multiMesh.add_face({ b3, b1, b0 });
-        multiMesh.add_face({ b3, b2, b1 });
-        multiMesh.add_face({ b3, b0, b2 });
+        multipleMesh.add_face(
+            { b0, b1, b2 });
 
-        const AnalysisMesh multiAnalysis =
-            AnalysisMeshBuilder::build(
-                multiMesh);
+        AnalysisContext multipleContext;
+        multipleContext.mesh =
+            &multipleMesh;
 
-        AnalysisContext multiContext;
-        multiContext.mesh = &multiMesh;
-        multiContext.analysisMesh =
-            &multiAnalysis;
-
-        AnalysisReport multiReport;
+        AnalysisReport multipleReport;
 
         analyzer.analyze(
-            multiContext,
-            multiReport);
+            multipleContext,
+            multipleReport);
 
-        if (multiReport.issue_count(
-            PrintIssueType::InvertedOrientation) == 1) {
+        if (multipleReport.metrics()
+            .connectedComponentCount.value() == 3 &&
+            multipleReport.issue_count(
+                PrintIssueType::DisconnectedIsland) == 2) {
 
             std::cout
-                << "[OK] apenas a casca invertida gera orientation issue\n";
+                << "[OK] tres componentes geram duas ilhas secundarias\n";
         }
         else {
             std::cout
-                << "[FAIL] componentes independentes nao foram classificados corretamente\n";
-        }
-
-        if (multiReport.issue_count() == 1 &&
-            multiReport.issues().front().location.faces.size() == 4) {
-
-            std::cout
-                << "[OK] issue fica restrito ao componente invertido\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] orientation issue contaminou outra casca\n";
+                << "[FAIL] multiplas ilhas foram classificadas incorretamente\n";
         }
 
         std::cout
-            << "\n=== Manufacturing OrientationAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing IslandAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing OrientationAnalyzer Smoke Test
+    // End Manufacturing IslandAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

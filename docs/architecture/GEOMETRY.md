@@ -313,7 +313,7 @@ source\kernel
     |   |       WatertightAnalyzer.h
     |   |       NormalConsistencyAnalyzer.h
     |   |       OrientationAnalyzer.h
-    |   |       IslandAnalyzer.h [!]
+    |   |       IslandAnalyzer.h
     |   |
     |   +---geometry
     |   |       DegenerateGeometryAnalyzer.h [!]
