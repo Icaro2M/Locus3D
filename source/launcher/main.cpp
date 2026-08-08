@@ -66,6 +66,7 @@
 #include "kernel/manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/VolumeAnalyzer.h"
+#include "kernel/manufacturing/analyzers/geometry/MinimumFeatureSizeAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1622,8 +1623,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing VolumeAnalyzer Smoke Test
-    //=============================================================================
+  // Manufacturing MinimumFeatureSizeAnalyzer Smoke Test
+  //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1631,9 +1632,9 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing VolumeAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing MinimumFeatureSizeAnalyzer Smoke Test ===\n\n";
 
-        VolumeAnalyzer analyzer;
+        MinimumFeatureSizeAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
         // Metadata
@@ -1641,7 +1642,7 @@ int main(int argc, char** argv)
 
         std::cout << "=== Analyzer metadata ===\n";
 
-        if (analyzer.name() == "VolumeAnalyzer") {
+        if (analyzer.name() == "MinimumFeatureSizeAnalyzer") {
             std::cout
                 << "[OK] analyzer possui nome estavel\n";
         }
@@ -1663,310 +1664,419 @@ int main(int argc, char** argv)
             missingContext,
             missingReport);
 
-        if (!missingReport.metrics().has_volume()) {
+        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] contexto vazio nao inventa volume\n";
+                << "[OK] contexto vazio nao gera feature issue\n";
         }
         else {
             std::cout
-                << "[FAIL] volume apareceu sem geometria\n";
+                << "[FAIL] analyzer executou sem dependencias\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Unit tetrahedron
-        //-------------------------------------------------------------------------
+        LEM noProfileMesh;
 
-        std::cout << "\n=== Unit tetrahedron ===\n";
-
-        LEM tetrahedron;
-
-        const VertexHandle t0 =
-            tetrahedron.add_vertex(
+        const VertexHandle np0 =
+            noProfileMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle t1 =
-            tetrahedron.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle np1 =
+            noProfileMesh.add_vertex(
+                glm::vec3{ 0.1f, 0.0f, 0.0f });
 
-        const VertexHandle t2 =
-            tetrahedron.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        noProfileMesh.find_or_create_edge(
+            np0,
+            np1);
 
-        const VertexHandle t3 =
-            tetrahedron.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
+        AnalysisContext noProfileContext;
+        noProfileContext.mesh =
+            &noProfileMesh;
 
-        tetrahedron.add_face({ t0, t2, t1 });
-        tetrahedron.add_face({ t0, t1, t3 });
-        tetrahedron.add_face({ t1, t2, t3 });
-        tetrahedron.add_face({ t2, t0, t3 });
-
-        const AnalysisMesh tetraAnalysis =
-            AnalysisMeshBuilder::build(
-                tetrahedron);
-
-        AnalysisContext tetraContext;
-        tetraContext.mesh =
-            &tetrahedron;
-        tetraContext.analysisMesh =
-            &tetraAnalysis;
-
-        AnalysisReport tetraReport;
+        AnalysisReport noProfileReport;
 
         analyzer.analyze(
-            tetraContext,
-            tetraReport);
+            noProfileContext,
+            noProfileReport);
 
-        const double expectedTetraVolume =
-            1.0 / 6.0;
-
-        if (tetraReport.metrics().has_volume() &&
-            std::abs(
-                tetraReport.metrics().volume.value() -
-                expectedTetraVolume) < 1.0e-9) {
-
+        if (!noProfileReport.has_issues()) {
             std::cout
-                << "[OK] tetraedro unitario possui volume 1/6\n";
+                << "[OK] ausencia de PrintProfile impede comparacao arbitraria\n";
         }
         else {
             std::cout
-                << "[FAIL] volume do tetraedro incorreto\n";
+                << "[FAIL] analyzer inventou limite sem profile\n";
         }
 
         //-------------------------------------------------------------------------
-        // Inverted closed shell still has positive reported physical volume
+        // Profile without feature-size limit
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Inverted tetrahedron ===\n";
+        std::cout << "\n=== Profile without limit ===\n";
 
-        LEM inverted;
+        FDMProfile noLimitFdm;
+        noLimitFdm.name =
+            "No feature limit";
 
-        const VertexHandle i0 =
-            inverted.add_vertex(
+        PrintProfile noLimitProfile{
+            noLimitFdm
+        };
+
+        AnalysisContext noLimitContext;
+        noLimitContext.mesh =
+            &noProfileMesh;
+        noLimitContext.profile =
+            &noLimitProfile;
+
+        AnalysisReport noLimitReport;
+
+        analyzer.analyze(
+            noLimitContext,
+            noLimitReport);
+
+        if (!noLimitReport.has_issues()) {
+            std::cout
+                << "[OK] limite ausente nao e interpretado como zero\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] profile sem limite gerou issue\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Configured profile
+        //-------------------------------------------------------------------------
+
+        FDMProfile fdm;
+        fdm.name =
+            "Minimum Feature Test";
+
+        fdm.limits.minimumFeatureSize =
+            0.5;
+
+        PrintProfile profile{ fdm };
+
+        //-------------------------------------------------------------------------
+        // Feature above limit
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Feature above limit ===\n";
+
+        LEM largeMesh;
+
+        const VertexHandle l0 =
+            largeMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle i1 =
-            inverted.add_vertex(
+        const VertexHandle l1 =
+            largeMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle i2 =
-            inverted.add_vertex(
+        const VertexHandle l2 =
+            largeMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle i3 =
-            inverted.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
+        largeMesh.add_face(
+            { l0, l1, l2 });
 
-        inverted.add_face({ i1, i2, i0 });
-        inverted.add_face({ i3, i1, i0 });
-        inverted.add_face({ i3, i2, i1 });
-        inverted.add_face({ i3, i0, i2 });
+        AnalysisContext largeContext;
+        largeContext.mesh =
+            &largeMesh;
+        largeContext.profile =
+            &profile;
 
-        const AnalysisMesh invertedAnalysis =
-            AnalysisMeshBuilder::build(
-                inverted);
-
-        AnalysisContext invertedContext;
-        invertedContext.mesh =
-            &inverted;
-        invertedContext.analysisMesh =
-            &invertedAnalysis;
-
-        AnalysisReport invertedReport;
+        AnalysisReport largeReport;
 
         analyzer.analyze(
-            invertedContext,
-            invertedReport);
+            largeContext,
+            largeReport);
 
-        if (invertedReport.metrics().has_volume() &&
-            std::abs(
-                invertedReport.metrics().volume.value() -
-                expectedTetraVolume) < 1.0e-9) {
+        if (!largeReport.has_issue_type(
+            PrintIssueType::MinimumFeatureSize)) {
 
             std::cout
-                << "[OK] volume fisico permanece positivo em casca invertida\n";
+                << "[OK] features acima do limite nao sao reportadas\n";
         }
         else {
             std::cout
-                << "[FAIL] orientation contaminou metrica de volume\n";
+                << "[FAIL] geometria grande gerou falso positivo\n";
         }
 
         //-------------------------------------------------------------------------
-        // Open surface
+        // One undersized edge in a surface
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Open surface ===\n";
+        std::cout << "\n=== One undersized feature ===\n";
 
-        LEM openMesh;
+        LEM smallMesh;
 
-        const VertexHandle o0 =
-            openMesh.add_vertex(
+        const VertexHandle s0 =
+            smallMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle o1 =
-            openMesh.add_vertex(
-                glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle s1 =
+            smallMesh.add_vertex(
+                glm::vec3{ 0.2f, 0.0f, 0.0f });
 
-        const VertexHandle o2 =
-            openMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
+        const VertexHandle s2 =
+            smallMesh.add_vertex(
+                glm::vec3{ 0.0f, 2.0f, 0.0f });
 
-        openMesh.add_face(
-            { o0, o1, o2 });
+        const FaceHandle smallFace =
+            smallMesh.add_face(
+                { s0, s1, s2 });
 
-        const AnalysisMesh openAnalysis =
-            AnalysisMeshBuilder::build(
-                openMesh);
+        const EdgeHandle shortEdge =
+            smallMesh.find_edge(
+                s0,
+                s1);
 
-        AnalysisContext openContext;
-        openContext.mesh =
-            &openMesh;
-        openContext.analysisMesh =
-            &openAnalysis;
+        AnalysisContext smallContext;
+        smallContext.mesh =
+            &smallMesh;
+        smallContext.profile =
+            &profile;
 
-        AnalysisReport openReport;
+        AnalysisReport smallReport;
 
         analyzer.analyze(
-            openContext,
-            openReport);
+            smallContext,
+            smallReport);
 
-        if (!openReport.metrics().has_volume()) {
+        if (smallFace.is_valid() &&
+            shortEdge.is_valid() &&
+            smallReport.issue_count(
+                PrintIssueType::MinimumFeatureSize) == 1 &&
+            smallReport.warning_count() == 1) {
+
             std::cout
-                << "[OK] superficie aberta nao recebe volume fechado\n";
+                << "[OK] edge abaixo do limite foi detectada\n";
         }
         else {
             std::cout
-                << "[FAIL] superficie aberta recebeu volume invalido\n";
+                << "[FAIL] feature pequena nao foi reportada corretamente\n";
+        }
+
+        if (smallReport.issue_count() == 1) {
+            const PrintIssue& issue =
+                smallReport.issues().front();
+
+            const bool hasShortEdge =
+                std::find(
+                    issue.location.edges.begin(),
+                    issue.location.edges.end(),
+                    shortEdge) !=
+                issue.location.edges.end();
+
+            if (hasShortEdge &&
+                issue.location.vertices.size() == 2 &&
+                issue.location.faces.size() == 1 &&
+                issue.location.has_samples() &&
+                issue.location.has_region()) {
+
+                std::cout
+                    << "[OK] feature preserva edge, vertices, face e regiao visual\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] localizacao visual da feature incompleta\n";
+            }
+
+            if (issue.has_measurement() &&
+                issue.measurement->kind ==
+                IssueMeasurementKind::Length &&
+                std::abs(
+                    issue.measurement->value -
+                    0.2) < 1.0e-6 &&
+                issue.measurement->has_limit() &&
+                std::abs(
+                    issue.measurement->limit.value() -
+                    0.5) < 1.0e-9) {
+
+                std::cout
+                    << "[OK] issue preserva tamanho medido e limite do profile\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] medida da feature inconsistente\n";
+            }
         }
 
         //-------------------------------------------------------------------------
-        // Cube
+        // Connected short edges become one feature
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Closed cube ===\n";
+        std::cout << "\n=== Connected undersized edges ===\n";
 
-        LEM cube;
+        LEM connectedMesh;
 
-        const VertexHandle c000 =
-            cube.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, -1.0f });
+        const VertexHandle c0 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle c100 =
-            cube.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, -1.0f });
+        const VertexHandle c1 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 0.2f, 0.0f, 0.0f });
 
-        const VertexHandle c110 =
-            cube.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, -1.0f });
+        const VertexHandle c2 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 0.2f, 0.2f, 0.0f });
 
-        const VertexHandle c010 =
-            cube.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, -1.0f });
+        const VertexHandle c3 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 2.0f, 2.0f, 0.0f });
 
-        const VertexHandle c001 =
-            cube.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 1.0f });
+        connectedMesh.find_or_create_edge(
+            c0,
+            c1);
 
-        const VertexHandle c101 =
-            cube.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 1.0f });
+        connectedMesh.find_or_create_edge(
+            c1,
+            c2);
 
-        const VertexHandle c111 =
-            cube.add_vertex(
+        connectedMesh.find_or_create_edge(
+            c2,
+            c3);
+
+        AnalysisContext connectedContext;
+        connectedContext.mesh =
+            &connectedMesh;
+        connectedContext.profile =
+            &profile;
+
+        AnalysisReport connectedReport;
+
+        analyzer.analyze(
+            connectedContext,
+            connectedReport);
+
+        if (connectedReport.issue_count(
+            PrintIssueType::MinimumFeatureSize) == 1) {
+
+            std::cout
+                << "[OK] edges pequenas conectadas formam uma unica feature\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] feature conectada foi fragmentada em varios issues\n";
+        }
+
+        if (connectedReport.issue_count() == 1 &&
+            connectedReport.issues()
+            .front().location.edges.size() == 2 &&
+            connectedReport.issues()
+            .front().location.vertices.size() == 3) {
+
+            std::cout
+                << "[OK] feature conectada preserva todo o pequeno detalhe\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] localizacao da feature conectada inconsistente\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Disconnected short features
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Independent undersized features ===\n";
+
+        LEM independentMesh;
+
+        const VertexHandle a0 =
+            independentMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle a1 =
+            independentMesh.add_vertex(
+                glm::vec3{ 0.2f, 0.0f, 0.0f });
+
+        independentMesh.find_or_create_edge(
+            a0,
+            a1);
+
+        const VertexHandle b0 =
+            independentMesh.add_vertex(
+                glm::vec3{ 5.0f, 0.0f, 0.0f });
+
+        const VertexHandle b1 =
+            independentMesh.add_vertex(
+                glm::vec3{ 5.3f, 0.0f, 0.0f });
+
+        independentMesh.find_or_create_edge(
+            b0,
+            b1);
+
+        AnalysisContext independentContext;
+        independentContext.mesh =
+            &independentMesh;
+        independentContext.profile =
+            &profile;
+
+        AnalysisReport independentReport;
+
+        analyzer.analyze(
+            independentContext,
+            independentReport);
+
+        if (independentReport.issue_count(
+            PrintIssueType::MinimumFeatureSize) == 2) {
+
+            std::cout
+                << "[OK] features pequenas desconectadas geram issues independentes\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] features independentes foram agrupadas incorretamente\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Degenerate geometry remains separate
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Degenerate separation ===\n";
+
+        LEM degenerateMesh;
+
+        const VertexHandle d0 =
+            degenerateMesh.add_vertex(
                 glm::vec3{ 1.0f, 1.0f, 1.0f });
 
-        const VertexHandle c011 =
-            cube.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 1.0f });
+        const VertexHandle d1 =
+            degenerateMesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 1.0f });
 
-        cube.add_face(
-            { c000, c010, c110, c100 });
+        degenerateMesh.find_or_create_edge(
+            d0,
+            d1);
 
-        cube.add_face(
-            { c001, c101, c111, c011 });
+        AnalysisContext degenerateContext;
+        degenerateContext.mesh =
+            &degenerateMesh;
+        degenerateContext.profile =
+            &profile;
 
-        cube.add_face(
-            { c000, c100, c101, c001 });
-
-        cube.add_face(
-            { c100, c110, c111, c101 });
-
-        cube.add_face(
-            { c110, c010, c011, c111 });
-
-        cube.add_face(
-            { c010, c000, c001, c011 });
-
-        const AnalysisMesh cubeAnalysis =
-            AnalysisMeshBuilder::build(
-                cube);
-
-        AnalysisContext cubeContext;
-        cubeContext.mesh =
-            &cube;
-        cubeContext.analysisMesh =
-            &cubeAnalysis;
-
-        AnalysisReport cubeReport;
+        AnalysisReport degenerateReport;
 
         analyzer.analyze(
-            cubeContext,
-            cubeReport);
+            degenerateContext,
+            degenerateReport);
 
-        if (cubeReport.metrics().has_volume() &&
-            std::abs(
-                cubeReport.metrics().volume.value() -
-                8.0) < 1.0e-9) {
+        if (!degenerateReport.has_issue_type(
+            PrintIssueType::MinimumFeatureSize)) {
 
             std::cout
-                << "[OK] cubo 2x2x2 possui volume 8\n";
+                << "[OK] edge degenerada continua responsabilidade do DegenerateGeometryAnalyzer\n";
         }
         else {
             std::cout
-                << "[FAIL] volume do cubo incorreto\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Existing metrics and issues are preserved
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Report preservation ===\n";
-
-        AnalysisReport preservationReport;
-
-        preservationReport.metrics().surfaceArea =
-            123.0;
-
-        preservationReport.add_issue(
-            PrintIssue{
-                PrintIssueType::ThinWall,
-                IssueSeverity::Warning,
-                "Pre-existing test issue."
-            });
-
-        analyzer.analyze(
-            tetraContext,
-            preservationReport);
-
-        if (preservationReport.issue_count() == 1 &&
-            preservationReport.metrics().has_surface_area() &&
-            preservationReport.metrics().surfaceArea.value() == 123.0 &&
-            preservationReport.metrics().has_volume()) {
-
-            std::cout
-                << "[OK] VolumeAnalyzer preserva report existente\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] VolumeAnalyzer alterou dados nao relacionados\n";
+                << "[FAIL] feature analyzer duplicou geometria degenerada\n";
         }
 
         std::cout
-            << "\n=== Manufacturing VolumeAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing MinimumFeatureSizeAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing VolumeAnalyzer Smoke Test
+    // End Manufacturing MinimumFeatureSizeAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
