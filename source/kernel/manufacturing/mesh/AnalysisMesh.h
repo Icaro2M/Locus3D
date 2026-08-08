@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "kernel/geometry/spatial/BVH.h"
 #include "kernel/manufacturing/mesh/MeshHandleMapping.h"
 #include "kernel/math/Bounds.h"
 
@@ -61,8 +62,12 @@ namespace locus::kernel::manufacturing {
      * analyzers.
      *
      * AnalysisMesh is reconstructed from the editable LEM and must never be
-     * treated as authoritative editable geometry. Its topology is optimized
-     * for analysis rather than editing.
+     * treated as authoritative editable geometry.
+     *
+     * The mesh owns both its canonical triangulation and a BVH built from
+     * exactly that triangulation. Therefore geometric analyzers cannot
+     * accidentally observe a different polygon triangulation through the
+     * acceleration structure.
      */
     class AnalysisMesh {
     public:
@@ -73,13 +78,12 @@ namespace locus::kernel::manufacturing {
          */
         [[nodiscard]] bool empty() const noexcept
         {
-            return vertices_.empty() && triangles_.empty();
+            return vertices_.empty() &&
+                triangles_.empty();
         }
 
         /**
          * @brief Returns the number of derived vertices.
-         *
-         * @return Analysis vertex count.
          */
         [[nodiscard]] std::size_t vertex_count() const noexcept
         {
@@ -88,8 +92,6 @@ namespace locus::kernel::manufacturing {
 
         /**
          * @brief Returns the number of derived triangles.
-         *
-         * @return Analysis triangle count.
          */
         [[nodiscard]] std::size_t triangle_count() const noexcept
         {
@@ -98,9 +100,6 @@ namespace locus::kernel::manufacturing {
 
         /**
          * @brief Returns a derived vertex by index.
-         *
-         * @param index Vertex index.
-         * @return Read-only analysis vertex.
          */
         [[nodiscard]] const AnalysisVertex& vertex(
             AnalysisIndex index) const
@@ -110,9 +109,6 @@ namespace locus::kernel::manufacturing {
 
         /**
          * @brief Returns a derived triangle by index.
-         *
-         * @param index Triangle index.
-         * @return Read-only analysis triangle.
          */
         [[nodiscard]] const AnalysisTriangle& triangle(
             AnalysisIndex index) const
@@ -122,8 +118,6 @@ namespace locus::kernel::manufacturing {
 
         /**
          * @brief Returns all analysis vertices.
-         *
-         * @return Read-only vertex collection.
          */
         [[nodiscard]] const std::vector<AnalysisVertex>&
             vertices() const noexcept
@@ -133,8 +127,6 @@ namespace locus::kernel::manufacturing {
 
         /**
          * @brief Returns all analysis triangles.
-         *
-         * @return Read-only triangle collection.
          */
         [[nodiscard]] const std::vector<AnalysisTriangle>&
             triangles() const noexcept
@@ -143,30 +135,25 @@ namespace locus::kernel::manufacturing {
         }
 
         /**
-         * @brief Returns mappings from derived primitives to editable LEM
-         * elements.
-         *
-         * @return Read-only handle mapping.
+         * @brief Returns mappings from analysis triangles to source LEM faces.
          */
-        [[nodiscard]] const MeshHandleMapping& mapping() const noexcept
+        [[nodiscard]] const MeshHandleMapping&
+            mapping() const noexcept
         {
             return mapping_;
         }
 
         /**
-         * @brief Returns object-space bounds of the derived analysis geometry.
-         *
-         * @return Analysis mesh bounds.
+         * @brief Returns object-space bounds of the analysis geometry.
          */
-        [[nodiscard]] const math::Bounds& bounds() const noexcept
+        [[nodiscard]] const math::Bounds&
+            bounds() const noexcept
         {
             return bounds_;
         }
 
         /**
-         * @brief Checks whether the analysis mesh has valid spatial bounds.
-         *
-         * @return True when at least one position contributed to the bounds.
+         * @brief Checks whether geometry bounds are available.
          */
         [[nodiscard]] bool has_bounds() const
         {
@@ -174,14 +161,39 @@ namespace locus::kernel::manufacturing {
         }
 
         /**
-         * @brief Removes all derived geometry and source mappings.
+         * @brief Returns the spatial acceleration hierarchy.
+         *
+         * The BVH is built from this AnalysisMesh's canonical triangles.
+         */
+        [[nodiscard]] const geometry::BVH&
+            bvh() const noexcept
+        {
+            return bvh_;
+        }
+
+        /**
+         * @brief Checks whether a usable spatial hierarchy exists.
+         *
+         * @return True when the BVH contains valid queryable geometry.
+         */
+        [[nodiscard]] bool has_bvh() const
+        {
+            return bvh_.is_valid();
+        }
+
+        /**
+         * @brief Removes all derived geometry, mappings, bounds and spatial
+         * acceleration.
          */
         void clear()
         {
             vertices_.clear();
             triangles_.clear();
+
             mapping_.clear();
+
             bounds_.reset();
+            bvh_.clear();
         }
 
     private:
@@ -197,7 +209,8 @@ namespace locus::kernel::manufacturing {
             const AnalysisVertex& vertex)
         {
             const AnalysisIndex index =
-                static_cast<AnalysisIndex>(vertices_.size());
+                static_cast<AnalysisIndex>(
+                    vertices_.size());
 
             vertices_.push_back(vertex);
             bounds_.expand(vertex.position);
@@ -206,10 +219,7 @@ namespace locus::kernel::manufacturing {
         }
 
         /**
-         * @brief Appends a derived triangle and its source-face mapping.
-         *
-         * @param triangle Triangle to append.
-         * @param sourceFace Editable LEM face represented by the triangle.
+         * @brief Appends a derived triangle and source-face mapping.
          */
         void add_triangle(
             const AnalysisTriangle& triangle,
@@ -224,7 +234,10 @@ namespace locus::kernel::manufacturing {
 
         MeshHandleMapping mapping_{};
 
-        math::Bounds bounds_ = math::Bounds::empty();
+        math::Bounds bounds_ =
+            math::Bounds::empty();
+
+        geometry::BVH bvh_{};
     };
 
 }

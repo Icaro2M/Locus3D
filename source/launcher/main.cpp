@@ -56,6 +56,8 @@
 #include "kernel/manufacturing/mesh/AnalysisMesh.h"
 #include "kernel/manufacturing/mesh/AnalysisMeshBuilder.h"
 #include "kernel/manufacturing/mesh/MeshHandleMapping.h"
+#include "kernel/geometry/spatial/BVHQuery.h"
+#include "kernel/math/Ray.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1612,8 +1614,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing AnalysisMesh Smoke Test
-    //=============================================================================
+// Manufacturing AnalysisMesh BVH Smoke Test
+//=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1621,246 +1623,163 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing AnalysisMesh Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing AnalysisMesh BVH Smoke Test ===\n\n";
 
-        //-------------------------------------------------------------------------
-        // Empty mesh
-        //-------------------------------------------------------------------------
+        //---------------------------------------------------------------------
+        // Quad acceleration
+        //---------------------------------------------------------------------
 
-        std::cout << "=== Empty LEM ===\n";
+        std::cout << "=== Quad acceleration ===\n";
 
-        LEM emptyLem;
-
-        AnalysisMesh emptyAnalysis =
-            AnalysisMeshBuilder::build(emptyLem);
-
-        if (emptyAnalysis.empty() &&
-            emptyAnalysis.vertex_count() == 0 &&
-            emptyAnalysis.triangle_count() == 0 &&
-            emptyAnalysis.mapping().triangle_count() == 0 &&
-            !emptyAnalysis.has_bounds()) {
-            std::cout
-                << "[OK] LEM vazia gera AnalysisMesh vazia\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] AnalysisMesh vazia inconsistente\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Quad
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Quad fixture ===\n";
-
-        LEM quad;
+        LEM mesh;
 
         const VertexHandle v0 =
-            quad.add_vertex(glm::vec3{ -1.0f, -1.0f, 0.0f });
+            mesh.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, 0.0f });
 
         const VertexHandle v1 =
-            quad.add_vertex(glm::vec3{ 1.0f, -1.0f, 0.0f });
+            mesh.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, 0.0f });
 
         const VertexHandle v2 =
-            quad.add_vertex(glm::vec3{ 1.0f,  1.0f, 0.0f });
+            mesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f });
 
         const VertexHandle v3 =
-            quad.add_vertex(glm::vec3{ -1.0f,  1.0f, 0.0f });
+            mesh.add_vertex(
+                glm::vec3{ -1.0f, 1.0f, 0.0f });
 
-        const FaceHandle quadFace =
-            quad.add_face({ v0, v1, v2, v3 });
+        const FaceHandle face =
+            mesh.add_face({ v0, v1, v2, v3 });
 
-        if (quadFace.is_valid()) {
-            std::cout << "[OK] face quadrada criada\n";
-        }
-        else {
-            std::cout << "[FAIL] face quadrada nao foi criada\n";
-        }
+        const AnalysisMesh analysis =
+            AnalysisMeshBuilder::build(mesh);
 
-        const AnalysisMesh quadAnalysis =
-            AnalysisMeshBuilder::build(quad);
+        if (analysis.triangle_count() == 2 &&
+            analysis.has_bvh() &&
+            analysis.bvh().triangle_count() == 2) {
 
-        if (!quadAnalysis.empty() &&
-            quadAnalysis.vertex_count() == 4 &&
-            quadAnalysis.triangle_count() == 2) {
             std::cout
-                << "[OK] quad foi triangulado em dois triangulos\n";
+                << "[OK] BVH usa os dois triangulos da AnalysisMesh\n";
         }
         else {
             std::cout
-                << "[FAIL] triangulacao do quad inconsistente\n";
+                << "[FAIL] BVH da AnalysisMesh inconsistente\n";
         }
 
-        if (quadAnalysis.mapping().triangle_count() ==
-            quadAnalysis.triangle_count()) {
-            std::cout
-                << "[OK] todo triangulo possui mapeamento para a LEM\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] contagem de mappings nao acompanha triangulos\n";
-        }
+        bool allMappedToSourceFace = true;
 
-        bool allQuadTrianglesMapped = true;
+        for (const BVHTriangle& triangle :
+            analysis.bvh().triangles()) {
 
-        for (std::size_t i = 0;
-            i < quadAnalysis.triangle_count();
-            ++i) {
-
-            if (!quadAnalysis.mapping().has_triangle(i) ||
-                quadAnalysis.mapping().face_for_triangle(i) != quadFace) {
-                allQuadTrianglesMapped = false;
+            if (triangle.face != face) {
+                allMappedToSourceFace = false;
                 break;
             }
         }
 
-        if (allQuadTrianglesMapped) {
+        if (allMappedToSourceFace) {
             std::cout
-                << "[OK] dois triangulos apontam para a FaceHandle original\n";
+                << "[OK] BVH preserva FaceHandle original\n";
         }
         else {
             std::cout
-                << "[FAIL] source FaceHandle do quad foi perdido\n";
+                << "[FAIL] BVH perdeu FaceHandle original\n";
         }
 
-        if (quadAnalysis.has_bounds()) {
-            const glm::vec3 size =
-                quadAnalysis.bounds().size();
+        //---------------------------------------------------------------------
+        // Raycast through derived BVH
+        //---------------------------------------------------------------------
 
-            if (size.x == 2.0f &&
-                size.y == 2.0f &&
-                size.z == 0.0f) {
+        std::cout << "\n=== Raycast against AnalysisMesh BVH ===\n";
+
+        math::Ray ray;
+        ray.origin =
+            glm::vec3{ 0.0f, 0.0f, 2.0f };
+
+        ray.direction =
+            glm::vec3{ 0.0f, 0.0f, -1.0f };
+
+        const auto hit =
+            BVHQuery::raycast_faces(
+                analysis.bvh(),
+                ray);
+
+        if (hit.hit &&
+            hit.face == face) {
+
+            std::cout
+                << "[OK] raycast da AnalysisMesh encontra a face original\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] raycast da AnalysisMesh nao encontrou a face esperada\n";
+        }
+
+        //---------------------------------------------------------------------
+        // Bounds consistency
+        //---------------------------------------------------------------------
+
+        std::cout << "\n=== Bounds consistency ===\n";
+
+        if (analysis.has_bounds() &&
+            analysis.has_bvh() &&
+            analysis.bvh().bounds().is_valid()) {
+
+            const glm::vec3 analysisSize =
+                analysis.bounds().size();
+
+            const glm::vec3 bvhSize =
+                analysis.bvh().bounds().size();
+
+            if (analysisSize == bvhSize) {
                 std::cout
-                    << "[OK] bounds da AnalysisMesh estao corretos\n";
+                    << "[OK] bounds da AnalysisMesh e BVH coincidem\n";
             }
             else {
                 std::cout
-                    << "[FAIL] dimensoes dos bounds inconsistentes\n";
+                    << "[FAIL] bounds da AnalysisMesh e BVH divergem\n";
             }
         }
         else {
             std::cout
-                << "[FAIL] quad deveria possuir bounds validos\n";
+                << "[FAIL] bounds deveriam estar validos\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Two independent faces
-        //-------------------------------------------------------------------------
+        //---------------------------------------------------------------------
+        // Empty rebuild clears acceleration
+        //---------------------------------------------------------------------
 
-        std::cout << "\n=== Multiple source faces ===\n";
-
-        LEM twoFaces;
-
-        const VertexHandle a0 =
-            twoFaces.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
-        const VertexHandle a1 =
-            twoFaces.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
-        const VertexHandle a2 =
-            twoFaces.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        const FaceHandle faceA =
-            twoFaces.add_face({ a0, a1, a2 });
-
-        const VertexHandle b0 =
-            twoFaces.add_vertex(glm::vec3{ 2.0f, 0.0f, 0.0f });
-        const VertexHandle b1 =
-            twoFaces.add_vertex(glm::vec3{ 3.0f, 0.0f, 0.0f });
-        const VertexHandle b2 =
-            twoFaces.add_vertex(glm::vec3{ 2.0f, 1.0f, 0.0f });
-
-        const FaceHandle faceB =
-            twoFaces.add_face({ b0, b1, b2 });
-
-        const AnalysisMesh twoFaceAnalysis =
-            AnalysisMeshBuilder::build(twoFaces);
-
-        if (twoFaceAnalysis.triangle_count() == 2 &&
-            twoFaceAnalysis.mapping().triangle_count() == 2) {
-            std::cout
-                << "[OK] duas faces triangulares geram dois triangulos\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] AnalysisMesh de multiplas faces inconsistente\n";
-        }
-
-        bool foundFaceA = false;
-        bool foundFaceB = false;
-
-        for (std::size_t i = 0;
-            i < twoFaceAnalysis.triangle_count();
-            ++i) {
-
-            const FaceHandle source =
-                twoFaceAnalysis.mapping().face_for_triangle(i);
-
-            if (source == faceA) {
-                foundFaceA = true;
-            }
-
-            if (source == faceB) {
-                foundFaceB = true;
-            }
-        }
-
-        if (foundFaceA && foundFaceB) {
-            std::cout
-                << "[OK] mappings distinguem as duas faces originais\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] mappings perderam identidade das faces\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Mapping out of range
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Invalid mapping lookup ===\n";
-
-        const FaceHandle invalidSource =
-            twoFaceAnalysis.mapping().face_for_triangle(9999);
-
-        if (invalidSource.is_invalid() &&
-            !twoFaceAnalysis.mapping().has_triangle(9999)) {
-            std::cout
-                << "[OK] lookup fora do range retorna handle invalido\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] lookup fora do range inconsistente\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Clear / rebuild
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Rebuild ===\n";
+        std::cout << "\n=== Empty rebuild ===\n";
 
         AnalysisMesh reusable =
-            AnalysisMeshBuilder::build(twoFaces);
+            AnalysisMeshBuilder::build(mesh);
 
-        AnalysisMeshBuilder::build_into(emptyLem, reusable);
+        LEM empty;
+
+        AnalysisMeshBuilder::build_into(
+            empty,
+            reusable);
 
         if (reusable.empty() &&
-            reusable.vertex_count() == 0 &&
-            reusable.triangle_count() == 0 &&
-            reusable.mapping().triangle_count() == 0 &&
-            !reusable.has_bounds()) {
+            !reusable.has_bvh() &&
+            reusable.bvh().empty() &&
+            reusable.bvh().triangle_count() == 0) {
+
             std::cout
-                << "[OK] build_into remove dados derivados antigos\n";
+                << "[OK] rebuild vazio limpa triangulacao e BVH\n";
         }
         else {
             std::cout
-                << "[FAIL] rebuild preservou dados derivados antigos\n";
+                << "[FAIL] rebuild vazio preservou aceleracao antiga\n";
         }
 
         std::cout
-            << "\n=== Manufacturing AnalysisMesh Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing AnalysisMesh BVH Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing AnalysisMesh Smoke Test
+    // End Manufacturing AnalysisMesh BVH Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
