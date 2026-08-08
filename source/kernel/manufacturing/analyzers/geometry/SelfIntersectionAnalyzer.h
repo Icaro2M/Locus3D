@@ -42,7 +42,7 @@ namespace locus::kernel::manufacturing {
      * distant face pairs before exact triangle-triangle testing.
      *
      * Triangles belonging to the same source face are ignored. Faces sharing
-     * an editable edge are also excluded because their expected topological
+     * editable vertices are also excluded because their expected topological
      * contact is not a self-intersection.
      *
      * A source-face pair produces at most one PrintIssue even when multiple
@@ -193,7 +193,7 @@ namespace locus::kernel::manufacturing {
                     continue;
                 }
 
-                if (faces_share_edge(
+                if (faces_share_vertex(
                     mesh,
                     sourceFace,
                     candidateFace)) {
@@ -819,34 +819,34 @@ namespace locus::kernel::manufacturing {
         }
 
         /**
-         * @brief Checks whether two editable faces share at least one edge.
+         * @brief Checks whether two editable faces share at least one vertex.
          *
-         * Expected topological contact across that edge is excluded from
+         * Expected topological contact at that vertex is excluded from
          * self-intersection analysis.
          */
-        [[nodiscard]] static bool faces_share_edge(
+        [[nodiscard]] static bool faces_share_vertex(
             const geometry::LEM& mesh,
             geometry::FaceHandle first,
             geometry::FaceHandle second)
         {
-            const std::vector<geometry::EdgeHandle> firstEdges =
-                geometry::TopologyTraversal::face_edges(
+            const std::vector<geometry::VertexHandle> firstVertices =
+                geometry::TopologyTraversal::face_vertices(
                     mesh,
                     first);
 
-            const std::vector<geometry::EdgeHandle> secondEdges =
-                geometry::TopologyTraversal::face_edges(
+            const std::vector<geometry::VertexHandle> secondVertices =
+                geometry::TopologyTraversal::face_vertices(
                     mesh,
                     second);
 
-            for (const geometry::EdgeHandle firstEdge :
-            firstEdges) {
+            for (const geometry::VertexHandle firstVertex :
+            firstVertices) {
 
                 if (std::find(
-                    secondEdges.begin(),
-                    secondEdges.end(),
-                    firstEdge) !=
-                    secondEdges.end()) {
+                    secondVertices.begin(),
+                    secondVertices.end(),
+                    firstVertex) !=
+                    secondVertices.end()) {
                     return true;
                 }
             }
