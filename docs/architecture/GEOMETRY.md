@@ -326,8 +326,7 @@ source\kernel
     |   |       ThinWallQuality.h
     |   |       ThinWallResult.h
     |   |       ThinWallAnalyzerFactory.h [!]
-    |   |       CurvatureApproxAnalyzer.h [!]
-    |   |       RaycastThinWallAnalyzer.h [!]
+    |   |       RaycastThinWallAnalyzer.h
     |   |
     |   \---process
     |           OverhangAnalyzer.h [!]
