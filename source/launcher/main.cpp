@@ -72,6 +72,7 @@
 #include "kernel/manufacturing/analyzers/thinwall/ThinWallResult.h"
 #include "kernel/manufacturing/analyzers/thinwall/RaycastThinWallAnalyzer.h"
 #include "kernel/manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h"
+#include "kernel/manufacturing/analyzers/process/OverhangAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1628,132 +1629,462 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-    // Manufacturing ThinWallAnalyzerFactory Smoke Test
-    //=============================================================================
+ // Manufacturing OverhangAnalyzer Smoke Test
+ //=============================================================================
 
     {
+        using namespace locus::kernel;
+        using namespace locus::kernel::geometry;
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing ThinWallAnalyzerFactory Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing OverhangAnalyzer Smoke Test ===\n\n";
+
+        OverhangAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
-        // Fast
+        // Metadata and build direction
         //-------------------------------------------------------------------------
 
-        std::cout << "=== Fast ===\n";
+        std::cout << "=== Metadata ===\n";
 
-        std::unique_ptr<IThinWallAnalyzer> fast =
-            ThinWallAnalyzerFactory::create(
-                ThinWallQuality::Fast);
-
-        if (fast != nullptr &&
-            fast->name() ==
-            "RaycastThinWallAnalyzer" &&
-            fast->quality() ==
-            ThinWallQuality::Fast) {
+        if (analyzer.name() ==
+            "OverhangAnalyzer" &&
+            glm::length(
+                analyzer.build_direction() -
+                glm::vec3{ 0.0f, 0.0f, 1.0f }) <
+            1.0e-6f) {
 
             std::cout
-                << "[OK] factory cria analyzer Fast\n";
+                << "[OK] analyzer usa +Z como build direction padrao\n";
         }
         else {
             std::cout
-                << "[FAIL] factory nao preservou quality Fast\n";
+                << "[FAIL] metadata ou build direction inconsistente\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Balanced
-        //-------------------------------------------------------------------------
+        OverhangAnalyzer normalizedAnalyzer{
+            glm::vec3{
+                0.0f,
+                0.0f,
+                10.0f
+            }
+        };
 
-        std::cout << "\n=== Balanced ===\n";
-
-        std::unique_ptr<IThinWallAnalyzer> balanced =
-            ThinWallAnalyzerFactory::create(
-                ThinWallQuality::Balanced);
-
-        if (balanced != nullptr &&
-            balanced->name() ==
-            "RaycastThinWallAnalyzer" &&
-            balanced->quality() ==
-            ThinWallQuality::Balanced) {
+        if (std::abs(
+            glm::length(
+                normalizedAnalyzer.build_direction()) -
+            1.0f) <
+            1.0e-6f) {
 
             std::cout
-                << "[OK] factory cria analyzer Balanced\n";
+                << "[OK] build direction e normalizada\n";
         }
         else {
             std::cout
-                << "[FAIL] factory nao preservou quality Balanced\n";
+                << "[FAIL] build direction nao foi normalizada\n";
         }
 
         //-------------------------------------------------------------------------
-        // High
+        // Missing dependencies
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== High ===\n";
+        std::cout << "\n=== Missing dependencies ===\n";
 
-        std::unique_ptr<IThinWallAnalyzer> high =
-            ThinWallAnalyzerFactory::create(
-                ThinWallQuality::High);
+        AnalysisContext missingContext;
+        AnalysisReport missingReport;
 
-        if (high != nullptr &&
-            high->name() ==
-            "RaycastThinWallAnalyzer" &&
-            high->quality() ==
-            ThinWallQuality::High) {
+        analyzer.analyze(
+            missingContext,
+            missingReport);
 
+        if (!missingReport.has_issues()) {
             std::cout
-                << "[OK] factory cria analyzer High\n";
+                << "[OK] contexto vazio nao gera overhang issue\n";
         }
         else {
             std::cout
-                << "[FAIL] factory nao preservou quality High\n";
+                << "[FAIL] analyzer executou sem dependencias\n";
         }
 
         //-------------------------------------------------------------------------
-        // IAnalyzer polymorphism
+        // Profile
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Generic analyzer contract ===\n";
+        FDMProfile fdm;
+        fdm.name =
+            "Overhang Test";
 
-        IAnalyzer* generic =
-            balanced.get();
+        fdm.limits
+            .maximumUnsupportedOverhangAngleDegrees =
+            45.0;
 
-        if (generic != nullptr &&
-            generic->name() ==
-            "RaycastThinWallAnalyzer") {
+        PrintProfile profile{
+            fdm
+        };
+
+        //-------------------------------------------------------------------------
+        // Vertical wall
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Vertical wall ===\n";
+
+        LEM verticalMesh;
+
+        const VertexHandle v0 =
+            verticalMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle v1 =
+            verticalMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle v2 =
+            verticalMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 1.0f });
+
+        const VertexHandle v3 =
+            verticalMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
+
+        verticalMesh.add_face(
+            { v0, v1, v2, v3 });
+
+        const AnalysisMesh verticalAnalysis =
+            AnalysisMeshBuilder::build(
+                verticalMesh);
+
+        AnalysisContext verticalContext;
+        verticalContext.mesh =
+            &verticalMesh;
+        verticalContext.analysisMesh =
+            &verticalAnalysis;
+        verticalContext.profile =
+            &profile;
+
+        AnalysisReport verticalReport;
+
+        analyzer.analyze(
+            verticalContext,
+            verticalReport);
+
+        if (!verticalReport.has_issue_type(
+            PrintIssueType::Overhang)) {
 
             std::cout
-                << "[OK] resultado da factory continua utilizavel como IAnalyzer\n";
+                << "[OK] parede vertical possui overhang angle zero\n";
         }
         else {
             std::cout
-                << "[FAIL] factory quebrou contrato generico de analyzer\n";
+                << "[FAIL] parede vertical foi classificada como overhang\n";
         }
 
         //-------------------------------------------------------------------------
-        // Independent instances
+        // Upward horizontal surface
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Independent instances ===\n";
+        std::cout << "\n=== Upward surface ===\n";
 
-        if (fast.get() != balanced.get() &&
-            balanced.get() != high.get() &&
-            fast.get() != high.get()) {
+        LEM upwardMesh;
+
+        const VertexHandle u0 =
+            upwardMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle u1 =
+            upwardMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle u2 =
+            upwardMesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f });
+
+        const VertexHandle u3 =
+            upwardMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        upwardMesh.add_face(
+            { u0, u1, u2, u3 });
+
+        const AnalysisMesh upwardAnalysis =
+            AnalysisMeshBuilder::build(
+                upwardMesh);
+
+        AnalysisContext upwardContext;
+        upwardContext.mesh =
+            &upwardMesh;
+        upwardContext.analysisMesh =
+            &upwardAnalysis;
+        upwardContext.profile =
+            &profile;
+
+        AnalysisReport upwardReport;
+
+        analyzer.analyze(
+            upwardContext,
+            upwardReport);
+
+        if (!upwardReport.has_issue_type(
+            PrintIssueType::Overhang)) {
 
             std::cout
-                << "[OK] factory retorna instancias independentes\n";
+                << "[OK] superficie horizontal upward nao e overhang\n";
         }
         else {
             std::cout
-                << "[FAIL] factory reutilizou instancia indevidamente\n";
+                << "[FAIL] superficie upward gerou falso positivo\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Downward horizontal surface
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Downward surface ===\n";
+
+        LEM downwardMesh;
+
+        const VertexHandle d0 =
+            downwardMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle d1 =
+            downwardMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle d2 =
+            downwardMesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f });
+
+        const VertexHandle d3 =
+            downwardMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const FaceHandle downwardFace =
+            downwardMesh.add_face(
+                { d0, d1, d2, d3 });
+
+        const AnalysisMesh downwardAnalysis =
+            AnalysisMeshBuilder::build(
+                downwardMesh);
+
+        AnalysisContext downwardContext;
+        downwardContext.mesh =
+            &downwardMesh;
+        downwardContext.analysisMesh =
+            &downwardAnalysis;
+        downwardContext.profile =
+            &profile;
+
+        AnalysisReport downwardReport;
+
+        analyzer.analyze(
+            downwardContext,
+            downwardReport);
+
+        if (downwardFace.is_valid() &&
+            downwardReport.issue_count(
+                PrintIssueType::Overhang) == 1 &&
+            downwardReport.warning_count() == 1) {
+
+            std::cout
+                << "[OK] superficie horizontal downward foi detectada\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] overhang horizontal nao foi detectado\n";
+        }
+
+        if (downwardReport.issue_count() == 1) {
+            const PrintIssue& issue =
+                downwardReport.issues().front();
+
+            if (issue.has_measurement() &&
+                issue.measurement->kind ==
+                IssueMeasurementKind::AngleDegrees &&
+                std::abs(
+                    issue.measurement->value -
+                    90.0) <
+                1.0e-4 &&
+                issue.measurement->has_limit() &&
+                std::abs(
+                    issue.measurement->limit.value() -
+                    45.0) <
+                1.0e-9) {
+
+                std::cout
+                    << "[OK] horizontal downward mede aproximadamente 90 graus\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] medida angular do overhang inconsistente\n";
+            }
+
+            if (std::find(
+                issue.location.faces.begin(),
+                issue.location.faces.end(),
+                downwardFace) !=
+                issue.location.faces.end() &&
+                issue.location.has_samples() &&
+                issue.location.has_region()) {
+
+                std::cout
+                    << "[OK] issue preserva face e regiao visual\n";
+            }
+            else {
+                std::cout
+                    << "[FAIL] localizacao visual do overhang incompleta\n";
+            }
+        }
+
+        //-------------------------------------------------------------------------
+        // Connected overhang faces should form one issue
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Connected overhang region ===\n";
+
+        LEM connectedMesh;
+
+        const VertexHandle c0 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle c1 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle c2 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 0.0f });
+
+        const VertexHandle c3 =
+            connectedMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const FaceHandle connectedA =
+            connectedMesh.add_face(
+                { c0, c1, c2 });
+
+        const FaceHandle connectedB =
+            connectedMesh.add_face(
+                { c0, c2, c3 });
+
+        const AnalysisMesh connectedAnalysis =
+            AnalysisMeshBuilder::build(
+                connectedMesh);
+
+        AnalysisContext connectedContext;
+        connectedContext.mesh =
+            &connectedMesh;
+        connectedContext.analysisMesh =
+            &connectedAnalysis;
+        connectedContext.profile =
+            &profile;
+
+        AnalysisReport connectedReport;
+
+        analyzer.analyze(
+            connectedContext,
+            connectedReport);
+
+        if (connectedA.is_valid() &&
+            connectedB.is_valid() &&
+            connectedReport.issue_count(
+                PrintIssueType::Overhang) == 1) {
+
+            std::cout
+                << "[OK] faces de overhang conectadas formam uma regiao\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] regiao conectada foi fragmentada\n";
+        }
+
+        if (connectedReport.issue_count() == 1 &&
+            connectedReport.issues()
+            .front().location.faces.size() == 2) {
+
+            std::cout
+                << "[OK] issue preserva todas as faces da regiao\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] faces da regiao de overhang incompletas\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Missing profile limit
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Missing profile limit ===\n";
+
+        FDMProfile noLimitFdm;
+        noLimitFdm.name =
+            "No Overhang Limit";
+
+        PrintProfile noLimitProfile{
+            noLimitFdm
+        };
+
+        AnalysisContext noLimitContext =
+            downwardContext;
+
+        noLimitContext.profile =
+            &noLimitProfile;
+
+        AnalysisReport noLimitReport;
+
+        analyzer.analyze(
+            noLimitContext,
+            noLimitReport);
+
+        if (!noLimitReport.has_issue_type(
+            PrintIssueType::Overhang)) {
+
+            std::cout
+                << "[OK] profile sem limite nao inventa overhang threshold\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] analyzer inventou limite angular\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Different build direction
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Alternative build direction ===\n";
+
+        OverhangAnalyzer xAnalyzer{
+            glm::vec3{
+                -1.0f,
+                0.0f,
+                0.0f
+            }
+        };
+
+        AnalysisReport xReport;
+
+        xAnalyzer.analyze(
+            verticalContext,
+            xReport);
+
+        if (xReport.has_issue_type(
+            PrintIssueType::Overhang)) {
+
+            std::cout
+                << "[OK] resultado responde a orientacao de construcao\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] build direction alternativa foi ignorada\n";
         }
 
         std::cout
-            << "\n=== Manufacturing ThinWallAnalyzerFactory Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing OverhangAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing ThinWallAnalyzerFactory Smoke Test
+    // End Manufacturing OverhangAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

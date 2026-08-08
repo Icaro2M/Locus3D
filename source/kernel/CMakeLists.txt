@@ -145,7 +145,8 @@ target_sources(locus3d_geometry PRIVATE
     "manufacturing/analyzers/thinwall/ThinWallResult.h"
     "manufacturing/analyzers/thinwall/IThinWallAnalyzer.h"
     "manufacturing/analyzers/thinwall/RaycastThinWallAnalyzer.h"
-    "manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h")
+    "manufacturing/analyzers/thinwall/ThinWallAnalyzerFactory.h"
+    "manufacturing/analyzers/process/OverhangAnalyzer.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}

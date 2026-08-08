@@ -329,7 +329,7 @@ source\kernel
     |   |       RaycastThinWallAnalyzer.h
     |   |
     |   \---process
-    |           OverhangAnalyzer.h [!]
+    |           OverhangAnalyzer.h
     |           MinimumFeatureSizeAnalyzer.h [!]
     |           SupportRequirementAnalyzer.h [!]
     |           VolumeAnalyzer.h [!]
