@@ -60,6 +60,7 @@
 #include "kernel/math/Ray.h"
 #include "kernel/manufacturing/analyzers/topology/ManifoldAnalyzer.h"
 #include "kernel/manufacturing/analyzers/topology/WatertightAnalyzer.h"
+#include "kernel/manufacturing/analyzers/topology/NormalConsistencyAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1616,8 +1617,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
- // Manufacturing WatertightAnalyzer Smoke Test
- //=============================================================================
+   // Manufacturing NormalConsistencyAnalyzer Smoke Test
+   //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1625,9 +1626,9 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing WatertightAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing NormalConsistencyAnalyzer Smoke Test ===\n\n";
 
-        WatertightAnalyzer analyzer;
+        NormalConsistencyAnalyzer analyzer;
 
         //-------------------------------------------------------------------------
         // Metadata
@@ -1635,7 +1636,7 @@ int main(int argc, char** argv)
 
         std::cout << "=== Analyzer metadata ===\n";
 
-        if (analyzer.name() == "WatertightAnalyzer") {
+        if (analyzer.name() == "NormalConsistencyAnalyzer") {
             std::cout
                 << "[OK] analyzer possui nome estavel\n";
         }
@@ -1667,384 +1668,309 @@ int main(int argc, char** argv)
         }
 
         //-------------------------------------------------------------------------
-        // Loose edge must not be treated as open boundary
+        // Consistent adjacent faces
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Loose edge separation ===\n";
+        std::cout << "\n=== Consistent adjacent faces ===\n";
 
-        LEM looseMesh;
+        LEM consistentMesh;
 
-        const VertexHandle looseV0 =
-            looseMesh.add_vertex(
+        const VertexHandle ca =
+            consistentMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle looseV1 =
-            looseMesh.add_vertex(
+        const VertexHandle cb =
+            consistentMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const EdgeHandle looseEdge =
-            looseMesh.find_or_create_edge(
-                looseV0,
-                looseV1);
+        const VertexHandle cc =
+            consistentMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        AnalysisContext looseContext;
-        looseContext.mesh = &looseMesh;
+        const VertexHandle cd =
+            consistentMesh.add_vertex(
+                glm::vec3{ 0.0f, -1.0f, 0.0f });
 
-        AnalysisReport looseReport;
+        // First face traverses shared edge A -> B.
+        const FaceHandle consistentFaceA =
+            consistentMesh.add_face(
+                { ca, cb, cc });
+
+        // Second face traverses shared edge B -> A.
+        const FaceHandle consistentFaceB =
+            consistentMesh.add_face(
+                { cb, ca, cd });
+
+        const EdgeHandle consistentSharedEdge =
+            consistentMesh.find_edge(
+                ca,
+                cb);
+
+        AnalysisContext consistentContext;
+        consistentContext.mesh =
+            &consistentMesh;
+
+        AnalysisReport consistentReport;
 
         analyzer.analyze(
-            looseContext,
-            looseReport);
+            consistentContext,
+            consistentReport);
 
-        if (looseEdge.is_valid() &&
-            !looseReport.has_issues()) {
+        if (consistentFaceA.is_valid() &&
+            consistentFaceB.is_valid() &&
+            consistentSharedEdge.is_valid() &&
+            TopologyTraversal::edge_loops(
+                consistentMesh,
+                consistentSharedEdge).size() == 2) {
 
             std::cout
-                << "[OK] loose edge continua exclusiva do ManifoldAnalyzer\n";
+                << "[OK] fixture possui duas faces manifold adjacentes\n";
         }
         else {
             std::cout
-                << "[FAIL] loose edge foi classificada como open boundary\n";
+                << "[FAIL] fixture consistente invalida\n";
         }
 
-        //-------------------------------------------------------------------------
-        // Single quad -> one connected boundary
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Single boundary component ===\n";
-
-        LEM quad;
-
-        const VertexHandle q0 =
-            quad.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.0f });
-
-        const VertexHandle q1 =
-            quad.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.0f });
-
-        const VertexHandle q2 =
-            quad.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 0.0f });
-
-        const VertexHandle q3 =
-            quad.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 0.0f });
-
-        const FaceHandle quadFace =
-            quad.add_face(
-                { q0, q1, q2, q3 });
-
-        AnalysisContext quadContext;
-        quadContext.mesh = &quad;
-
-        AnalysisReport quadReport;
-
-        analyzer.analyze(
-            quadContext,
-            quadReport);
-
-        if (quadFace.is_valid() &&
-            quadReport.issue_count() == 1 &&
-            quadReport.issue_count(
-                PrintIssueType::OpenBoundary) == 1 &&
-            quadReport.error_count() == 1) {
+        if (!consistentReport.has_issue_type(
+            PrintIssueType::InconsistentNormals)) {
 
             std::cout
-                << "[OK] quatro edges conectadas geram um unico open boundary\n";
+                << "[OK] direcoes opostas no shared edge sao consistentes\n";
         }
         else {
             std::cout
-                << "[FAIL] boundary do quad nao foi agrupada corretamente\n";
+                << "[FAIL] faces consistentes foram reportadas\n";
         }
 
-        if (quadReport.issue_count() == 1) {
+        //-------------------------------------------------------------------------
+        // Inconsistent adjacent faces
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Inconsistent adjacent faces ===\n";
+
+        LEM inconsistentMesh;
+
+        const VertexHandle ia =
+            inconsistentMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
+
+        const VertexHandle ib =
+            inconsistentMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const VertexHandle ic =
+            inconsistentMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const VertexHandle id =
+            inconsistentMesh.add_vertex(
+                glm::vec3{ 0.0f, -1.0f, 0.0f });
+
+        // Both faces traverse the common edge A -> B.
+        const FaceHandle inconsistentFaceA =
+            inconsistentMesh.add_face(
+                { ia, ib, ic });
+
+        const FaceHandle inconsistentFaceB =
+            inconsistentMesh.add_face(
+                { ia, ib, id });
+
+        const EdgeHandle inconsistentSharedEdge =
+            inconsistentMesh.find_edge(
+                ia,
+                ib);
+
+        AnalysisContext inconsistentContext;
+        inconsistentContext.mesh =
+            &inconsistentMesh;
+
+        AnalysisReport inconsistentReport;
+
+        analyzer.analyze(
+            inconsistentContext,
+            inconsistentReport);
+
+        if (inconsistentFaceA.is_valid() &&
+            inconsistentFaceB.is_valid() &&
+            inconsistentSharedEdge.is_valid() &&
+            TopologyTraversal::edge_loops(
+                inconsistentMesh,
+                inconsistentSharedEdge).size() == 2) {
+
+            std::cout
+                << "[OK] fixture inconsistente possui shared edge manifold\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] fixture inconsistente invalida\n";
+        }
+
+        if (inconsistentReport.issue_count(
+            PrintIssueType::InconsistentNormals) == 1 &&
+            inconsistentReport.error_count() == 1) {
+
+            std::cout
+                << "[OK] winding local inconsistente foi detectado\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] winding inconsistente nao foi reportado corretamente\n";
+        }
+
+        if (inconsistentReport.issue_count() == 1) {
             const PrintIssue& issue =
-                quadReport.issues().front();
+                inconsistentReport.issues().front();
 
-            if (issue.location.edges.size() == 4 &&
-                issue.location.vertices.size() == 4 &&
-                issue.location.faces.size() == 1) {
+            const bool hasFaceA =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    inconsistentFaceA) !=
+                issue.location.faces.end();
+
+            const bool hasFaceB =
+                std::find(
+                    issue.location.faces.begin(),
+                    issue.location.faces.end(),
+                    inconsistentFaceB) !=
+                issue.location.faces.end();
+
+            if (issue.location.edges.size() == 1 &&
+                issue.location.edges.front() ==
+                inconsistentSharedEdge &&
+                issue.location.vertices.size() == 2 &&
+                issue.location.faces.size() == 2 &&
+                hasFaceA &&
+                hasFaceB) {
 
                 std::cout
-                    << "[OK] boundary preserva contorno completo para visualizacao\n";
+                    << "[OK] conflito preserva edge, vertices e ambas as faces\n";
             }
             else {
                 std::cout
-                    << "[FAIL] localizacao visual da boundary esta incompleta\n";
-            }
-
-            if (issue.has_measurement() &&
-                issue.measurement->kind ==
-                IssueMeasurementKind::Count &&
-                issue.measurement->value == 4.0 &&
-                issue.measurement->limit.has_value() &&
-                issue.measurement->limit.value() == 0.0) {
-
-                std::cout
-                    << "[OK] issue registra quatro boundary edges\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] medida da boundary inconsistente\n";
+                    << "[FAIL] localizacao visual da inconsistencia incompleta\n";
             }
         }
 
         //-------------------------------------------------------------------------
-        // Two disconnected open components
+        // Boundary edges are ignored
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Disconnected boundaries ===\n";
+        std::cout << "\n=== Boundary separation ===\n";
 
-        LEM twoComponents;
+        LEM boundaryMesh;
 
-        const VertexHandle a0 =
-            twoComponents.add_vertex(
+        const VertexHandle ba =
+            boundaryMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle a1 =
-            twoComponents.add_vertex(
+        const VertexHandle bb =
+            boundaryMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle a2 =
-            twoComponents.add_vertex(
+        const VertexHandle bc =
+            boundaryMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle b0 =
-            twoComponents.add_vertex(
-                glm::vec3{ 3.0f, 0.0f, 0.0f });
+        const FaceHandle boundaryFace =
+            boundaryMesh.add_face(
+                { ba, bb, bc });
 
-        const VertexHandle b1 =
-            twoComponents.add_vertex(
-                glm::vec3{ 4.0f, 0.0f, 0.0f });
+        AnalysisContext boundaryContext;
+        boundaryContext.mesh =
+            &boundaryMesh;
 
-        const VertexHandle b2 =
-            twoComponents.add_vertex(
-                glm::vec3{ 3.0f, 1.0f, 0.0f });
-
-        const FaceHandle componentFaceA =
-            twoComponents.add_face(
-                { a0, a1, a2 });
-
-        const FaceHandle componentFaceB =
-            twoComponents.add_face(
-                { b0, b1, b2 });
-
-        AnalysisContext twoContext;
-        twoContext.mesh = &twoComponents;
-
-        AnalysisReport twoReport;
+        AnalysisReport boundaryReport;
 
         analyzer.analyze(
-            twoContext,
-            twoReport);
+            boundaryContext,
+            boundaryReport);
 
-        if (componentFaceA.is_valid() &&
-            componentFaceB.is_valid() &&
-            twoReport.issue_count(
-                PrintIssueType::OpenBoundary) == 2) {
+        if (boundaryFace.is_valid() &&
+            !boundaryReport.has_issue_type(
+                PrintIssueType::InconsistentNormals)) {
 
             std::cout
-                << "[OK] boundaries desconectadas geram issues independentes\n";
+                << "[OK] boundary continua responsabilidade do WatertightAnalyzer\n";
         }
         else {
             std::cout
-                << "[FAIL] componentes de boundary foram agrupados incorretamente\n";
-        }
-
-        bool bothHaveThreeEdges = true;
-
-        for (const PrintIssue& issue :
-            twoReport.issues()) {
-
-            if (issue.type != PrintIssueType::OpenBoundary ||
-                issue.location.edges.size() != 3 ||
-                issue.location.vertices.size() != 3) {
-
-                bothHaveThreeEdges = false;
-                break;
-            }
-        }
-
-        if (bothHaveThreeEdges) {
-            std::cout
-                << "[OK] cada boundary triangular preserva seu proprio contorno\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] localizacao das boundaries desconectadas inconsistente\n";
+                << "[FAIL] boundary gerou falso conflito de winding\n";
         }
 
         //-------------------------------------------------------------------------
-        // Closed tetrahedron
+        // Non-manifold edges are ignored
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Closed tetrahedron ===\n";
+        std::cout << "\n=== Non-manifold separation ===\n";
 
-        LEM closedMesh;
+        LEM nonManifoldMesh;
 
-        const VertexHandle t0 =
-            closedMesh.add_vertex(
+        const VertexHandle na =
+            nonManifoldMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle t1 =
-            closedMesh.add_vertex(
+        const VertexHandle nb =
+            nonManifoldMesh.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle t2 =
-            closedMesh.add_vertex(
+        const VertexHandle nc =
+            nonManifoldMesh.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle t3 =
-            closedMesh.add_vertex(
+        const VertexHandle nd =
+            nonManifoldMesh.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        const FaceHandle tf0 =
-            closedMesh.add_face(
-                { t0, t2, t1 });
+        const VertexHandle ne =
+            nonManifoldMesh.add_vertex(
+                glm::vec3{ 0.0f, -1.0f, 0.0f });
 
-        const FaceHandle tf1 =
-            closedMesh.add_face(
-                { t0, t1, t3 });
+        nonManifoldMesh.add_face(
+            { na, nb, nc });
 
-        const FaceHandle tf2 =
-            closedMesh.add_face(
-                { t1, t2, t3 });
+        nonManifoldMesh.add_face(
+            { nb, na, nd });
 
-        const FaceHandle tf3 =
-            closedMesh.add_face(
-                { t2, t0, t3 });
+        nonManifoldMesh.add_face(
+            { na, nb, ne });
 
-        AnalysisContext closedContext;
-        closedContext.mesh = &closedMesh;
+        const EdgeHandle nonManifoldEdge =
+            nonManifoldMesh.find_edge(
+                na,
+                nb);
 
-        AnalysisReport closedReport;
+        AnalysisContext nonManifoldContext;
+        nonManifoldContext.mesh =
+            &nonManifoldMesh;
+
+        AnalysisReport nonManifoldReport;
 
         analyzer.analyze(
-            closedContext,
-            closedReport);
+            nonManifoldContext,
+            nonManifoldReport);
 
-        if (tf0.is_valid() &&
-            tf1.is_valid() &&
-            tf2.is_valid() &&
-            tf3.is_valid() &&
-            !closedReport.has_issue_type(
-                PrintIssueType::OpenBoundary)) {
+        if (nonManifoldEdge.is_valid() &&
+            TopologyTraversal::edge_loops(
+                nonManifoldMesh,
+                nonManifoldEdge).size() == 3 &&
+            !nonManifoldReport.has_issue_type(
+                PrintIssueType::InconsistentNormals)) {
 
             std::cout
-                << "[OK] superficie fechada nao possui open boundaries\n";
+                << "[OK] non-manifold continua responsabilidade do ManifoldAnalyzer\n";
         }
         else {
             std::cout
-                << "[FAIL] superficie fechada foi considerada aberta\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Cube with missing top
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Cube with missing face ===\n";
-
-        LEM openCube;
-
-        const VertexHandle c000 =
-            openCube.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, -1.0f });
-
-        const VertexHandle c100 =
-            openCube.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, -1.0f });
-
-        const VertexHandle c110 =
-            openCube.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, -1.0f });
-
-        const VertexHandle c010 =
-            openCube.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, -1.0f });
-
-        const VertexHandle c001 =
-            openCube.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 1.0f });
-
-        const VertexHandle c101 =
-            openCube.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 1.0f });
-
-        const VertexHandle c111 =
-            openCube.add_vertex(
-                glm::vec3{ 1.0f, 1.0f, 1.0f });
-
-        const VertexHandle c011 =
-            openCube.add_vertex(
-                glm::vec3{ -1.0f, 1.0f, 1.0f });
-
-        // Bottom.
-        openCube.add_face(
-            { c000, c010, c110, c100 });
-
-        // Front.
-        openCube.add_face(
-            { c000, c100, c101, c001 });
-
-        // Right.
-        openCube.add_face(
-            { c100, c110, c111, c101 });
-
-        // Back.
-        openCube.add_face(
-            { c110, c010, c011, c111 });
-
-        // Left.
-        openCube.add_face(
-            { c010, c000, c001, c011 });
-
-        // Top intentionally missing:
-        // {c001, c101, c111, c011}
-
-        AnalysisContext cubeContext;
-        cubeContext.mesh = &openCube;
-
-        AnalysisReport cubeReport;
-
-        analyzer.analyze(
-            cubeContext,
-            cubeReport);
-
-        if (cubeReport.issue_count(
-            PrintIssueType::OpenBoundary) == 1) {
-
-            std::cout
-                << "[OK] face ausente gera um unico boundary component\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] abertura do cubo nao foi agrupada corretamente\n";
-        }
-
-        if (cubeReport.issue_count() == 1) {
-            const PrintIssue& issue =
-                cubeReport.issues().front();
-
-            if (issue.location.edges.size() == 4 &&
-                issue.location.vertices.size() == 4 &&
-                issue.location.faces.size() == 4) {
-
-                std::cout
-                    << "[OK] abertura do cubo preserva quatro edges e faces vizinhas\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] localizacao da abertura do cubo inconsistente\n";
-            }
+                << "[FAIL] non-manifold gerou conflito local indevido\n";
         }
 
         std::cout
-            << "\n=== Manufacturing WatertightAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing NormalConsistencyAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing WatertightAnalyzer Smoke Test
+    // End Manufacturing NormalConsistencyAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&
