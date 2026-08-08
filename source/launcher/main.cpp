@@ -65,6 +65,7 @@
 #include "kernel/manufacturing/analyzers/topology/IslandAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
 #include "kernel/manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
+#include "kernel/manufacturing/analyzers/geometry/VolumeAnalyzer.h"
 
 #include "kernel/geometry/mesh/LEM.h"
 
@@ -1621,8 +1622,8 @@ int main(int argc, char** argv)
 {
 
     //=============================================================================
-// Manufacturing SelfIntersectionAnalyzer Smoke Test
-//=============================================================================
+    // Manufacturing VolumeAnalyzer Smoke Test
+    //=============================================================================
 
     {
         using namespace locus::kernel;
@@ -1630,15 +1631,30 @@ int main(int argc, char** argv)
         using namespace locus::kernel::manufacturing;
 
         std::cout
-            << "\n=== Locus3D Manufacturing SelfIntersectionAnalyzer Smoke Test ===\n\n";
+            << "\n=== Locus3D Manufacturing VolumeAnalyzer Smoke Test ===\n\n";
 
-        SelfIntersectionAnalyzer analyzer;
+        VolumeAnalyzer analyzer;
+
+        //-------------------------------------------------------------------------
+        // Metadata
+        //-------------------------------------------------------------------------
+
+        std::cout << "=== Analyzer metadata ===\n";
+
+        if (analyzer.name() == "VolumeAnalyzer") {
+            std::cout
+                << "[OK] analyzer possui nome estavel\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] nome do analyzer inconsistente\n";
+        }
 
         //-------------------------------------------------------------------------
         // Missing dependencies
         //-------------------------------------------------------------------------
 
-        std::cout << "=== Missing dependencies ===\n";
+        std::cout << "\n=== Missing dependencies ===\n";
 
         AnalysisContext missingContext;
         AnalysisReport missingReport;
@@ -1647,404 +1663,310 @@ int main(int argc, char** argv)
             missingContext,
             missingReport);
 
-        if (!missingReport.has_issues()) {
+        if (!missingReport.metrics().has_volume()) {
             std::cout
-                << "[OK] contexto vazio nao gera self-intersection\n";
+                << "[OK] contexto vazio nao inventa volume\n";
         }
         else {
             std::cout
-                << "[FAIL] analyzer executou sem dependencias\n";
+                << "[FAIL] volume apareceu sem geometria\n";
         }
 
         //-------------------------------------------------------------------------
-        // Two separated triangles
+        // Unit tetrahedron
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Separated triangles ===\n";
+        std::cout << "\n=== Unit tetrahedron ===\n";
 
-        LEM separatedMesh;
+        LEM tetrahedron;
 
-        const VertexHandle sa0 =
-            separatedMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 0.0f });
-
-        const VertexHandle sa1 =
-            separatedMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 0.0f });
-
-        const VertexHandle sa2 =
-            separatedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 0.0f });
-
-        const FaceHandle separatedA =
-            separatedMesh.add_face(
-                { sa0, sa1, sa2 });
-
-        const VertexHandle sb0 =
-            separatedMesh.add_vertex(
-                glm::vec3{ -1.0f, -1.0f, 3.0f });
-
-        const VertexHandle sb1 =
-            separatedMesh.add_vertex(
-                glm::vec3{ 1.0f, -1.0f, 3.0f });
-
-        const VertexHandle sb2 =
-            separatedMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.0f, 3.0f });
-
-        const FaceHandle separatedB =
-            separatedMesh.add_face(
-                { sb0, sb1, sb2 });
-
-        const AnalysisMesh separatedAnalysis =
-            AnalysisMeshBuilder::build(
-                separatedMesh);
-
-        AnalysisContext separatedContext;
-        separatedContext.mesh =
-            &separatedMesh;
-        separatedContext.analysisMesh =
-            &separatedAnalysis;
-
-        AnalysisReport separatedReport;
-
-        analyzer.analyze(
-            separatedContext,
-            separatedReport);
-
-        if (separatedA.is_valid() &&
-            separatedB.is_valid() &&
-            !separatedReport.has_issue_type(
-                PrintIssueType::SelfIntersection)) {
-
-            std::cout
-                << "[OK] superficies separadas nao intersectam\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] falso positivo entre superficies separadas\n";
-        }
-
-        //-------------------------------------------------------------------------
-        // Non-coplanar crossing triangles
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Crossing triangles ===\n";
-
-        LEM crossingMesh;
-
-        // Horizontal triangle.
-        const VertexHandle ca0 =
-            crossingMesh.add_vertex(
-                glm::vec3{ -2.0f, -1.0f, 0.0f });
-
-        const VertexHandle ca1 =
-            crossingMesh.add_vertex(
-                glm::vec3{ 2.0f, -1.0f, 0.0f });
-
-        const VertexHandle ca2 =
-            crossingMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.0f });
-
-        const FaceHandle crossingA =
-            crossingMesh.add_face(
-                { ca0, ca1, ca2 });
-
-        // Vertical triangle passing through the horizontal one.
-        const VertexHandle cb0 =
-            crossingMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, -1.0f });
-
-        const VertexHandle cb1 =
-            crossingMesh.add_vertex(
-                glm::vec3{ 0.0f, 0.0f, 1.0f });
-
-        const VertexHandle cb2 =
-            crossingMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.5f });
-
-        const FaceHandle crossingB =
-            crossingMesh.add_face(
-                { cb0, cb1, cb2 });
-
-        const AnalysisMesh crossingAnalysis =
-            AnalysisMeshBuilder::build(
-                crossingMesh);
-
-        AnalysisContext crossingContext;
-        crossingContext.mesh =
-            &crossingMesh;
-        crossingContext.analysisMesh =
-            &crossingAnalysis;
-
-        AnalysisReport crossingReport;
-
-        analyzer.analyze(
-            crossingContext,
-            crossingReport);
-
-        if (crossingA.is_valid() &&
-            crossingB.is_valid() &&
-            crossingReport.issue_count(
-                PrintIssueType::SelfIntersection) == 1 &&
-            crossingReport.error_count() == 1) {
-
-            std::cout
-                << "[OK] triangulos cruzados foram detectados\n";
-        }
-        else {
-            std::cout
-                << "[FAIL] self-intersection nao foi detectada\n";
-        }
-
-        if (crossingReport.issue_count() == 1) {
-            const PrintIssue& issue =
-                crossingReport.issues().front();
-
-            const bool hasA =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    crossingA) !=
-                issue.location.faces.end();
-
-            const bool hasB =
-                std::find(
-                    issue.location.faces.begin(),
-                    issue.location.faces.end(),
-                    crossingB) !=
-                issue.location.faces.end();
-
-            if (issue.location.faces.size() == 2 &&
-                hasA &&
-                hasB &&
-                issue.location.has_samples()) {
-
-                std::cout
-                    << "[OK] issue preserva ambas as faces e ponto de interseccao\n";
-            }
-            else {
-                std::cout
-                    << "[FAIL] localizacao da self-intersection incompleta\n";
-            }
-        }
-
-        //-------------------------------------------------------------------------
-        // Adjacent faces must not be reported
-        //-------------------------------------------------------------------------
-
-        std::cout << "\n=== Adjacent face contact ===\n";
-
-        LEM adjacentMesh;
-
-        const VertexHandle aa =
-            adjacentMesh.add_vertex(
+        const VertexHandle t0 =
+            tetrahedron.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle ab =
-            adjacentMesh.add_vertex(
+        const VertexHandle t1 =
+            tetrahedron.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle ac =
-            adjacentMesh.add_vertex(
+        const VertexHandle t2 =
+            tetrahedron.add_vertex(
                 glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle ad =
-            adjacentMesh.add_vertex(
+        const VertexHandle t3 =
+            tetrahedron.add_vertex(
                 glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        const FaceHandle adjacentA =
-            adjacentMesh.add_face(
-                { aa, ab, ac });
+        tetrahedron.add_face({ t0, t2, t1 });
+        tetrahedron.add_face({ t0, t1, t3 });
+        tetrahedron.add_face({ t1, t2, t3 });
+        tetrahedron.add_face({ t2, t0, t3 });
 
-        const FaceHandle adjacentB =
-            adjacentMesh.add_face(
-                { ab, aa, ad });
-
-        const AnalysisMesh adjacentAnalysis =
+        const AnalysisMesh tetraAnalysis =
             AnalysisMeshBuilder::build(
-                adjacentMesh);
+                tetrahedron);
 
-        AnalysisContext adjacentContext;
-        adjacentContext.mesh =
-            &adjacentMesh;
-        adjacentContext.analysisMesh =
-            &adjacentAnalysis;
+        AnalysisContext tetraContext;
+        tetraContext.mesh =
+            &tetrahedron;
+        tetraContext.analysisMesh =
+            &tetraAnalysis;
 
-        AnalysisReport adjacentReport;
+        AnalysisReport tetraReport;
 
         analyzer.analyze(
-            adjacentContext,
-            adjacentReport);
+            tetraContext,
+            tetraReport);
 
-        if (adjacentA.is_valid() &&
-            adjacentB.is_valid() &&
-            !adjacentReport.has_issue_type(
-                PrintIssueType::SelfIntersection)) {
+        const double expectedTetraVolume =
+            1.0 / 6.0;
+
+        if (tetraReport.metrics().has_volume() &&
+            std::abs(
+                tetraReport.metrics().volume.value() -
+                expectedTetraVolume) < 1.0e-9) {
 
             std::cout
-                << "[OK] shared edge normal nao vira self-intersection\n";
+                << "[OK] tetraedro unitario possui volume 1/6\n";
         }
         else {
             std::cout
-                << "[FAIL] contato topologico normal gerou falso positivo\n";
+                << "[FAIL] volume do tetraedro incorreto\n";
         }
 
         //-------------------------------------------------------------------------
-        // Coplanar overlap
+        // Inverted closed shell still has positive reported physical volume
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Coplanar overlap ===\n";
+        std::cout << "\n=== Inverted tetrahedron ===\n";
 
-        LEM coplanarMesh;
+        LEM inverted;
 
-        const VertexHandle pa0 =
-            coplanarMesh.add_vertex(
-                glm::vec3{ -2.0f, -1.0f, 0.0f });
+        const VertexHandle i0 =
+            inverted.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle pa1 =
-            coplanarMesh.add_vertex(
-                glm::vec3{ 2.0f, -1.0f, 0.0f });
-
-        const VertexHandle pa2 =
-            coplanarMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 0.0f });
-
-        const FaceHandle coplanarA =
-            coplanarMesh.add_face(
-                { pa0, pa1, pa2 });
-
-        const VertexHandle pb0 =
-            coplanarMesh.add_vertex(
-                glm::vec3{ -1.0f, 0.0f, 0.0f });
-
-        const VertexHandle pb1 =
-            coplanarMesh.add_vertex(
+        const VertexHandle i1 =
+            inverted.add_vertex(
                 glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle pb2 =
-            coplanarMesh.add_vertex(
-                glm::vec3{ 0.0f, 1.5f, 0.0f });
+        const VertexHandle i2 =
+            inverted.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const FaceHandle coplanarB =
-            coplanarMesh.add_face(
-                { pb0, pb1, pb2 });
+        const VertexHandle i3 =
+            inverted.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 1.0f });
 
-        const AnalysisMesh coplanarAnalysis =
+        inverted.add_face({ i1, i2, i0 });
+        inverted.add_face({ i3, i1, i0 });
+        inverted.add_face({ i3, i2, i1 });
+        inverted.add_face({ i3, i0, i2 });
+
+        const AnalysisMesh invertedAnalysis =
             AnalysisMeshBuilder::build(
-                coplanarMesh);
+                inverted);
 
-        AnalysisContext coplanarContext;
-        coplanarContext.mesh =
-            &coplanarMesh;
-        coplanarContext.analysisMesh =
-            &coplanarAnalysis;
+        AnalysisContext invertedContext;
+        invertedContext.mesh =
+            &inverted;
+        invertedContext.analysisMesh =
+            &invertedAnalysis;
 
-        AnalysisReport coplanarReport;
+        AnalysisReport invertedReport;
 
         analyzer.analyze(
-            coplanarContext,
-            coplanarReport);
+            invertedContext,
+            invertedReport);
 
-        if (coplanarA.is_valid() &&
-            coplanarB.is_valid() &&
-            coplanarReport.issue_count(
-                PrintIssueType::SelfIntersection) == 1) {
+        if (invertedReport.metrics().has_volume() &&
+            std::abs(
+                invertedReport.metrics().volume.value() -
+                expectedTetraVolume) < 1.0e-9) {
 
             std::cout
-                << "[OK] overlap coplanar foi detectado\n";
+                << "[OK] volume fisico permanece positivo em casca invertida\n";
         }
         else {
             std::cout
-                << "[FAIL] overlap coplanar nao foi detectado\n";
+                << "[FAIL] orientation contaminou metrica de volume\n";
         }
 
         //-------------------------------------------------------------------------
-        // One face pair with several derived triangles
+        // Open surface
         //-------------------------------------------------------------------------
 
-        std::cout << "\n=== Duplicate suppression ===\n";
+        std::cout << "\n=== Open surface ===\n";
 
-        LEM duplicateMesh;
+        LEM openMesh;
 
-        // Large quad in XY.
-        const VertexHandle qa0 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ -2.0f, -2.0f, 0.0f });
+        const VertexHandle o0 =
+            openMesh.add_vertex(
+                glm::vec3{ 0.0f, 0.0f, 0.0f });
 
-        const VertexHandle qa1 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 2.0f, -2.0f, 0.0f });
+        const VertexHandle o1 =
+            openMesh.add_vertex(
+                glm::vec3{ 1.0f, 0.0f, 0.0f });
 
-        const VertexHandle qa2 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 2.0f, 2.0f, 0.0f });
+        const VertexHandle o2 =
+            openMesh.add_vertex(
+                glm::vec3{ 0.0f, 1.0f, 0.0f });
 
-        const VertexHandle qa3 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ -2.0f, 2.0f, 0.0f });
+        openMesh.add_face(
+            { o0, o1, o2 });
 
-        const FaceHandle quadA =
-            duplicateMesh.add_face(
-                { qa0, qa1, qa2, qa3 });
-
-        // Vertical quad crossing it.
-        const VertexHandle qb0 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 0.0f, -2.0f, -1.0f });
-
-        const VertexHandle qb1 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, -1.0f });
-
-        const VertexHandle qb2 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 0.0f, 2.0f, 1.0f });
-
-        const VertexHandle qb3 =
-            duplicateMesh.add_vertex(
-                glm::vec3{ 0.0f, -2.0f, 1.0f });
-
-        const FaceHandle quadB =
-            duplicateMesh.add_face(
-                { qb0, qb1, qb2, qb3 });
-
-        const AnalysisMesh duplicateAnalysis =
+        const AnalysisMesh openAnalysis =
             AnalysisMeshBuilder::build(
-                duplicateMesh);
+                openMesh);
 
-        AnalysisContext duplicateContext;
-        duplicateContext.mesh =
-            &duplicateMesh;
-        duplicateContext.analysisMesh =
-            &duplicateAnalysis;
+        AnalysisContext openContext;
+        openContext.mesh =
+            &openMesh;
+        openContext.analysisMesh =
+            &openAnalysis;
 
-        AnalysisReport duplicateReport;
+        AnalysisReport openReport;
 
         analyzer.analyze(
-            duplicateContext,
-            duplicateReport);
+            openContext,
+            openReport);
 
-        if (quadA.is_valid() &&
-            quadB.is_valid() &&
-            duplicateAnalysis.triangle_count() == 4 &&
-            duplicateReport.issue_count(
-                PrintIssueType::SelfIntersection) == 1) {
-
+        if (!openReport.metrics().has_volume()) {
             std::cout
-                << "[OK] varios triangle hits geram um issue por par de faces\n";
+                << "[OK] superficie aberta nao recebe volume fechado\n";
         }
         else {
             std::cout
-                << "[FAIL] supressao de self-intersection duplicada falhou\n";
+                << "[FAIL] superficie aberta recebeu volume invalido\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Cube
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Closed cube ===\n";
+
+        LEM cube;
+
+        const VertexHandle c000 =
+            cube.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, -1.0f });
+
+        const VertexHandle c100 =
+            cube.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, -1.0f });
+
+        const VertexHandle c110 =
+            cube.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, -1.0f });
+
+        const VertexHandle c010 =
+            cube.add_vertex(
+                glm::vec3{ -1.0f, 1.0f, -1.0f });
+
+        const VertexHandle c001 =
+            cube.add_vertex(
+                glm::vec3{ -1.0f, -1.0f, 1.0f });
+
+        const VertexHandle c101 =
+            cube.add_vertex(
+                glm::vec3{ 1.0f, -1.0f, 1.0f });
+
+        const VertexHandle c111 =
+            cube.add_vertex(
+                glm::vec3{ 1.0f, 1.0f, 1.0f });
+
+        const VertexHandle c011 =
+            cube.add_vertex(
+                glm::vec3{ -1.0f, 1.0f, 1.0f });
+
+        cube.add_face(
+            { c000, c010, c110, c100 });
+
+        cube.add_face(
+            { c001, c101, c111, c011 });
+
+        cube.add_face(
+            { c000, c100, c101, c001 });
+
+        cube.add_face(
+            { c100, c110, c111, c101 });
+
+        cube.add_face(
+            { c110, c010, c011, c111 });
+
+        cube.add_face(
+            { c010, c000, c001, c011 });
+
+        const AnalysisMesh cubeAnalysis =
+            AnalysisMeshBuilder::build(
+                cube);
+
+        AnalysisContext cubeContext;
+        cubeContext.mesh =
+            &cube;
+        cubeContext.analysisMesh =
+            &cubeAnalysis;
+
+        AnalysisReport cubeReport;
+
+        analyzer.analyze(
+            cubeContext,
+            cubeReport);
+
+        if (cubeReport.metrics().has_volume() &&
+            std::abs(
+                cubeReport.metrics().volume.value() -
+                8.0) < 1.0e-9) {
+
+            std::cout
+                << "[OK] cubo 2x2x2 possui volume 8\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] volume do cubo incorreto\n";
+        }
+
+        //-------------------------------------------------------------------------
+        // Existing metrics and issues are preserved
+        //-------------------------------------------------------------------------
+
+        std::cout << "\n=== Report preservation ===\n";
+
+        AnalysisReport preservationReport;
+
+        preservationReport.metrics().surfaceArea =
+            123.0;
+
+        preservationReport.add_issue(
+            PrintIssue{
+                PrintIssueType::ThinWall,
+                IssueSeverity::Warning,
+                "Pre-existing test issue."
+            });
+
+        analyzer.analyze(
+            tetraContext,
+            preservationReport);
+
+        if (preservationReport.issue_count() == 1 &&
+            preservationReport.metrics().has_surface_area() &&
+            preservationReport.metrics().surfaceArea.value() == 123.0 &&
+            preservationReport.metrics().has_volume()) {
+
+            std::cout
+                << "[OK] VolumeAnalyzer preserva report existente\n";
+        }
+        else {
+            std::cout
+                << "[FAIL] VolumeAnalyzer alterou dados nao relacionados\n";
         }
 
         std::cout
-            << "\n=== Manufacturing SelfIntersectionAnalyzer Smoke Test Finished ===\n\n";
+            << "\n=== Manufacturing VolumeAnalyzer Smoke Test Finished ===\n\n";
     }
 
     //=============================================================================
-    // End Manufacturing SelfIntersectionAnalyzer Smoke Test
+    // End Manufacturing VolumeAnalyzer Smoke Test
     //=============================================================================
 
     if (argc > 1 &&

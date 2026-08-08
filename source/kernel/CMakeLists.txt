@@ -138,7 +138,8 @@ target_sources(locus3d_geometry PRIVATE
     "manufacturing/analyzers/topology/OrientationAnalyzer.h"
     "manufacturing/analyzers/topology/IslandAnalyzer.h"
     "manufacturing/analyzers/geometry/DegenerateGeometryAnalyzer.h"
-    "manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h")
+    "manufacturing/analyzers/geometry/SelfIntersectionAnalyzer.h"
+    "manufacturing/analyzers/geometry/VolumeAnalyzer.h")
 
 target_include_directories(locus3d_geometry PUBLIC
     ${LOCUS3D_SOURCE_DIR}
