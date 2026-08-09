@@ -10,11 +10,50 @@
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <glm/geometric.hpp>
 #include <utility>
 
 namespace locus::kernel::modeling {
+    namespace {
+
+        [[nodiscard]] std::array<geometry::VertexHandle, 2> bridge_direction_for_boundary_edge(
+            const geometry::LEM& mesh,
+            geometry::EdgeHandle edge,
+            bool useAdjacentLoopDirection)
+        {
+            const geometry::Edge& edgeElement = mesh.edge(edge);
+            std::array<geometry::VertexHandle, 2> result{
+                edgeElement.vertexA,
+                edgeElement.vertexB
+            };
+
+            const std::vector<geometry::LoopHandle> loops =
+                geometry::TopologyTraversal::edge_loops(mesh, edge);
+            if (loops.size() != 1u) {
+                return result;
+            }
+
+            const geometry::Loop& loop = mesh.loop(loops.front());
+            if (!mesh.is_valid(loop.next)) {
+                return result;
+            }
+
+            const geometry::VertexHandle adjacentStart = loop.vertex;
+            const geometry::VertexHandle adjacentEnd = mesh.loop(loop.next).vertex;
+            if (!mesh.is_valid(adjacentStart) || !mesh.is_valid(adjacentEnd)) {
+                return result;
+            }
+
+            if (useAdjacentLoopDirection) {
+                return { adjacentStart, adjacentEnd };
+            }
+
+            return { adjacentEnd, adjacentStart };
+        }
+
+    }
 
     BridgeEdgeOp::BridgeEdgeOp(
         std::vector<geometry::VertexHandle> firstCycle,
@@ -183,8 +222,14 @@ namespace locus::kernel::modeling {
             return BridgeCycles{ firstCycle_, secondCycle_ };
 
         case BridgeEdgeMode::EdgeCycles: {
-            const ExtractedEdgeCycle first = order_edge_cycle(mesh, firstEdges_);
-            const ExtractedEdgeCycle second = order_edge_cycle(mesh, secondEdges_);
+            const ExtractedEdgeCycle first = order_edge_cycle(
+                mesh,
+                firstEdges_,
+                false);
+            const ExtractedEdgeCycle second = order_edge_cycle(
+                mesh,
+                secondEdges_,
+                true);
             return BridgeCycles{ first.vertices, second.vertices };
         }
 
@@ -229,7 +274,11 @@ namespace locus::kernel::modeling {
         std::vector<ExtractedEdgeCycle> cycles;
 
         while (!selectedEdges.empty()) {
-            const ExtractedEdgeCycle cycle = extract_one_edge_cycle(mesh, selectedEdges, false);
+            const ExtractedEdgeCycle cycle = extract_one_edge_cycle(
+                mesh,
+                selectedEdges,
+                false,
+                !cycles.empty());
 
             if (cycle.vertices.empty() || cycle.edges.empty()) {
                 return {};
@@ -258,7 +307,8 @@ namespace locus::kernel::modeling {
 
     BridgeEdgeOp::ExtractedEdgeCycle BridgeEdgeOp::order_edge_cycle(
         const geometry::LEM& mesh,
-        const std::vector<geometry::EdgeHandle>& edges) const {
+        const std::vector<geometry::EdgeHandle>& edges,
+        bool useAdjacentLoopDirection) const {
         if (edges.empty()) {
             return {};
         }
@@ -280,19 +330,23 @@ namespace locus::kernel::modeling {
                 return {};
             }
 
+            const std::array<geometry::VertexHandle, 2> edgeDirection =
+                bridge_direction_for_boundary_edge(mesh, edge, useAdjacentLoopDirection);
+
             return ExtractedEdgeCycle{
-                { edgeElement.vertexA, edgeElement.vertexB },
+                { edgeDirection[0], edgeDirection[1] },
                 { edge }
             };
         }
 
-        return extract_one_edge_cycle(mesh, edges, true);
+        return extract_one_edge_cycle(mesh, edges, true, useAdjacentLoopDirection);
     }
 
     BridgeEdgeOp::ExtractedEdgeCycle BridgeEdgeOp::extract_one_edge_cycle(
         const geometry::LEM& mesh,
         const std::vector<geometry::EdgeHandle>& edges,
-        bool requireAllEdges) const {
+        bool requireAllEdges,
+        bool useAdjacentLoopDirection) const {
         if (edges.size() < 2) {
             return {};
         }
@@ -318,9 +372,13 @@ namespace locus::kernel::modeling {
             return {};
         }
 
-        const geometry::Edge& firstEdge = mesh.edge(uniqueEdges.front());
+        const std::array<geometry::VertexHandle, 2> firstDirection =
+            bridge_direction_for_boundary_edge(
+                mesh,
+                uniqueEdges.front(),
+                useAdjacentLoopDirection);
 
-        if (!mesh.is_valid(firstEdge.vertexA) || !mesh.is_valid(firstEdge.vertexB)) {
+        if (!mesh.is_valid(firstDirection[0]) || !mesh.is_valid(firstDirection[1])) {
             return {};
         }
 
@@ -328,9 +386,9 @@ namespace locus::kernel::modeling {
         result.vertices.reserve(uniqueEdges.size());
         result.edges.reserve(uniqueEdges.size());
 
-        geometry::VertexHandle startVertex = firstEdge.vertexA;
-        geometry::VertexHandle currentVertex = firstEdge.vertexA;
-        geometry::VertexHandle nextVertex = firstEdge.vertexB;
+        geometry::VertexHandle startVertex = firstDirection[0];
+        geometry::VertexHandle currentVertex = firstDirection[0];
+        geometry::VertexHandle nextVertex = firstDirection[1];
 
         result.vertices.push_back(currentVertex);
         result.edges.push_back(uniqueEdges.front());

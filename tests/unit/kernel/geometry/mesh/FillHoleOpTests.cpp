@@ -292,6 +292,39 @@ TestResult run_fill_hole_operation_tests()
     {
         LEM mesh;
         LEMEditor editor(mesh);
+
+        const VertexHandle a =
+            editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle b =
+            editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle c =
+            editor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
+        const VertexHandle d =
+            editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
+
+        const FaceHandle adjacentFace =
+            editor.add_face({ a, b, c });
+        const EdgeHandle diagonal = mesh.find_edge(a, c);
+        const EdgeHandle cd = editor.find_or_create_edge(c, d);
+        const EdgeHandle da = editor.find_or_create_edge(d, a);
+
+        OperationContext context = make_context(mesh);
+        const OperationResult result =
+            FillHoleOp::edges({ diagonal, cd, da }).execute(context);
+        const std::vector<FaceHandle> faces = TopologyTraversal::faces(mesh);
+
+        if (!mesh.is_valid(adjacentFace) ||
+            !result.is_success() ||
+            faces.size() != 2u ||
+            glm::dot(mesh.face(adjacentFace).normal, mesh.face(faces.back()).normal) <= 0.0f) {
+            return TestResult::fail(
+                "FillHoleOp should orient a filled boundary face with adjacent face normals");
+        }
+    }
+
+    {
+        LEM mesh;
+        LEMEditor editor(mesh);
         const CycleFixture ngon =
             make_regular_cycle(editor, 6u);
 

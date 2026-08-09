@@ -10,9 +10,43 @@
 #include "kernel/geometry/topology/TopologyTraversal.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace locus::kernel::modeling {
+    namespace {
+
+        [[nodiscard]] std::array<geometry::VertexHandle, 2> fill_direction_for_boundary_edge(
+            const geometry::LEM& mesh,
+            geometry::EdgeHandle edge)
+        {
+            const geometry::Edge& edgeElement = mesh.edge(edge);
+            std::array<geometry::VertexHandle, 2> direction{
+                edgeElement.vertexA,
+                edgeElement.vertexB
+            };
+
+            const std::vector<geometry::LoopHandle> loops =
+                geometry::TopologyTraversal::edge_loops(mesh, edge);
+            if (loops.size() != 1u) {
+                return direction;
+            }
+
+            const geometry::Loop& loop = mesh.loop(loops.front());
+            if (!mesh.is_valid(loop.next)) {
+                return direction;
+            }
+
+            const geometry::VertexHandle adjacentStart = loop.vertex;
+            const geometry::VertexHandle adjacentEnd = mesh.loop(loop.next).vertex;
+            if (mesh.is_valid(adjacentStart) && mesh.is_valid(adjacentEnd)) {
+                direction = { adjacentEnd, adjacentStart };
+            }
+
+            return direction;
+        }
+
+    }
 
     FillHoleOp::FillHoleOp(std::vector<geometry::VertexHandle> vertices)
         : mode_(FillHoleMode::VertexCycle)
@@ -196,8 +230,9 @@ namespace locus::kernel::modeling {
             return {};
         }
 
-        const geometry::Edge& firstEdge = mesh.edge(uniqueEdges.front());
-        if (!mesh.is_valid(firstEdge.vertexA) || !mesh.is_valid(firstEdge.vertexB)) {
+        const std::array<geometry::VertexHandle, 2> firstDirection =
+            fill_direction_for_boundary_edge(mesh, uniqueEdges.front());
+        if (!mesh.is_valid(firstDirection[0]) || !mesh.is_valid(firstDirection[1])) {
             return {};
         }
 
@@ -207,9 +242,9 @@ namespace locus::kernel::modeling {
         std::vector<geometry::EdgeHandle> usedEdges;
         usedEdges.reserve(uniqueEdges.size());
 
-        geometry::VertexHandle startVertex = firstEdge.vertexA;
-        geometry::VertexHandle currentVertex = firstEdge.vertexA;
-        geometry::VertexHandle nextVertex = firstEdge.vertexB;
+        geometry::VertexHandle startVertex = firstDirection[0];
+        geometry::VertexHandle currentVertex = firstDirection[0];
+        geometry::VertexHandle nextVertex = firstDirection[1];
 
         orderedVertices.push_back(currentVertex);
         usedEdges.push_back(uniqueEdges.front());

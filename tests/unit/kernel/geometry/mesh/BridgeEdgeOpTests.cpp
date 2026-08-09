@@ -10,6 +10,7 @@
 #include "kernel/modeling/core/OperationContext.h"
 #include "kernel/modeling/operations/topology/BridgeEdgeOp.h"
 
+#include <glm/geometric.hpp>
 #include <glm/vec3.hpp>
 
 #include <vector>
@@ -190,6 +191,55 @@ TestResult run_bridge_edge_operation_tests()
         if (!TopologyValidator::validate(mesh).valid()) {
             return TestResult::fail(
                 "BridgeEdgeOp reversed result should pass topology validation");
+        }
+    }
+
+    {
+        LEM mesh;
+        LEMEditor editor(mesh);
+
+        const VertexHandle a0 =
+            editor.add_vertex(glm::vec3{ 0.0f, 0.0f, 0.0f });
+        const VertexHandle a1 =
+            editor.add_vertex(glm::vec3{ 1.0f, 0.0f, 0.0f });
+        const VertexHandle a2 =
+            editor.add_vertex(glm::vec3{ 0.0f, -1.0f, 0.0f });
+        const VertexHandle b0 =
+            editor.add_vertex(glm::vec3{ 1.0f, 1.0f, 0.0f });
+        const VertexHandle b1 =
+            editor.add_vertex(glm::vec3{ 0.0f, 1.0f, 0.0f });
+        const VertexHandle b2 =
+            editor.add_vertex(glm::vec3{ 1.0f, 2.0f, 0.0f });
+
+        const FaceHandle firstAdjacent =
+            editor.add_face({ a0, a1, a2 });
+        const FaceHandle secondAdjacent =
+            editor.add_face({ b0, b1, b2 });
+        const EdgeHandle firstEdge = mesh.find_edge(a0, a1);
+        const EdgeHandle secondEdge = mesh.find_edge(b0, b1);
+
+        OperationContext context{};
+        context.mesh = &mesh;
+        context.validateAfterExecute = true;
+        context.rebuildNormals = true;
+
+        BridgeEdgeOp operation =
+            BridgeEdgeOp::edges({ firstEdge }, { secondEdge });
+        operation.set_closed(false);
+
+        const OperationResult result =
+            operation.execute(context);
+        const std::vector<FaceHandle> faces =
+            TopologyTraversal::faces(mesh);
+
+        if (!mesh.is_valid(firstAdjacent) ||
+            !mesh.is_valid(secondAdjacent) ||
+            !result.is_success() ||
+            faces.size() != 3u ||
+            glm::dot(mesh.face(firstAdjacent).normal, mesh.face(faces.back()).normal) <= 0.0f ||
+            glm::dot(mesh.face(secondAdjacent).normal, mesh.face(faces.back()).normal) <= 0.0f) {
+            return TestResult::fail(
+                "BridgeEdgeOp should orient bridge faces with adjacent boundary normals");
         }
     }
 

@@ -242,7 +242,8 @@ namespace locus::kernel::modeling {
          */
         [[nodiscard]] ExtractedEdgeCycle order_edge_cycle(
             const geometry::LEM& mesh,
-            const std::vector<geometry::EdgeHandle>& edges) const;
+            const std::vector<geometry::EdgeHandle>& edges,
+            bool useAdjacentLoopDirection) const;
 
         /**
          * @brief Extracts one connected edge cycle from an edge set.
@@ -255,7 +256,8 @@ namespace locus::kernel::modeling {
         [[nodiscard]] ExtractedEdgeCycle extract_one_edge_cycle(
             const geometry::LEM& mesh,
             const std::vector<geometry::EdgeHandle>& edges,
-            bool requireAllEdges) const;
+            bool requireAllEdges,
+            bool useAdjacentLoopDirection) const;
 
         /**
          * @brief Validates bridge cycles before face creation.
