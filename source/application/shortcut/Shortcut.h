@@ -19,6 +19,7 @@ namespace locus::application {
         ActivateRotateTool,
         ActivateScaleTool,
         ActivateUniversalTool,
+        ActivatePivotTool,
         ActivateExtrudeFaceTool,
         ActivateInsetFaceTool,
         ActivateSolidifyTool,

@@ -14,6 +14,7 @@
 #include "editor/tools/mesh/topology/LoopCutTool.h"
 #include "editor/tools/mesh/vertex/ShrinkFattenTool.h"
 #include "editor/tools/selection/SelectTool.h"
+#include "editor/tools/transform/PivotTool.h"
 #include "editor/tools/transform/TransformTool.h"
 
 #include <memory>
@@ -37,6 +38,13 @@ namespace locus::editor {
                 TransformTool::make_descriptor(),
                 [] {
                     return std::make_unique<TransformTool>();
+                });
+
+        registeredAll &=
+            registry.register_tool(
+                PivotTool::make_descriptor(),
+                [] {
+                    return std::make_unique<PivotTool>();
                 });
 
         registeredAll &=

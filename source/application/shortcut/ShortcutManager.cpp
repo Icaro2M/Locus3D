@@ -84,6 +84,10 @@ namespace locus::application {
                 return context.transformSelectionContext
                     && !context.modalActive;
 
+            case ShortcutAction::ActivatePivotTool:
+                return context.objectMode
+                    && !context.modalActive;
+
             case ShortcutAction::ActivateSelectTool:
             case ShortcutAction::DeleteSelection:
                 return !context.modalActive;
@@ -128,6 +132,7 @@ namespace locus::application {
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateLoopCutTool },
             { Key::R, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateScaleTool },
             { Key::T, InputModifiers::None, InputModifiers::Control, ShortcutAction::ActivateUniversalTool },
+            { Key::P, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::ActivatePivotTool },
             { Key::Num1, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetObjectGranularity },
             { Key::Num2, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetVertexGranularity },
             { Key::Num3, InputModifiers::None, InputModifiers::Control | InputModifiers::Alt, ShortcutAction::SetEdgeGranularity },

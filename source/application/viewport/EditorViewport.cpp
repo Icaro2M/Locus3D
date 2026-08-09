@@ -14,6 +14,7 @@
 #include "editor/render/MeshNodeRenderAdapter.h"
 #include "editor/render/ManufacturingRenderAdapter.h"
 #include "editor/render/OverlayRenderAdapter.h"
+#include "editor/render/PivotRenderAdapter.h"
 #include "editor/render/PreviewRenderAdapter.h"
 #include "editor/render/SelectionRenderAdapter.h"
 #include "editor/render/TopologyOverlayAdapter.h"
@@ -23,6 +24,7 @@
 #include "editor/tools/core/ToolContext.h"
 #include "editor/tools/mesh/core/MeshDragOperationTool.h"
 #include "editor/tools/selection/SelectTool.h"
+#include "editor/tools/transform/PivotTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/common/GraphicsError.h"
 #include "graphics/appearance/ViewportPalette.h"
@@ -332,6 +334,15 @@ namespace locus::application {
                 document.tool_manager().active_tool();
 
             return dynamic_cast<editor::TransformTool*>(tool);
+        }
+
+        [[nodiscard]] const editor::PivotTool* active_pivot_tool(
+            const DocumentSession& document)
+        {
+            const editor::ITool* tool =
+                document.tool_manager().active_tool();
+
+            return dynamic_cast<const editor::PivotTool*>(tool);
         }
 
         [[nodiscard]] const editor::MeshDragOperationTool*
@@ -695,6 +706,32 @@ namespace locus::application {
 
         append_startup_log("EditorViewport: point marker renderer deferred");
 
+        auto pivotMarkerShaderResult = shaderManager_.load(
+            "viewport/pivot_marker",
+            "viewport/pivot_marker_vert.glsl",
+            "viewport/pivot_marker_frag.glsl");
+
+        if (!pivotMarkerShaderResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to load the pivot marker shader",
+                pivotMarkerShaderResult.error());
+        }
+        append_startup_log("EditorViewport: pivot marker shader loaded");
+
+        const auto pivotRendererResult =
+            pivotRenderer_.create(shaderManager_);
+
+        if (!pivotRendererResult) {
+            shutdown();
+            return graphics_failure(
+                ApplicationErrorCode::InitializationFailed,
+                "Failed to create the pivot marker renderer",
+                pivotRendererResult.error());
+        }
+        append_startup_log("EditorViewport: pivot marker renderer created");
+
         auto surfaceOverlayShaderResult = shaderManager_.load(
             "viewport/surface_overlay",
             "viewport/surface_overlay_vert.glsl",
@@ -973,6 +1010,7 @@ namespace locus::application {
 
         axisRenderer_.destroy();
         gizmoRenderer_.destroy();
+        pivotRenderer_.destroy();
         manufacturingOccludedMarkerRenderer_.destroy();
         manufacturingMarkerRenderer_.destroy();
         manufacturingOccludedLineRenderer_.destroy();
@@ -1333,6 +1371,27 @@ namespace locus::application {
         graphics::RenderScene gizmoScene{};
         gizmoScene.reserve(gizmoRenderer_.submitted_object_count());
         gizmoRenderer_.submit(gizmoScene);
+
+        const graphics::PivotDrawData pivotData =
+            editor::PivotRenderAdapter::build_active_object_pivot(
+                document.editor().scene(),
+                document.editor().selection(),
+                active_pivot_tool(document));
+
+        if (pivotRenderer_.is_valid()) {
+            const std::vector<graphics::PivotDrawData> pivots{
+                pivotData
+            };
+            const auto pivotUploadResult =
+                pivotRenderer_.set_pivots(pivots);
+
+            if (!pivotUploadResult) {
+                return graphics_failure(
+                    ApplicationErrorCode::RuntimeFailure,
+                    "Failed to upload pivot marker overlay",
+                    pivotUploadResult.error());
+            }
+        }
 
         std::deque<graphics::GpuMesh> overlayMeshes;
         std::vector<graphics::RenderObject> overlayObjects;
@@ -1797,6 +1856,10 @@ namespace locus::application {
         renderer_.render_with_state(
             gizmoQueue,
             gizmoState);
+
+        pivotRenderer_.render(
+            viewport_.camera().view_projection_matrix(),
+            viewport_.state().rect);
 
         selectionShapeRenderer_.render();
 

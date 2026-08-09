@@ -88,6 +88,19 @@ namespace locus::editor {
         [[nodiscard]] static glm::vec3 node_origin_position(
             const EditorScene& scene,
             SceneNodeId node);
+
+        /**
+         * @brief Converts a world-space pivot position into node-local offset.
+         *
+         * @param scene Scene that owns the node.
+         * @param node Node identifier.
+         * @param worldPosition Desired pivot position in world coordinates.
+         * @return Node-local pivot offset, or zero when the node is missing.
+         */
+        [[nodiscard]] static glm::vec3 node_local_offset_from_world(
+            const EditorScene& scene,
+            SceneNodeId node,
+            const glm::vec3& worldPosition);
     };
 
 } // namespace locus::editor

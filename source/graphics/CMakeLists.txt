@@ -31,6 +31,7 @@ target_sources(locus3d_graphics PRIVATE
     "overlay/renderers/GridRenderer.cpp"
     "overlay/renderers/MeasurementRenderer.cpp"
     "overlay/renderers/NormalRenderer.cpp"
+    "overlay/renderers/PivotRenderer.cpp"
     "overlay/renderers/PointMarkerRenderer.cpp"
     "overlay/renderers/ScreenSpaceLineRenderer.cpp"
     "overlay/renderers/SelectionShapeRenderer.cpp"

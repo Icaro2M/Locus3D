@@ -21,6 +21,7 @@
 #include "editor/tools/core/ToolEvent.h"
 #include "editor/tools/core/ToolState.h"
 #include "editor/tools/selection/SelectTool.h"
+#include "editor/tools/transform/PivotTool.h"
 #include "editor/tools/transform/TransformTool.h"
 #include "graphics/camera/CameraRayBuilder.h"
 
@@ -733,6 +734,11 @@ namespace locus::application {
                 return activate_transform_tool(
                     document,
                     editor::GizmoMode::Universal);
+
+            case ShortcutAction::ActivatePivotTool:
+                return activate_tool(
+                    document,
+                    editor::ToolId{ editor::PivotTool::Id });
 
             case ShortcutAction::Cancel:
                 return dispatch_tool_event(

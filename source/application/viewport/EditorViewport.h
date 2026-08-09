@@ -18,6 +18,7 @@
 #include "graphics/overlay/renderers/AxisRenderer.h"
 #include "graphics/overlay/renderers/GizmoRenderer.h"
 #include "graphics/overlay/renderers/GridRenderer.h"
+#include "graphics/overlay/renderers/PivotRenderer.h"
 #include "graphics/overlay/renderers/PointMarkerRenderer.h"
 #include "graphics/overlay/renderers/ScreenSpaceLineRenderer.h"
 #include "graphics/overlay/renderers/SelectionShapeRenderer.h"
@@ -393,6 +394,7 @@ namespace locus::application {
         graphics::GridRenderer gridRenderer_{};
         graphics::AxisRenderer axisRenderer_{};
         graphics::GizmoRenderer gizmoRenderer_{};
+        graphics::PivotRenderer pivotRenderer_{};
         graphics::SurfaceOverlayRenderer topologySurfaceRenderer_{};
         graphics::ScreenSpaceLineRenderer topologyLineRenderer_{};
         graphics::PointMarkerRenderer topologyVertexRenderer_{};

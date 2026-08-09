@@ -7,8 +7,10 @@
 
 #include "editor/scene/EditorScene.h"
 #include "editor/scene/SceneNode.h"
+#include "editor/scene/SceneTransforms.h"
 
 #include <glm/mat4x4.hpp>
+#include <glm/matrix.hpp>
 #include <glm/vec4.hpp>
 
 namespace locus::editor {
@@ -105,6 +107,23 @@ namespace locus::editor {
         SceneNodeId node)
     {
         return matrix_translation(node_world_matrix(scene, node));
+    }
+
+    glm::vec3 TransformPivotResolver::node_local_offset_from_world(
+        const EditorScene& scene,
+        SceneNodeId node,
+        const glm::vec3& worldPosition)
+    {
+        if (!scene.find_node(node)) {
+            return glm::vec3{ 0.0f, 0.0f, 0.0f };
+        }
+
+        const glm::mat4 inverseWorld =
+            glm::inverse(SceneTransforms::world_matrix(scene, node));
+
+        return glm::vec3{
+            inverseWorld * glm::vec4{ worldPosition, 1.0f }
+        };
     }
 
 } // namespace locus::editor

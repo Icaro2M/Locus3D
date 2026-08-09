@@ -127,6 +127,7 @@ When changing application code:
 - Keep process lifetime, window ownership, document sessions, and frame timing in `source/application/`.
 - Keep editor behavior, command history, selection, tools, and gizmos in `source/editor/`.
 - Keep GPU implementations, render scenes, overlays, viewport drawing, and picking operations in `source/graphics/`; application viewports may own their viewport-scoped graphics resource instances.
+- `EditorViewport` may own viewport-scoped overlay renderers such as `PivotRenderer`, but pivot semantics remain in editor code. The viewport asks `PivotRenderAdapter` for draw data, uploads it, and renders it with the graphics renderer lifecycle.
 - Keep mesh topology, modeling operations, validation, and manufacturing analysis in `source/kernel/`.
 - Prefer explicit context objects over global state when connecting application runtime to editor, graphics, and document systems.
 - Update this document when files are added, renamed, or promoted from planned to implemented.

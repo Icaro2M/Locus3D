@@ -8,6 +8,7 @@
 #include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
 #include "editor/command/CommandResult.h"
+#include "editor/command/transform/SetNodePivotCommand.h"
 #include "editor/command/transform/NodeTransformChange.h"
 #include "editor/command/transform/SetNodeTransformsCommand.h"
 #include "editor/scene/MeshNode.h"
@@ -19,7 +20,9 @@
 #include "editor/tools/mesh/edge/EdgeSlideTool.h"
 #include "editor/tools/mesh/face/SolidifyTool.h"
 #include "editor/tools/mesh/topology/LoopCutTool.h"
+#include "editor/tools/transform/PivotTool.h"
 #include "editor/tools/selection/SelectTool.h"
+#include "editor/transform/TransformPivotResolver.h"
 #include "editor/transform/TransformSession.h"
 #include "kernel/geometry/mesh/LEMEditor.h"
 #include "kernel/geometry/mesh/LEMHandles.h"
@@ -35,6 +38,8 @@
 #include <vector>
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <glm/vec3.hpp>
 
 
@@ -89,9 +94,13 @@ namespace {
     using locus::editor::EditorDirtyFlags;
     using locus::editor::NodeTransform;
     using locus::editor::NodeTransformChange;
+    using locus::editor::NodePivot;
+    using locus::editor::PivotTool;
     using locus::editor::SceneNode;
     using locus::editor::SceneNodeId;
+    using locus::editor::SetNodePivotCommand;
     using locus::editor::SetNodeTransformsCommand;
+    using locus::editor::TransformPivotResolver;
     using locus::editor::TransformSession;
 
     constexpr float SmokeEpsilon = 0.00001f;
@@ -108,6 +117,14 @@ namespace {
         const glm::vec3& expected)
     {
         return nearly_equal(transform.position(), expected);
+    }
+
+    [[nodiscard]] bool same_pivot(
+        const NodePivot& lhs,
+        const NodePivot& rhs)
+    {
+        return lhs.custom == rhs.custom &&
+            nearly_equal(lhs.offset, rhs.offset);
     }
 
     void print_position(
@@ -217,6 +234,301 @@ namespace {
         }
 
         return *node;
+    }
+
+    [[nodiscard]] glm::vec2 project_smoke_point(
+        const glm::mat4& viewProjection,
+        const glm::vec2& viewportSize,
+        const glm::vec3& world)
+    {
+        const glm::vec4 clip =
+            viewProjection * glm::vec4{ world, 1.0f };
+        const glm::vec3 ndc = glm::vec3{ clip } / clip.w;
+        return {
+            (ndc.x * 0.5f + 0.5f) * viewportSize.x,
+            (ndc.y * 0.5f + 0.5f) * viewportSize.y
+        };
+    }
+
+    [[nodiscard]] locus::editor::ToolEvent make_pivot_pointer_event(
+        locus::editor::ToolEventType type,
+        const glm::vec3& rayPlanePoint,
+        const glm::vec2& viewportPosition,
+        const glm::mat4& viewProjection,
+        const glm::vec2& viewportSize)
+    {
+        locus::editor::ToolEvent event{};
+        event.type = type;
+        event.button =
+            type == locus::editor::ToolEventType::PointerPress ||
+            type == locus::editor::ToolEventType::PointerRelease
+            ? locus::editor::ToolPointerButton::Primary
+            : locus::editor::ToolPointerButton::None;
+        event.pointer.viewportPosition = viewportPosition;
+        event.pointer.viewportSize = viewportSize;
+        event.pointer.viewProjection = viewProjection;
+        event.pointer.viewDirection = { 0.0f, 0.0f, -1.0f };
+        event.pointer.viewRight = { 1.0f, 0.0f, 0.0f };
+        event.pointer.viewUp = { 0.0f, 1.0f, 0.0f };
+        event.pointer.cameraPosition = { 0.0f, 0.0f, 5.0f };
+        event.pointer.worldRay.origin =
+            rayPlanePoint + glm::vec3{ 0.0f, 0.0f, 5.0f };
+        event.pointer.worldRay.direction = { 0.0f, 0.0f, -1.0f };
+        return event;
+    }
+
+    [[nodiscard]] bool run_pivot_smoke_test()
+    {
+        DocumentSession document{ locus::application::DocumentId{ 7u } };
+        Editor& editor = document.editor();
+
+        const SceneNodeId object =
+            editor.scene().create_empty("Pivot Smoke Object");
+        if (object.is_invalid()) {
+            std::cerr << "Pivot smoke: failed to create object.\n";
+            return false;
+        }
+
+        SceneNode& node =
+            require_node(editor, object, "Pivot Smoke Object");
+        node.transform().set_position(glm::vec3{ 10.0f, 0.0f, 0.0f });
+        editor.selection_controller().select_object(object);
+
+        const NodeTransform transformBefore = node.transform();
+        const NodePivot initialPivot = node.pivot();
+        if (initialPivot.custom ||
+            !nearly_equal(initialPivot.offset, glm::vec3{ 0.0f }) ||
+            !nearly_equal(
+                TransformPivotResolver::node_pivot_position(
+                    editor.scene(),
+                    object),
+                glm::vec3{ 10.0f, 0.0f, 0.0f })) {
+            std::cerr << "Pivot smoke: initial pivot invariant failed.\n";
+            return false;
+        }
+
+        locus::editor::ToolContext toolContext(
+            editor,
+            document.command_dispatcher(),
+            document.history(),
+            document.editor_sync().picking_sync());
+
+        PivotTool tool{};
+        if (!tool.can_activate(toolContext) ||
+            tool.activate(toolContext).failed()) {
+            std::cerr << "Pivot smoke: tool activation failed.\n";
+            return false;
+        }
+
+        const glm::mat4 viewProjection =
+            glm::ortho(8.0f, 14.0f, -3.0f, 3.0f, -10.0f, 10.0f);
+        const glm::vec2 viewportSize{ 600.0f, 600.0f };
+        const glm::vec3 initialWorld =
+            TransformPivotResolver::node_pivot_position(
+                editor.scene(),
+                object);
+        const glm::vec2 pressPosition =
+            project_smoke_point(
+                viewProjection,
+                viewportSize,
+                initialWorld);
+
+        const locus::editor::ToolEvent hoverEvent =
+            make_pivot_pointer_event(
+                locus::editor::ToolEventType::PointerMove,
+                initialWorld,
+                pressPosition,
+                viewProjection,
+                viewportSize);
+
+        if (!tool.handle_event(toolContext, hoverEvent).was_consumed() ||
+            !tool.hovered()) {
+            std::cerr << "Pivot smoke: hover failed.\n";
+            return false;
+        }
+
+        const std::size_t historyBeforeDrag =
+            document.history().undo_size();
+        const locus::editor::ToolEvent pressEvent =
+            make_pivot_pointer_event(
+                locus::editor::ToolEventType::PointerPress,
+                initialWorld,
+                pressPosition,
+                viewProjection,
+                viewportSize);
+
+        if (!tool.handle_event(toolContext, pressEvent).was_consumed() ||
+            !tool.dragging()) {
+            std::cerr << "Pivot smoke: drag did not start on marker.\n";
+            return false;
+        }
+
+        const glm::vec3 finalWorld{ 12.0f, 0.0f, 0.0f };
+        for (int step = 1; step <= 6; ++step) {
+            const float t = static_cast<float>(step) / 6.0f;
+            const glm::vec3 candidate =
+                initialWorld + (finalWorld - initialWorld) * t;
+            const locus::editor::ToolEvent moveEvent =
+                make_pivot_pointer_event(
+                    locus::editor::ToolEventType::PointerMove,
+                    candidate,
+                    pressPosition,
+                    viewProjection,
+                    viewportSize);
+
+            if (!tool.handle_event(toolContext, moveEvent).was_consumed()) {
+                std::cerr << "Pivot smoke: drag update ignored.\n";
+                return false;
+            }
+        }
+
+        if (document.history().undo_size() != historyBeforeDrag ||
+            !same_position(node.transform(), transformBefore.position()) ||
+            !nearly_equal(node.pivot().offset, glm::vec3{ 2.0f, 0.0f, 0.0f }) ||
+            !node.pivot().custom) {
+            std::cerr << "Pivot smoke: preview invariant failed.\n";
+            return false;
+        }
+
+        const locus::editor::ToolEvent releaseEvent =
+            make_pivot_pointer_event(
+                locus::editor::ToolEventType::PointerRelease,
+                finalWorld,
+                pressPosition,
+                viewProjection,
+                viewportSize);
+
+        if (tool.handle_event(toolContext, releaseEvent).failed() ||
+            document.history().undo_size() != historyBeforeDrag + 1u ||
+            !same_position(node.transform(), transformBefore.position()) ||
+            !nearly_equal(
+                TransformPivotResolver::node_pivot_position(
+                    editor.scene(),
+                    object),
+                finalWorld)) {
+            std::cerr << "Pivot smoke: commit invariant failed.\n";
+            return false;
+        }
+
+        CommandResult undoResult =
+            document.history().undo(document.command_dispatcher());
+        if (!undoResult.success ||
+            !same_pivot(node.pivot(), initialPivot) ||
+            !same_position(node.transform(), transformBefore.position())) {
+            std::cerr << "Pivot smoke: undo invariant failed.\n";
+            return false;
+        }
+
+        CommandResult redoResult =
+            document.history().redo(document.command_dispatcher());
+        if (!redoResult.success ||
+            !node.pivot().custom ||
+            !nearly_equal(node.pivot().offset, glm::vec3{ 2.0f, 0.0f, 0.0f }) ||
+            !same_position(node.transform(), transformBefore.position())) {
+            std::cerr << "Pivot smoke: redo invariant failed.\n";
+            return false;
+        }
+
+        const std::size_t historyAfterCommit =
+            document.history().undo_size();
+        const NodePivot committedPivot = node.pivot();
+
+        if (!tool.activate(toolContext).was_consumed()) {
+            std::cerr << "Pivot smoke: second activation failed.\n";
+            return false;
+        }
+
+        const glm::vec2 committedScreen =
+            project_smoke_point(
+                viewProjection,
+                viewportSize,
+                finalWorld);
+        if (!tool.handle_event(
+                toolContext,
+                make_pivot_pointer_event(
+                    locus::editor::ToolEventType::PointerPress,
+                    finalWorld,
+                    committedScreen,
+                    viewProjection,
+                    viewportSize)).was_consumed()) {
+            std::cerr << "Pivot smoke: cancel drag setup failed.\n";
+            return false;
+        }
+
+        (void)tool.handle_event(
+            toolContext,
+            make_pivot_pointer_event(
+                locus::editor::ToolEventType::PointerMove,
+                glm::vec3{ 11.0f, 1.0f, 0.0f },
+                committedScreen,
+                viewProjection,
+                viewportSize));
+
+        if (!tool.cancel(toolContext).was_consumed() ||
+            document.history().undo_size() != historyAfterCommit ||
+            !same_pivot(node.pivot(), committedPivot)) {
+            std::cerr << "Pivot smoke: cancel invariant failed.\n";
+            return false;
+        }
+
+        const SceneNodeId parent =
+            editor.scene().create_empty("Pivot Smoke Parent");
+        const SceneNodeId child =
+            editor.scene().create_empty("Pivot Smoke Child");
+        if (parent.is_invalid() ||
+            child.is_invalid() ||
+            !editor.scene().reparent(child, parent)) {
+            std::cerr << "Pivot smoke: hierarchy setup failed.\n";
+            return false;
+        }
+
+        SceneNode& parentNode =
+            require_node(editor, parent, "Pivot Smoke Parent");
+        parentNode.transform().set_position(glm::vec3{ 5.0f, 2.0f, 0.0f });
+        parentNode.transform().set_rotation(
+            glm::angleAxis(
+                glm::half_pi<float>(),
+                glm::vec3{ 0.0f, 0.0f, 1.0f }));
+        parentNode.transform().set_scale(glm::vec3{ 2.0f, 1.5f, 1.0f });
+
+        SceneNode& childNode =
+            require_node(editor, child, "Pivot Smoke Child");
+        childNode.transform().set_position(glm::vec3{ 1.0f, 0.0f, 0.0f });
+
+        const glm::vec3 hierarchyWorld{ 4.0f, 6.0f, 0.0f };
+        NodePivot hierarchyPivot{};
+        hierarchyPivot.offset =
+            TransformPivotResolver::node_local_offset_from_world(
+                editor.scene(),
+                child,
+                hierarchyWorld);
+        hierarchyPivot.custom = true;
+
+        CommandResult hierarchyResult =
+            toolContext.execute_command(
+                std::make_unique<SetNodePivotCommand>(
+                    child,
+                    hierarchyPivot));
+
+        if (!hierarchyResult.success ||
+            !nearly_equal(
+                TransformPivotResolver::node_pivot_position(
+                    editor.scene(),
+                    child),
+                hierarchyWorld)) {
+            std::cerr << "Pivot smoke: hierarchy world/local invariant failed.\n";
+            return false;
+        }
+
+        std::cout
+            << "Pivot smoke test passed. offset=("
+            << node.pivot().offset.x << ", "
+            << node.pivot().offset.y << ", "
+            << node.pivot().offset.z << ") history="
+            << document.history().undo_size()
+            << '\n';
+
+        return true;
     }
 
     [[nodiscard]] bool run_transform_history_smoke_test()
@@ -1948,6 +2260,11 @@ int main(int argc, char** argv)
     if (argc > 1 &&
         std::string_view{ argv[1] } == "--transform-smoke-test") {
         return run_transform_history_smoke_test() ? 0 : 1;
+    }
+
+    if (argc > 1 &&
+        std::string_view{ argv[1] } == "--pivot-smoke-test") {
+        return run_pivot_smoke_test() ? 0 : 1;
     }
 
     if (argc > 1 &&
