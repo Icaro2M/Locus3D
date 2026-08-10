@@ -89,6 +89,8 @@ namespace locus::application {
                     && !context.modalActive;
 
             case ShortcutAction::ActivateSelectTool:
+            case ShortcutAction::CopySelection:
+            case ShortcutAction::PasteSelection:
             case ShortcutAction::DeleteSelection:
                 return !context.modalActive;
 
@@ -152,6 +154,8 @@ namespace locus::application {
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },
             { Key::S, InputModifiers::Control, InputModifiers::None, ShortcutAction::Save },
             { Key::O, InputModifiers::Control, InputModifiers::None, ShortcutAction::Open },
+            { Key::C, InputModifiers::Control, InputModifiers::None, ShortcutAction::CopySelection },
+            { Key::V, InputModifiers::Control, InputModifiers::None, ShortcutAction::PasteSelection },
             { Key::Delete, InputModifiers::None, InputModifiers::None, ShortcutAction::DeleteSelection },
             { Key::Escape, InputModifiers::None, InputModifiers::None, ShortcutAction::Cancel }
         };

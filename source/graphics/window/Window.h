@@ -270,6 +270,20 @@ namespace locus::graphics
         void set_cursor_shape(CursorShape shape);
 
         /**
+         * @brief Stores UTF-8 text in the operating system clipboard.
+         *
+         * @param text Clipboard text.
+         */
+        void set_clipboard_text(const std::string& text);
+
+        /**
+         * @brief Reads UTF-8 text from the operating system clipboard.
+         *
+         * @return Clipboard text, or an empty string when unavailable.
+         */
+        [[nodiscard]] std::string clipboard_text() const;
+
+        /**
          * @brief Sets the window resize callback.
          *
          * @param callback Callback function.

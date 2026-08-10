@@ -11,6 +11,7 @@
 #include "graphics/window/Window.h"
 
 #include <cstdint>
+#include <string>
 
 namespace locus::application {
 
@@ -124,6 +125,20 @@ namespace locus::application {
          * @return Framebuffer height, or zero while uninitialized.
          */
         [[nodiscard]] std::int32_t framebuffer_height() const noexcept;
+
+        /**
+         * @brief Stores text in the operating system clipboard.
+         *
+         * @param text Clipboard text.
+         */
+        void set_clipboard_text(const std::string& text);
+
+        /**
+         * @brief Reads text from the operating system clipboard.
+         *
+         * @return Clipboard text, or an empty string when unavailable.
+         */
+        [[nodiscard]] std::string clipboard_text() const;
 
         /**
          * @brief Returns the product configuration used during initialization.

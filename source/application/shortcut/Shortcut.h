@@ -49,6 +49,8 @@ namespace locus::application {
         Redo,
         Save,
         Open,
+        CopySelection,
+        PasteSelection,
         DeleteSelection,
         Cancel
     };

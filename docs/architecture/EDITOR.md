@@ -43,13 +43,23 @@ source/graphics render scene, overlays, picking, viewport presentation
 - `transform/`: transform sessions, transform targets, coordinate spaces, and pivot resolution.
 - `snapping/`: snap settings, snap contexts/results, snap solver, and snap providers for grids, mesh elements, increments, and angles.
 - `sync/`: explicit synchronization from editor state into render scenes, picking data, and planned manufacturing workflows.
-- `io/`: editor document serialization boundaries and the planned native Locus3D document format.
+- `io/`: editor serialization primitives shared by transport-specific features. `SceneFragment` is the current reusable representation for detached scene-node subsets used by clipboard and intended to feed the future native save/load implementation.
 
 ### Editor Boundaries
 
 The editor layer should coordinate systems rather than absorbing their internals.
 
 Selection can reference scene nodes and mesh element handles, but editable topology should remain in the geometry kernel. Gizmos and tools can request render overlays and picking IDs, but GPU resource ownership should remain in the graphics layer. Commands can execute kernel modeling operations, but the command history should store editor-level intent and reversible state rather than becoming a hidden geometry backend.
+
+### Scene Fragment And Clipboard
+
+Object clipboard support is built on `source/editor/io/SceneFragment.*` and `SceneFragmentSerializer.*`. A `SceneFragment` is detached from its source `EditorScene`: it stores local fragment node ids, parent references using those local ids, node type, metadata, transform, pivot, and a mesh payload for `MeshNode`.
+
+Copy captures object-mode scene selections without mutating the editor, history, document dirty state, or selection. The capture policy matches existing hierarchy commands: selecting a parent captures its subtree; selecting both parent and child serializes the child once because the selected child is shadowed by the selected ancestor; selecting only a child captures that child as a fragment root.
+
+Paste is an undoable editor command: `PasteNodesCommand` validates the complete fragment, allocates fresh `SceneNodeId` values on first execution, remaps fragment ids to scene ids, recreates hierarchy, selects the pasted nodes, and marks scene/selection/mesh/render/picking dirty. Undo removes the pasted subtree and restores the previous selection snapshot. Redo restores the same ids captured during the first paste, following the policy already used by `DuplicateNodeCommand`.
+
+The clipboard text is a transport envelope with magic `LOCUS3D_SCENE_FRAGMENT` and `version = 1`. This is deliberately not a document save format. Future native save/load can reuse the node and mesh serialization primitives, while document-level metadata, settings, paths, and complete-document archive concerns should remain separate.
 
 ---
 

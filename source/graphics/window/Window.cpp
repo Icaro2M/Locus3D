@@ -338,6 +338,25 @@ namespace locus::graphics
         glfwSetCursor(window_, cursor_);
     }
 
+    void Window::set_clipboard_text(const std::string& text)
+    {
+        if (window_)
+        {
+            glfwSetClipboardString(window_, text.c_str());
+        }
+    }
+
+    std::string Window::clipboard_text() const
+    {
+        if (!window_)
+        {
+            return {};
+        }
+
+        const char* text = glfwGetClipboardString(window_);
+        return text ? std::string{ text } : std::string{};
+    }
+
     void Window::set_resize_callback(ResizeCallback callback)
     {
         resizeCallback_ = std::move(callback);

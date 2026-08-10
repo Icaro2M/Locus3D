@@ -27,6 +27,7 @@ int main()
         { "CreateNodeCommands", run_create_node_command_tests },
         { "NodeMetadataCommands", run_node_metadata_command_tests },
         { "NodeHierarchyCommands", run_node_hierarchy_command_tests },
+        { "ClipboardCommands", run_clipboard_command_tests },
         { "NodeTransformCommands", run_node_transform_command_tests },
         { "ObjectSelectionCommands", run_object_selection_command_tests },
         { "SelectionModeCommands", run_selection_mode_command_tests },

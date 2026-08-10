@@ -61,7 +61,11 @@ The files at the root of `source/graphics/` are aggregator headers. They group r
 - `renderer/`: draw commands, draw lists, render queue, render pipeline, renderer, and render statistics.
 - `scene/`: renderable object state, transforms, visibility, layers, and scene containers.
 - `viewport/`: viewport rectangle, clear/depth settings, camera coupling, and derived viewport state.
-- `window/`: native window abstraction, cursor state, and window/input events.
+- `window/`: native window abstraction, cursor state, window/input events, and small platform text clipboard access.
+
+### Window Clipboard
+
+`graphics::Window` exposes minimal text clipboard functions implemented with GLFW. This keeps GLFW contained in the graphics/window boundary: application code can read and write clipboard text through `ApplicationWindow`, while editor code never includes GLFW or platform APIs.
 
 ---
 

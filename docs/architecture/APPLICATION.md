@@ -40,12 +40,21 @@ source/kernel geometry, modeling, validation, manufacturing analysis
 - `document/`: document identifiers, open document sessions, active document ownership, document creation/closing, and coordination between editor state and future document IO.
 - `viewport/`: application-level editor viewport composition that binds a document/editor context to graphics presentation and owns viewport-scoped camera, overlay, and picking resources.
 - `input/`: platform input events, current input state, capture ownership, and routing from window/input devices into editor tools and viewport interaction.
+- `shortcut/`: normalized shortcut bindings and context filtering, including object clipboard actions routed only when viewport/editor shortcuts are allowed.
 
 ### Application Boundaries
 
 The application layer should coordinate subsystem lifetime and data flow rather than becoming a hidden editor, renderer, or geometry backend.
 
 Application runtime can create and tick editor, graphics, and document systems, but editor intent should remain in editor commands and tools. Application windows can host graphics windows and viewports, but low-level GPU state should remain in the graphics layer. Document sessions can own an editor scene and eventually connect to serialization, but mesh invariants and file-format-specific geometry conversion should remain in the kernel and IO boundaries.
+
+### Clipboard Routing
+
+The application owns platform clipboard access and shortcut routing. `Ctrl+C` and `Ctrl+V` are registered in `ShortcutManager` as semantic `CopySelection` and `PasteSelection` actions; they are blocked by the same focus/text-input/modal context rules as other editor shortcuts.
+
+Runtime copy asks the editor IO layer to capture the selected scene objects into a `SceneFragment`, serializes it to the versioned Locus3D clipboard text envelope, and writes that text through `ApplicationWindow`. Runtime paste reads text from `ApplicationWindow`, asks the editor IO layer to decode and validate it, then executes `PasteNodesCommand` through the document history. The application does not inspect LEM topology or internal node payloads.
+
+Copy is non-mutating and does not mark the document dirty. Paste is a persistent document mutation when the command succeeds and is marked dirty through the same history/dirty flow used by other undoable scene changes.
 
 ---
 

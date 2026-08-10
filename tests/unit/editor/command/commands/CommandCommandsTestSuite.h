@@ -17,6 +17,7 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_create_node_command_tests();
 [[nodiscard]] TestResult run_node_metadata_command_tests();
 [[nodiscard]] TestResult run_node_hierarchy_command_tests();
+[[nodiscard]] TestResult run_clipboard_command_tests();
 [[nodiscard]] TestResult run_node_transform_command_tests();
 [[nodiscard]] TestResult run_object_selection_command_tests();
 [[nodiscard]] TestResult run_selection_mode_command_tests();

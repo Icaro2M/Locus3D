@@ -13,8 +13,10 @@
 #include "editor/actions/mesh/face/RegisterFaceActions.h"
 #include "editor/actions/mesh/topology/RegisterTopologyActions.h"
 #include "editor/command/CommandResult.h"
+#include "editor/command/scene/PasteNodesCommand.h"
 #include "editor/gizmo/GizmoMode.h"
 #include "editor/gizmo/GizmoState.h"
+#include "editor/io/SceneFragmentSerializer.h"
 #include "editor/selection/SelectionGranularity.h"
 #include "editor/selection/SelectionScope.h"
 #include "editor/tools/core/ToolContext.h"
@@ -589,10 +591,107 @@ namespace locus::application {
             return {};
         }
 
+        [[nodiscard]] ApplicationResult<void> copy_selection_to_clipboard(
+            DocumentSession& document,
+            ApplicationWindow& window)
+        {
+            const editor::Editor& editor = document.editor();
+            const editor::SelectionState& selection =
+                editor.selection();
+
+            if (selection.scope() != editor::SelectionScope::Scene
+                || selection.granularity()
+                != editor::SelectionGranularity::Object
+                || selection.objects().empty()) {
+                return {};
+            }
+
+            editor::SceneFragmentResult fragment =
+                editor::capture_scene_fragment(
+                    editor.scene(),
+                    selection.objects().selected());
+
+            if (!fragment.success) {
+                std::cout
+                    << "[clipboard] copy unavailable: "
+                    << fragment.message
+                    << '\n';
+                return {};
+            }
+
+            window.set_clipboard_text(
+                editor::serialize_scene_fragment(fragment.fragment));
+
+            std::cout
+                << "[clipboard] copied nodes="
+                << fragment.fragment.nodes.size()
+                << '\n';
+
+            return {};
+        }
+
+        [[nodiscard]] ApplicationResult<void> paste_selection_from_clipboard(
+            DocumentSession& document,
+            ApplicationWindow& window)
+        {
+            const std::string text = window.clipboard_text();
+            editor::SceneFragmentResult fragment =
+                editor::deserialize_scene_fragment(text);
+
+            if (!fragment.success) {
+                if (!fragment.message.empty()) {
+                    std::cout
+                        << "[clipboard] paste unavailable: "
+                        << fragment.message
+                        << '\n';
+                }
+                return {};
+            }
+
+            const std::size_t undoSizeBefore =
+                document.history().undo_size();
+
+            editor::ActionContext actionContext(
+                document.editor(),
+                document.command_dispatcher(),
+                document.history());
+
+            const editor::CommandResult result =
+                actionContext.execute_command(
+                    std::make_unique<editor::PasteNodesCommand>(
+                        std::move(fragment.fragment)));
+
+            if (!result.success) {
+                return ApplicationError::make(
+                    ApplicationErrorCode::RuntimeFailure,
+                    result.message.empty()
+                        ? "Failed to paste clipboard scene fragment."
+                        : result.message);
+            }
+
+            if (document.history().undo_size() > undoSizeBefore
+                && editor::has_flag(
+                    result.dirtyFlags,
+                    editor::EditorDirtyFlags::Scene |
+                    editor::EditorDirtyFlags::Mesh)) {
+                document.mark_dirty();
+            }
+
+            std::cout
+                << "[clipboard] pasted undo="
+                << document.history().undo_size()
+                << " redo="
+                << document.history().redo_size()
+                << '\n';
+
+            return {};
+        }
+
         [[nodiscard]] ApplicationResult<void> execute_shortcut_action(
             ShortcutAction action,
             DocumentSession& document,
-            EditorViewport& viewport)
+            EditorViewport& viewport,
+            ApplicationWindow& window)
         {
             const ApplicationResult<bool> meshToolActivation =
                 MeshToolActivationController{}
@@ -621,6 +720,16 @@ namespace locus::application {
                     editor::ActionId{
                         std::string{
                             editor::edit_actions::DeleteId } });
+
+            case ShortcutAction::CopySelection:
+                return copy_selection_to_clipboard(
+                    document,
+                    window);
+
+            case ShortcutAction::PasteSelection:
+                return paste_selection_from_clipboard(
+                    document,
+                    window);
 
             case ShortcutAction::ExecuteBridgeEdgeAction:
                 return execute_editor_action(
@@ -1030,7 +1139,8 @@ namespace locus::application {
             execute_shortcut_action(
                 shortcutAction,
                 *activeDocument,
-                editorViewport_);
+                editorViewport_,
+                window_);
 
         if (!shortcutResult) {
             inputState_.end_frame();

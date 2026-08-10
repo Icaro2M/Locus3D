@@ -441,6 +441,18 @@ namespace locus::application {
         return window_.framebuffer_height();
     }
 
+    void ApplicationWindow::set_clipboard_text(const std::string& text)
+    {
+        if (initialized_) {
+            window_.set_clipboard_text(text);
+        }
+    }
+
+    std::string ApplicationWindow::clipboard_text() const
+    {
+        return initialized_ ? window_.clipboard_text() : std::string{};
+    }
+
     const ApplicationConfig& ApplicationWindow::configuration() const noexcept
     {
         return configuration_;

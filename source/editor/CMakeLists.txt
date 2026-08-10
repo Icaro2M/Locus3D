@@ -11,6 +11,10 @@ target_sources(locus3d_editor
         "EditorContext.h"
         "EditorState.h"
         "EditorTypes.h"
+        "io/SceneFragment.cpp"
+        "io/SceneFragment.h"
+        "io/SceneFragmentSerializer.cpp"
+        "io/SceneFragmentSerializer.h"
         "scene/EditorScene.cpp"
         "scene/EditorScene.h"
         "scene/EmptyNode.h"
@@ -90,6 +94,8 @@ target_sources(locus3d_editor
         "command/scene/DeleteNodeCommand.cpp"
         "command/scene/DuplicateNodeCommand.h"
         "command/scene/DuplicateNodeCommand.cpp" 
+        "command/scene/PasteNodesCommand.h"
+        "command/scene/PasteNodesCommand.cpp"
         "command/transform/NodeTransformSnapshot.h"
         "command/transform/SetNodeTransformCommand.h"
         "command/transform/SetNodeTransformCommand.cpp"
@@ -281,6 +287,7 @@ target_include_directories(locus3d_editor
     PUBLIC
         ${LOCUS3D_SOURCE_DIR}
         ${GLM_DIR}/include
+        ${NLOHMANN_DIR}
 )
 
 target_link_libraries(locus3d_editor
