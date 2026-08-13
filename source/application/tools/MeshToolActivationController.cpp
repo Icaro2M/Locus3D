@@ -470,6 +470,7 @@ namespace locus::application {
         case ShortcutAction::Undo:
         case ShortcutAction::Redo:
         case ShortcutAction::Save:
+        case ShortcutAction::SaveAs:
         case ShortcutAction::Open:
         case ShortcutAction::CopySelection:
         case ShortcutAction::PasteSelection:

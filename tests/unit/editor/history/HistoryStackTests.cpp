@@ -205,6 +205,37 @@ TestResult run_history_stack_tests()
         return TestResult::fail("push_executed should reject invalid command/result combinations");
     }
 
+    history.clear();
+    history.mark_clean();
+    if (!history.is_clean()) {
+        return TestResult::fail("mark_clean should mark the current history state clean");
+    }
+
+    history.execute(
+        dispatcher,
+        std::make_unique<HistoryCommand>("Move"));
+    if (history.is_clean()) {
+        return TestResult::fail("executing an undoable command should leave the clean checkpoint");
+    }
+
+    history.undo(dispatcher);
+    if (!history.is_clean()) {
+        return TestResult::fail("undo should return clean when it reaches the saved state");
+    }
+
+    history.redo(dispatcher);
+    if (history.is_clean()) {
+        return TestResult::fail("redo should leave the saved state again");
+    }
+
+    history.undo(dispatcher);
+    history.execute(
+        dispatcher,
+        std::make_unique<HistoryCommand>("Rename"));
+    if (history.is_clean()) {
+        return TestResult::fail("branching after undo should not reuse the clean state id");
+    }
+
     return TestResult::pass();
 }
 

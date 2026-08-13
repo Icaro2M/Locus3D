@@ -200,11 +200,23 @@ namespace locus::application {
         void mark_dirty() noexcept;
 
         /**
+         * @brief Refreshes persistent dirty state after undoable history motion.
+         */
+        void mark_history_changed() noexcept;
+
+        /**
          * @brief Records a successful save and clears persistent dirty state.
          *
          * @param path Path used by the successful save operation.
          */
         void mark_saved(const std::filesystem::path& path);
+
+        /**
+         * @brief Records a successful load and resets history/dirty state.
+         *
+         * @param path Path used by the successful open operation.
+         */
+        void mark_loaded(const std::filesystem::path& path);
 
         /**
          * @brief Removes the associated path without changing dirty state.
@@ -222,7 +234,7 @@ namespace locus::application {
         editor::ToolManager toolManager_;
         editor::EditorSync editorSync_{};
         std::filesystem::path path_{};
-        bool dirty_ = false;
+        bool externalDirty_ = false;
     };
 
 } // namespace locus::application

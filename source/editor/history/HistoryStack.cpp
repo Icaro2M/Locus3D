@@ -40,7 +40,15 @@ namespace locus::editor {
 			return false;
 		}
 
-		undoStack_.emplace_back(std::move(command), std::move(result));
+        const StateId beforeState = currentState_;
+        const StateId afterState = allocate_state();
+        currentState_ = afterState;
+
+		undoStack_.emplace_back(
+            std::move(command),
+            std::move(result),
+            beforeState,
+            afterState);
 		trim_undo_to_limit();
 		clear_redo();
 
@@ -60,6 +68,7 @@ namespace locus::editor {
 		entry.set_last_result(result);
 
 		if (result.success) {
+            currentState_ = entry.before_state();
 			redoStack_.push_back(std::move(entry));
 		}
 		else {
@@ -82,6 +91,7 @@ namespace locus::editor {
 		entry.set_last_result(result);
 
 		if (result.success) {
+            currentState_ = entry.after_state();
 			undoStack_.push_back(std::move(entry));
 			trim_undo_to_limit();
 		}
@@ -124,6 +134,8 @@ namespace locus::editor {
 	{
 		undoStack_.clear();
 		redoStack_.clear();
+        currentState_ = allocate_state();
+        cleanState_ = currentState_;
 	}
 
 	void HistoryStack::clear_redo()
@@ -157,6 +169,21 @@ namespace locus::editor {
 		return undoStack_.empty() && redoStack_.empty();
 	}
 
+    void HistoryStack::mark_clean() noexcept
+    {
+        cleanState_ = currentState_;
+    }
+
+    bool HistoryStack::is_clean() const noexcept
+    {
+        return currentState_ == cleanState_;
+    }
+
+    HistoryStack::StateId HistoryStack::current_state() const noexcept
+    {
+        return currentState_;
+    }
+
 	void HistoryStack::trim_undo_to_limit()
 	{
 		if (maxEntries_ == 0u) {
@@ -164,8 +191,17 @@ namespace locus::editor {
 		}
 
 		while (undoStack_.size() > maxEntries_) {
+            if (undoStack_.front().before_state() == cleanState_
+                || undoStack_.front().after_state() == cleanState_) {
+                cleanState_ = 0u;
+            }
 			undoStack_.erase(undoStack_.begin());
 		}
 	}
+
+    HistoryStack::StateId HistoryStack::allocate_state() noexcept
+    {
+        return nextState_++;
+    }
 
 }

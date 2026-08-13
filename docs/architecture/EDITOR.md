@@ -61,6 +61,28 @@ Paste is an undoable editor command: `PasteNodesCommand` validates the complete 
 
 The clipboard text is a transport envelope with magic `LOCUS3D_SCENE_FRAGMENT` and `version = 1`. This is deliberately not a document save format. Future native save/load can reuse the node and mesh serialization primitives, while document-level metadata, settings, paths, and complete-document archive concerns should remain separate.
 
+### Native Document IO
+
+Native `.locus` files are represented in editor IO as `DocumentArchive`, a complete persisted document payload distinct from `SceneFragment`. Both concepts share `SerializedNode` plus the node/mesh JSON codec in `NodeSerialization.*`, so metadata, transform, pivot, hierarchy ids, node type, and LEM topology are encoded once and consumed by both clipboard and document IO.
+
+`.locus` v1 is a versioned JSON envelope:
+
+```json
+{
+  "format": "Locus3D",
+  "version": 1,
+  "document": {
+    "nodes": []
+  }
+}
+```
+
+The archive uses local `SerializedNodeId` values, not runtime `SceneNodeId` values. Load allocates fresh runtime ids and remaps parent references after all nodes have been validated and constructed in a temporary `EditorScene`; only then does `Editor::replace_scene` commit the scene. This keeps failed loads from destroying the current document.
+
+Persistent node state currently includes node type, name, visibility, locked/selectable flags, `NodeMetadata::expanded`, transform, pivot, hierarchy, and mesh payload. `expanded` is kept because it already lives in `NodeMetadata`, though it is presentation state rather than essential model content.
+
+The LEM document payload stores active vertex positions plus persistent element attributes: hidden flags and tags for vertices/edges/faces, and edge smooth/crease. Editor selection flags are intentionally omitted from `.locus`; clipboard may still carry them for editor-local transport. Face normals are treated as derived data and rebuilt after load.
+
 ---
 
 ## Current File Tree
@@ -410,11 +432,19 @@ source\editor
 |       ManufacturingSync.cpp
 |
 \---io [!]
-        IDocumentSerializer.h [!]
-        DocumentReader.h [!]
-        DocumentWriter.h [!]
-        Locus3DFormat.h [!]
-        Locus3DFormat.cpp [!]
+        SerializedNode.h
+        NodeSerialization.h
+        NodeSerialization.cpp
+        SceneFragment.h
+        SceneFragment.cpp
+        SceneFragmentSerializer.h
+        SceneFragmentSerializer.cpp
+        DocumentArchive.h
+        DocumentArchive.cpp
+        DocumentSceneIO.h
+        DocumentSceneIO.cpp
+        Locus3DFormat.h
+        Locus3DFormat.cpp
 ```
 
 ---
@@ -444,11 +474,6 @@ Initial implementation should probably begin with a small, stable foundation:
 - [!] `actions/Actions.h`
 - [!] `sync/ManufacturingSync.h`
 - [!] `sync/ManufacturingSync.cpp`
-- [!] `io/IDocumentSerializer.h`
-- [!] `io/DocumentReader.h`
-- [!] `io/DocumentWriter.h`
-- [!] `io/Locus3DFormat.h`
-- [!] `io/Locus3DFormat.cpp`
 
 These should be added in dependency order. The first useful milestone is likely editor scene identity, node transforms, object selection, and render/picking synchronization. Commands, history, tools, gizmos, snapping, and document IO can then build on that foundation without guessing at ownership.
 

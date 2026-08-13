@@ -21,6 +21,11 @@ namespace locus::editor {
          */
         EditorScene() = default;
 
+        EditorScene(const EditorScene&) = delete;
+        EditorScene& operator=(const EditorScene&) = delete;
+        EditorScene(EditorScene&&) noexcept = default;
+        EditorScene& operator=(EditorScene&&) noexcept = default;
+
         /**
          * @brief Creates an empty transform node.
          *

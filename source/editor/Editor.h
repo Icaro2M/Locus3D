@@ -84,6 +84,13 @@ namespace locus::editor {
         [[nodiscard]] const EditorScene& scene() const;
 
         /**
+         * @brief Replaces the scene after a fully validated document load.
+         *
+         * @param scene New scene ownership.
+         */
+        void replace_scene(EditorScene scene);
+
+        /**
          * @brief Returns mutable access to the selection state.
          *
          * @return Mutable selection state reference.

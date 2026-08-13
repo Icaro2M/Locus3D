@@ -210,6 +210,8 @@ using namespace locus::application;
         return "Redo";
     case ShortcutAction::Save:
         return "Save";
+    case ShortcutAction::SaveAs:
+        return "SaveAs";
     case ShortcutAction::Open:
         return "Open";
     case ShortcutAction::DeleteSelection:

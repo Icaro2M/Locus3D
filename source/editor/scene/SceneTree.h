@@ -26,6 +26,8 @@ namespace locus::editor {
 
         SceneTree(const SceneTree&) = delete;
         SceneTree& operator=(const SceneTree&) = delete;
+        SceneTree(SceneTree&&) noexcept = default;
+        SceneTree& operator=(SceneTree&&) noexcept = default;
 
         /**
          * @brief Creates a node of a specific derived type.

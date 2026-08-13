@@ -19,5 +19,6 @@ namespace locus::tests {
 [[nodiscard]] TestResult run_scene_tree_tests();
 [[nodiscard]] TestResult run_editor_scene_tests();
 [[nodiscard]] TestResult run_mesh_node_tests();
+[[nodiscard]] TestResult run_document_archive_tests();
 
 } // namespace locus::tests

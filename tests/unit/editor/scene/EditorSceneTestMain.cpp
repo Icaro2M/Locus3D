@@ -29,6 +29,7 @@ int main()
         { "SceneTree", run_scene_tree_tests },
         { "EditorScene", run_editor_scene_tests },
         { "MeshNode", run_mesh_node_tests },
+        { "DocumentArchive", run_document_archive_tests },
     };
 
     for (const TestCase& test : tests) {

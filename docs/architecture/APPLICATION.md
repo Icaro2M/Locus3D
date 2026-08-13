@@ -56,6 +56,16 @@ Runtime copy asks the editor IO layer to capture the selected scene objects into
 
 Copy is non-mutating and does not mark the document dirty. Paste is a persistent document mutation when the command succeeds and is marked dirty through the same history/dirty flow used by other undoable scene changes.
 
+### Document Save, Open, And Dirty State
+
+The application owns document operations in `operation/DocumentOperations.*`. `Save` captures the active editor scene as an editor `DocumentArchive`, serializes it through `.locus` v1, writes it atomically, and only then calls `DocumentSession::mark_saved(path)`. `Save As` always requests a path first and does not change the session path unless writing succeeds. `Open` requests a `.locus` path, reads/parses/validates the archive, constructs a temporary editor scene through editor IO, and commits only after success.
+
+`document/DocumentIO.*` owns filesystem reading and writing. Save writes the full serialized document to a temporary file next to the target, closes it, then replaces the target; failed saves preserve the previous file and do not advance the save point. `ensure_locus_extension` appends `.locus` when the dialog result has no native extension.
+
+`DocumentSession` exposes `path()`, `has_path()`, `display_name()`, `is_dirty()`, `mark_saved(path)`, and `mark_loaded(path)`. Persistent dirty state is based on `HistoryStack::is_clean()` plus an external dirty flag for future persistent mutations outside undo history. `HistoryStack` tracks opaque state ids for undo/redo transitions, so undo back to the saved state becomes clean again, redo leaves it dirty, and branching after undo creates a fresh dirty state.
+
+Native file dialogs live in `platform/FileDialog.*`. The current Windows backend uses the common Open/Save file dialogs with the `Locus3D Document (*.locus)` filter. Cancel returns an unaccepted result and is treated as a non-error no-op by document operations.
+
 ---
 
 ## Current File Tree
@@ -91,10 +101,20 @@ source\application
 |
 +---document
 |       DocumentId.h
+|       DocumentIO.h
+|       DocumentIO.cpp
 |       DocumentSession.h
 |       DocumentSession.cpp
 |       DocumentManager.h
 |       DocumentManager.cpp
+|
++---operation
+|       DocumentOperations.h
+|       DocumentOperations.cpp
+|
++---platform
+|       FileDialog.h
+|       FileDialog.cpp
 |
 +---viewport
 |       EditorViewport.h

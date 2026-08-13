@@ -129,7 +129,7 @@ namespace locus::application {
 
     bool DocumentSession::is_dirty() const noexcept
     {
-        return dirty_;
+        return externalDirty_ || !history_.is_clean();
     }
 
     bool DocumentSession::has_path() const noexcept
@@ -154,14 +154,28 @@ namespace locus::application {
 
     void DocumentSession::mark_dirty() noexcept
     {
-        dirty_ = true;
+        externalDirty_ = true;
+    }
+
+    void DocumentSession::mark_history_changed() noexcept
+    {
     }
 
     void DocumentSession::mark_saved(
         const std::filesystem::path& path)
     {
         path_ = path;
-        dirty_ = false;
+        history_.mark_clean();
+        externalDirty_ = false;
+    }
+
+    void DocumentSession::mark_loaded(
+        const std::filesystem::path& path)
+    {
+        path_ = path;
+        history_.clear();
+        history_.mark_clean();
+        externalDirty_ = false;
     }
 
     void DocumentSession::clear_path()

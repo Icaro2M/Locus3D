@@ -159,7 +159,7 @@ namespace locus::editor {
                 meshNode->bump_mesh_revision();
             }
 
-            remap_.emplace(serialized.fragmentId, created);
+            remap_.emplace(serialized.id, created);
             pastedNodes_.push_back(created);
 
             NodeSnapshot snapshot{};
@@ -250,12 +250,12 @@ namespace locus::editor {
     bool PasteNodesCommand::reparent_created_nodes(CommandContext& context)
     {
         for (NodeSnapshot& snapshot : snapshots_) {
-            if (!snapshot.node.parentFragmentId.has_value()) {
+            if (!snapshot.node.parentId.has_value()) {
                 continue;
             }
 
             const auto parent = remap_.find(
-                snapshot.node.parentFragmentId.value());
+                snapshot.node.parentId.value());
             if (parent == remap_.end()) {
                 return false;
             }

@@ -5,11 +5,7 @@
 
 #pragma once
 
-#include "editor/scene/NodeMetadata.h"
-#include "editor/scene/NodePivot.h"
-#include "editor/scene/NodeTransform.h"
-#include "editor/scene/NodeType.h"
-#include "kernel/geometry/mesh/LEM.h"
+#include "editor/io/SerializedNode.h"
 
 #include <cstdint>
 #include <optional>
@@ -18,20 +14,10 @@
 
 namespace locus::editor {
 
-    using SceneFragmentNodeId = std::uint64_t;
+    using SceneFragmentNodeId = SerializedNodeId;
 
     constexpr SceneFragmentNodeId InvalidSceneFragmentNodeId =
-        UINT64_MAX;
-
-    struct SerializedNode {
-        SceneFragmentNodeId fragmentId = InvalidSceneFragmentNodeId;
-        std::optional<SceneFragmentNodeId> parentFragmentId{};
-        NodeType type = NodeType::Empty;
-        NodeTransform transform{};
-        NodePivot pivot{};
-        NodeMetadata metadata{};
-        std::optional<kernel::geometry::LEM> mesh{};
-    };
+        InvalidSerializedNodeId;
 
     struct SceneFragment {
         std::vector<SerializedNode> nodes{};

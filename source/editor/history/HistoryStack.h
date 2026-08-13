@@ -8,6 +8,7 @@
 #include "editor/history/HistoryEntry.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -26,6 +27,7 @@ namespace locus::editor {
 	 */
 	class HistoryStack {
 	public:
+        using StateId = HistoryEntry::StateId;
 		/**
 		 * @brief Creates an empty history stack.
 		 */
@@ -150,12 +152,33 @@ namespace locus::editor {
 		 */
 		[[nodiscard]] bool empty() const;
 
+        /**
+         * @brief Marks the current history state as the saved checkpoint.
+         */
+        void mark_clean() noexcept;
+
+        /**
+         * @brief Checks whether current history state matches the saved state.
+         *
+         * @return True when no undoable document edit diverged from save point.
+         */
+        [[nodiscard]] bool is_clean() const noexcept;
+
+        /**
+         * @brief Returns the opaque identity of the current history state.
+         */
+        [[nodiscard]] StateId current_state() const noexcept;
+
 	private:
 		void trim_undo_to_limit();
+        [[nodiscard]] StateId allocate_state() noexcept;
 
 		std::vector<HistoryEntry> undoStack_{};
 		std::vector<HistoryEntry> redoStack_{};
 		std::size_t maxEntries_ = 0u;
+        StateId currentState_ = 1u;
+        StateId cleanState_ = 1u;
+        StateId nextState_ = 2u;
 	};
 
 }

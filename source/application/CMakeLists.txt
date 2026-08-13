@@ -11,6 +11,8 @@ target_sources(locus3d_application
         "ApplicationError.h"
         "ApplicationResult.h"
         "document/DocumentId.h"
+        "document/DocumentIO.h"
+        "document/DocumentIO.cpp"
         "document/DocumentManager.h"
         "document/DocumentManager.cpp"
         "document/DocumentSession.h"
@@ -21,6 +23,10 @@ target_sources(locus3d_application
         "input/InputCapture.h"
         "input/InputRouter.h"
         "input/InputRouter.cpp"
+        "operation/DocumentOperations.h"
+        "operation/DocumentOperations.cpp"
+        "platform/FileDialog.h"
+        "platform/FileDialog.cpp"
         "shortcut/Shortcut.h"
         "shortcut/ShortcutManager.h"
         "shortcut/ShortcutManager.cpp"
@@ -54,6 +60,13 @@ target_link_libraries(locus3d_application
         Locus3D::Editor
         Locus3D::Graphics
 )
+
+if(WIN32)
+    target_link_libraries(locus3d_application
+        PRIVATE
+            Comdlg32
+    )
+endif()
 
 target_compile_definitions(locus3d_application
     PRIVATE

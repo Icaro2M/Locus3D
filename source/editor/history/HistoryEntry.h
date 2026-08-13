@@ -8,6 +8,7 @@
 #include "editor/command/CommandResult.h"
 #include "editor/command/ICommand.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -21,6 +22,8 @@ namespace locus::editor {
 	 */
 	class HistoryEntry {
 	public:
+        using StateId = std::uint64_t;
+
 		/**
 		 * @brief Creates an empty history entry.
 		 */
@@ -32,10 +35,31 @@ namespace locus::editor {
 		 * @param command Command owned by the entry.
 		 * @param result Last command result.
 		 */
-		HistoryEntry(std::unique_ptr<ICommand> command, CommandResult result)
+		HistoryEntry(
+            std::unique_ptr<ICommand> command,
+            CommandResult result)
+            : HistoryEntry(std::move(command), std::move(result), 0u, 0u)
+		{
+		}
+
+		/**
+		 * @brief Creates a history entry from an executed command.
+		 *
+		 * @param command Command owned by the entry.
+		 * @param result Last command result.
+         * @param beforeState History state before command execution.
+         * @param afterState History state after command execution.
+		 */
+		HistoryEntry(
+            std::unique_ptr<ICommand> command,
+            CommandResult result,
+            StateId beforeState,
+            StateId afterState)
 			: command_(std::move(command))
 			, commandName_(command_ ? std::string(command_->name()) : std::string{})
 			, lastResult_(std::move(result))
+            , beforeState_(beforeState)
+            , afterState_(afterState)
 		{
 		}
 
@@ -119,10 +143,22 @@ namespace locus::editor {
 			lastResult_ = std::move(result);
 		}
 
+        [[nodiscard]] StateId before_state() const noexcept
+        {
+            return beforeState_;
+        }
+
+        [[nodiscard]] StateId after_state() const noexcept
+        {
+            return afterState_;
+        }
+
 	private:
 		std::unique_ptr<ICommand> command_{};
 		std::string commandName_{};
 		CommandResult lastResult_{};
+        StateId beforeState_ = 0u;
+        StateId afterState_ = 0u;
 	};
 
 }

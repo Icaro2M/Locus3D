@@ -223,6 +223,7 @@ set_tests_properties(graphics.unit.camera PROPERTIES
 
 add_executable(Locus3DEditorTests
     unit/editor/scene/EditorSceneTestMain.cpp
+    unit/editor/scene/DocumentArchiveTests.cpp
     unit/editor/scene/EditorSceneTests.cpp
     unit/editor/scene/MeshNodeTests.cpp
     unit/editor/scene/NodeTransformTests.cpp

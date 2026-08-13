@@ -209,7 +209,7 @@ namespace {
         if (locus::editor::has_flag(
                 result.dirtyFlags,
                 EditorDirtyFlags::Scene | EditorDirtyFlags::Mesh)) {
-            document.mark_dirty();
+            document.mark_history_changed();
         }
 
         std::cout
@@ -619,7 +619,7 @@ namespace {
             return false;
         }
 
-        document.mark_dirty();
+        document.mark_history_changed();
         print_position(
             "Undo transform",
             require_node(editor, cubeA, "Smoke A").transform());
@@ -639,7 +639,7 @@ namespace {
             return false;
         }
 
-        document.mark_dirty();
+        document.mark_history_changed();
         print_position(
             "Redo transform",
             require_node(editor, cubeA, "Smoke A").transform());

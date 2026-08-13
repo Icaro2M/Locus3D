@@ -5,6 +5,7 @@
 
 #include "application/runtime/ApplicationRuntime.h"
 
+#include "application/operation/DocumentOperations.h"
 #include "application/tools/MeshToolActivationController.h"
 #include "editor/EditorTypes.h"
 #include "editor/actions/core/ActionContext.h"
@@ -416,7 +417,7 @@ namespace locus::application {
                     editor::EditorDirtyFlags::Mesh);
 
             if (persistentSceneChange) {
-                document.mark_dirty();
+                document.mark_history_changed();
             }
 
             return result;
@@ -576,7 +577,7 @@ namespace locus::application {
                     result.dirtyFlags,
                     editor::EditorDirtyFlags::Scene |
                     editor::EditorDirtyFlags::Mesh)) {
-                document.mark_dirty();
+                document.mark_history_changed();
             }
 
             std::cout
@@ -674,7 +675,7 @@ namespace locus::application {
                     result.dirtyFlags,
                     editor::EditorDirtyFlags::Scene |
                     editor::EditorDirtyFlags::Mesh)) {
-                document.mark_dirty();
+                document.mark_history_changed();
             }
 
             std::cout
@@ -709,10 +710,17 @@ namespace locus::application {
 
             switch (action) {
             case ShortcutAction::None:
-            case ShortcutAction::Save:
-            case ShortcutAction::Open:
             case ShortcutAction::ActivateShrinkFattenTool:
                 return {};
+
+            case ShortcutAction::Save:
+                return save_document(document);
+
+            case ShortcutAction::SaveAs:
+                return save_document_as(document);
+
+            case ShortcutAction::Open:
+                return open_document(document);
 
             case ShortcutAction::DeleteSelection:
                 return execute_editor_action(
@@ -875,7 +883,7 @@ namespace locus::application {
                         result.dirtyFlags,
                         editor::EditorDirtyFlags::Scene |
                         editor::EditorDirtyFlags::Mesh)) {
-                    document.mark_dirty();
+                    document.mark_history_changed();
                 }
 
                 if (result.success) {

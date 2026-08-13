@@ -51,6 +51,14 @@ namespace locus::editor {
         return state_.scene;
     }
 
+    void Editor::replace_scene(EditorScene scene)
+    {
+        state_.scene = std::move(scene);
+        state_.selection.clear();
+        rebuild_controllers();
+        mark_dirty(EditorDirtyFlags::All);
+    }
+
     SelectionState& Editor::selection()
     {
         mark_dirty(EditorDirtyFlags::Selection);

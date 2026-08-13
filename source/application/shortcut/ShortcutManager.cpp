@@ -101,6 +101,7 @@ namespace locus::application {
             case ShortcutAction::Undo:
             case ShortcutAction::Redo:
             case ShortcutAction::Save:
+            case ShortcutAction::SaveAs:
             case ShortcutAction::Open:
                 return !context.modalActive;
             }
@@ -152,7 +153,8 @@ namespace locus::application {
             { Key::Z, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Undo },
             { Key::Z, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::Redo },
             { Key::Y, InputModifiers::Control, InputModifiers::None, ShortcutAction::Redo },
-            { Key::S, InputModifiers::Control, InputModifiers::None, ShortcutAction::Save },
+            { Key::S, InputModifiers::Control | InputModifiers::Shift, InputModifiers::None, ShortcutAction::SaveAs },
+            { Key::S, InputModifiers::Control, InputModifiers::Shift, ShortcutAction::Save },
             { Key::O, InputModifiers::Control, InputModifiers::None, ShortcutAction::Open },
             { Key::C, InputModifiers::Control, InputModifiers::None, ShortcutAction::CopySelection },
             { Key::V, InputModifiers::Control, InputModifiers::None, ShortcutAction::PasteSelection },
