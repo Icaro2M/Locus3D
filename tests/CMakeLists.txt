@@ -6,6 +6,18 @@
 # is harmless when the parent project has already enabled testing.
 enable_testing()
 
+# ==============================================================================
+# [!] BLINDAGEM ARQUITETURAL PARA O QT CREATOR
+# Se as bibliotecas do Core (Geometry, Application, etc.) não existirem no cache 
+# do CMake, interrompemos a leitura deste diretório via return().
+# Isso evita o Erro Fatal e libera o Qt Creator para parsear os arquivos .ui.
+# ==============================================================================
+if (NOT TARGET Locus3D::Application OR NOT TARGET Locus3D::Geometry)
+    message(WARNING "Locus3D: Alvos do Kernel (Backend) não detectados no escopo atual. Ignorando a suíte de testes para focar na GUI no Qt Creator.")
+    return()
+endif()
+# ==============================================================================
+
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
@@ -528,52 +540,3 @@ add_test(NAME editor.unit.history COMMAND Locus3DEditorHistoryTests)
 set_tests_properties(editor.unit.history PROPERTIES
     LABELS "unit;editor;history"
 )
-
-# Future test executables will be registered here as the manual test suites are
-# added. Expected target groups include:
-#
-#   Locus3DGraphicsTests
-#   Locus3DIntegrationTests
-#   Locus3DVisualTests
-#
-# Example structure for future tests:
-#
-#   add_executable(Locus3DKernelTests
-#       unit/kernel/SomeKernelTest.cpp
-#   )
-#
-#   target_include_directories(Locus3DKernelTests PRIVATE
-#       ${LOCUS3D_SOURCE_DIR}
-#       ${LOCUS3D_TESTS_DIR}/common
-#   )
-#
-#   target_link_libraries(Locus3DKernelTests PRIVATE
-#       Locus3D::Geometry
-#   )
-#
-#   add_test(NAME kernel.unit.mesh COMMAND Locus3DKernelTests)
-#   set_tests_properties(kernel.unit.mesh PROPERTIES
-#       LABELS "unit;kernel"
-#   )
-#
-# Other future label examples:
-#
-#   set_tests_properties(graphics.unit.renderer PROPERTIES
-#       LABELS "unit;graphics"
-#   )
-#
-#   set_tests_properties(editor.unit.tools PROPERTIES
-#       LABELS "unit;editor"
-#   )
-#
-#   set_tests_properties(editor_kernel.integration.selection PROPERTIES
-#       LABELS "integration;editor;kernel"
-#   )
-#
-#   set_tests_properties(import_export.regression.obj PROPERTIES
-#       LABELS "regression;kernel"
-#   )
-#
-#   set_tests_properties(graphics.visual.viewport PROPERTIES
-#       LABELS "visual;graphics"
-#   )
