@@ -3,29 +3,61 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#ifdef _WIN32
+#include <windows.h>
+#include <cstdio>
+#endif
+
 #include <QApplication>
 #include <QSurfaceFormat>
-#include "gui/MainWindow.h" // Importa a janela isolada que blindamos na pasta GUI
+#include <QDebug>
+#include <iostream>
+#include "gui/MainWindow.h"
+
+// Redireciona todos os logs e avisos internos do Qt direto para o terminal do VS Code
+void qtMessageOutput(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
+    std::cout << "[Qt] " << msg.toStdString() << std::endl;
+}
 
 int main(int argc, char* argv[]) {
-    // 1. Configuração estrita do contexto OpenGL global (Perfil Core, moderno)
+#ifdef _WIN32
+    if (AttachConsole(ATTACH_PARENT_PROCESS)) {
+        freopen("CONOUT$", "w", stdout);
+        freopen("CONOUT$", "w", stderr);
+    }
+#endif
+
+    qInstallMessageHandler(qtMessageOutput);
+
+    std::cout << "[Locus3D 1/5] Configurando perfil OpenGL..." << std::endl;
+
     QSurfaceFormat format;
     format.setDepthBufferSize(24);
     format.setStencilBufferSize(8);
-    format.setVersion(4, 1); 
+    format.setVersion(4, 5); // <<-- Altere de (4, 1) para (4, 5)
     format.setProfile(QSurfaceFormat::CoreProfile);
     format.setSamples(4); 
     QSurfaceFormat::setDefaultFormat(format);
 
-    // 2. Inicialização do motor de eventos do Qt
+    std::cout << "[Locus3D 2/5] Instanciando QApplication..." << std::endl;
     QApplication app(argc, argv);
     app.setApplicationName("Locus3D");
     app.setOrganizationName("Locus3D Team");
 
-    // 3. Instancia e exibe a nossa janela principal (que por sua vez carrega o .ui e a Viewport)[cite: 1]
-    locus::gui::MainWindow window;
-    window.show();
+    try {
+        std::cout << "[Locus3D 3/5] Construindo MainWindow..." << std::endl;
+        locus::gui::MainWindow window;
 
-    // 4. Inicia o loop de interação do usuário
-    return app.exec();
+        std::cout << "[Locus3D 4/5] Exibindo janela (show)..." << std::endl;
+        window.show();
+
+        std::cout << "[Locus3D 5/5] Janela aberta com sucesso! Executando loop..." << std::endl;
+        return app.exec();
+    } catch (const std::exception& e) {
+        std::cerr << "[Locus3D ERRO] Excecao capturada: " << e.what() << std::endl;
+        return 1;
+    } catch (...) {
+        std::cerr << "[Locus3D ERRO] Falha critica desconhecida." << std::endl;
+        return 1;
+    }
 }

@@ -52,7 +52,17 @@ namespace locus::graphics
                 "Cannot create VertexArray because it already owns a GPU vertex array.");
         }
 
-        glCreateVertexArrays(1, &id_);
+        // Suporte a DSA (OpenGL 4.5+) com fallback seguro para OpenGL 3.3/4.1
+        if (glCreateVertexArrays != nullptr)
+        {
+            glCreateVertexArrays(1, &id_);
+        }
+        else if (glGenVertexArrays != nullptr)
+        {
+            glGenVertexArrays(1, &id_);
+            glBindVertexArray(id_);
+            glBindVertexArray(0);
+        }
 
         if (id_ == 0)
         {

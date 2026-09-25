@@ -41,14 +41,9 @@ namespace locus::graphics
         update_camera_projection();
     }
 
-    void Viewport::sync_with_window(const Window& window)
+    void Viewport::sync_with_window(const Window& /*window*/)
     {
-        set_rect(ViewportRect{
-            0,
-            0,
-            window.framebuffer_width(),
-            window.framebuffer_height()
-            });
+        // No Qt, o redimensionamento é gerenciado diretamente pelo resizeGL do QOpenGLWidget
     }
 
     void Viewport::begin_frame()

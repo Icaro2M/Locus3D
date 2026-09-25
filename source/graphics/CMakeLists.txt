@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 add_library(locus3d_graphics STATIC)
-
 add_library(Locus3D::Graphics ALIAS locus3d_graphics)
 
 target_sources(locus3d_graphics PRIVATE
@@ -47,7 +46,7 @@ target_sources(locus3d_graphics PRIVATE
     "scene/RenderScene.cpp"
     "scene/RenderTransform.cpp"
     "viewport/Viewport.cpp"
-    "window/Window.cpp"
+    #//"window/Window.cpp"
     "primitives/ObjectHighlight.h"
     "primitives/PrimitiveVertex.h"
     "primitives/PointMarker.h"
@@ -58,7 +57,8 @@ target_sources(locus3d_graphics PRIVATE
     "primitives/PrimitiveBuilder.cpp"
     "primitives/PrimitiveMeshConverter.h"
     "primitives/PrimitiveMeshConverter.cpp"
-    "GraphicsPrimitives.h")
+    "GraphicsPrimitives.h"
+)
 
 target_include_directories(locus3d_graphics PUBLIC
     ${LOCUS3D_SOURCE_DIR}
@@ -69,8 +69,8 @@ target_include_directories(locus3d_graphics PUBLIC
     ${STB_DIR}
 )
 
+# Removido o glfw3.lib para evitar incompatibilidade entre MinGW e MSVC
 target_link_libraries(locus3d_graphics PUBLIC
-    ${GLFW_DIR}/lib/glfw3.lib
     ${LOCUS3D_PLATFORM_LIBS}
 )
 

@@ -29,14 +29,15 @@ target_sources(locus3d_application
         "viewport/EditorViewport.h"
         "viewport/EditorViewport.cpp"
         "viewport/ViewportShadingMode.h"
-        "runtime/ApplicationRuntime.h"
-        "runtime/ApplicationRuntime.cpp"
         "runtime/ApplicationState.h"
         "runtime/FrameContext.h"
         "runtime/FrameClock.h"
         "runtime/FrameClock.cpp"
-        "window/ApplicationWindow.h"
-        "window/ApplicationWindow.cpp"
+        # Módulos legados do loop GLFW desativados (substituídos pelo Qt):
+        # "runtime/ApplicationRuntime.h"
+        # "runtime/ApplicationRuntime.cpp"
+        # "window/ApplicationWindow.h"
+        # "window/ApplicationWindow.cpp"
 )
 
 target_include_directories(locus3d_application
@@ -46,7 +47,7 @@ target_include_directories(locus3d_application
 
 target_compile_features(locus3d_application
     PUBLIC
-        cxx_std_17
+        cxx_std_20
 )
 
 target_link_libraries(locus3d_application
