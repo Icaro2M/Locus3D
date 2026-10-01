@@ -15,6 +15,10 @@ namespace locus::application {
     [[nodiscard]] ApplicationResult<void> save_document(
         DocumentSession& document);
 
+    [[nodiscard]] ApplicationResult<void> save_document(
+        DocumentSession& document,
+        const std::filesystem::path& path);
+
     [[nodiscard]] ApplicationResult<void> save_document_as(
         DocumentSession& document);
 

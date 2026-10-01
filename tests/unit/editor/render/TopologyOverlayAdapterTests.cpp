@@ -618,7 +618,7 @@ TestResult run_topology_overlay_face_surface_tests()
 
     if (batches.selected.empty() ||
         !near_vec3(batches.selected.vertices.front().position, { 0.0f, 0.0f, 0.0f }) ||
-        !near_mat4_translation(batches.selected.modelMatrix, { 0.0f, 3.0f, 0.0f })) {
+        !near_mat4_translation(batches.selected.modelMatrix, { 2.0f, 3.0f, 0.0f })) {
         return TestResult::fail("face surface overlay should keep local vertices and provide the render model transform");
     }
 

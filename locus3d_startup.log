@@ -4,3 +4,28 @@ ApplicationRuntime: viewport initialization failed
 ApplicationRuntime: window initialized
 ApplicationRuntime: document created
 ApplicationRuntime: viewport initialization failed
+EditorViewport: shader root resolved
+EditorViewport: grid shader loaded
+EditorViewport: axis shader loaded
+EditorViewport: document shader loaded
+EditorViewport: line shader loaded
+EditorViewport: line renderer created
+EditorViewport: point marker shader loaded
+EditorViewport: point marker renderer deferred
+EditorViewport: pivot marker shader loaded
+EditorViewport: pivot marker renderer created
+EditorViewport: surface overlay shader loaded
+EditorViewport: surface overlay renderer created
+EditorViewport: manufacturing overlay renderers created
+EditorViewport: selection shape shader loaded
+EditorViewport: selection shape renderer created
+EditorViewport: picking shader loaded
+EditorViewport: picking renderer created
+EditorViewport: selection mask shader loaded
+EditorViewport: selection mask pass created
+EditorViewport: object outline shader loaded
+EditorViewport: object outline pass created
+EditorViewport: grid renderer created
+EditorViewport: axis renderer created
+EditorViewport: gizmo renderer created
+EditorViewport: initialized

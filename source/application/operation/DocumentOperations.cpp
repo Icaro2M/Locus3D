@@ -64,6 +64,13 @@ namespace locus::application {
         return save_document_to_path(document, document.path());
     }
 
+    ApplicationResult<void> save_document(
+        DocumentSession& document,
+        const std::filesystem::path& path)
+    {
+        return save_document_to_path(document, path);
+    }
+
     ApplicationResult<void> save_document_as(DocumentSession& document)
     {
         const FileDialogResult dialog =

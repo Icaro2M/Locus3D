@@ -41,16 +41,6 @@ namespace locus::graphics
         update_camera_projection();
     }
 
-    void Viewport::sync_with_window(const Window& window)
-    {
-        set_rect(ViewportRect{
-            0,
-            0,
-            window.framebuffer_width(),
-            window.framebuffer_height()
-            });
-    }
-
     void Viewport::begin_frame()
     {
         // Apply the viewport before clearing so only this framebuffer region is affected.

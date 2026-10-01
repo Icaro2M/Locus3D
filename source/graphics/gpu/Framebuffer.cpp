@@ -13,6 +13,7 @@
 
 namespace locus::graphics
 {
+    namespace { thread_local u32 presentationFramebuffer = 0; }
     Framebuffer::~Framebuffer()
     {
         destroy();
@@ -194,7 +195,12 @@ namespace locus::graphics
 
     void Framebuffer::bind_default()
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, presentationFramebuffer);
+    }
+
+    void Framebuffer::set_default_framebuffer(u32 id) noexcept
+    {
+        presentationFramebuffer = id;
     }
 
     void Framebuffer::clear_color(float r, float g, float b, float a) const

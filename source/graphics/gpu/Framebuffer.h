@@ -92,6 +92,11 @@ namespace locus::graphics
          */
         static void bind_default();
 
+        /** @brief Sets the presentation framebuffer for the current thread.
+         * Native windows use 0; embedded widgets may provide their own FBO.
+         */
+        static void set_default_framebuffer(u32 id) noexcept;
+
         /**
          * @brief Clears the first color attachment.
          *

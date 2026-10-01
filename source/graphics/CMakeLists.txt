@@ -49,6 +49,7 @@ target_sources(locus3d_graphics PRIVATE
     "scene/RenderScene.cpp"
     "scene/RenderTransform.cpp"
     "viewport/Viewport.cpp"
+    "viewport/ViewportWindow.cpp"
     "window/Window.cpp"
     "primitives/ObjectHighlight.h"
     "primitives/PrimitiveVertex.h"

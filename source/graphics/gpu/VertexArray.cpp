@@ -52,7 +52,14 @@ namespace locus::graphics
                 "Cannot create VertexArray because it already owns a GPU vertex array.");
         }
 
-        glCreateVertexArrays(1, &id_);
+        if (glCreateVertexArrays != nullptr)
+        {
+            glCreateVertexArrays(1, &id_);
+        }
+        else if (glGenVertexArrays != nullptr)
+        {
+            glGenVertexArrays(1, &id_);
+        }
 
         if (id_ == 0)
         {

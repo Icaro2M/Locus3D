@@ -6,6 +6,10 @@
 # is harmless when the parent project has already enabled testing.
 enable_testing()
 
+if(TARGET Locus3DQtBridgeTests)
+    add_test(NAME overlay.integration.bridge COMMAND Locus3DQtBridgeTests)
+endif()
+
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 
