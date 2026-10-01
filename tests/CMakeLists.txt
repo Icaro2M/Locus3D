@@ -10,6 +10,13 @@ if(TARGET Locus3DQtBridgeTests)
     add_test(NAME overlay.integration.bridge COMMAND Locus3DQtBridgeTests)
 endif()
 
+if(TARGET Locus3DQtVisibilityTests)
+    add_test(NAME overlay.integration.visibility COMMAND Locus3DQtVisibilityTests)
+    set_tests_properties(overlay.integration.visibility PROPERTIES
+        TIMEOUT 90
+        WORKING_DIRECTORY "$<TARGET_FILE_DIR:Locus3DQtVisibilityTests>")
+endif()
+
 set(LOCUS3D_TESTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(LOCUS3D_TEST_DATA_DIR ${LOCUS3D_TESTS_DIR}/data)
 

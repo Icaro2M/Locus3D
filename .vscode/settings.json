@@ -1,0 +1,29 @@
+{
+    "cmake.useCMakePresets": "always",
+    "cmake.useVsDeveloperEnvironment": "never",
+    "cmake.configureOnOpen": true,
+    "cmake.setBuildTargetSameAsLaunchTarget": true,
+    "cmake.debugConfig": {
+        "type": "cppdbg",
+        "MIMode": "gdb",
+        "miDebuggerPath": "C:/Qt/Tools/mingw1310_64/bin/gdb.exe",
+        "environment": [
+            {
+                "name": "PATH",
+                "value": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;${env:PATH}"
+            },
+            {
+                "name": "QT_QPA_PLATFORM_PLUGIN_PATH",
+                "value": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+            }
+        ]
+    },
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    "C_Cpp.default.compilerPath": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+    "C_Cpp.default.intelliSenseMode": "windows-gcc-x64",
+    "C_Cpp.default.cppStandard": "c++17",
+    "terminal.integrated.env.windows": {
+        "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;${env:PATH}",
+        "QT_QPA_PLATFORM_PLUGIN_PATH": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+    }
+}

@@ -9,12 +9,9 @@ add_subdirectory(editor)
 add_subdirectory(application)
 
 if(LOCUS3D_BUILD_QT)
-    find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets QUIET)
-    if(Qt6_FOUND)
-        add_subdirectory(overlay)
-    else()
-        message(STATUS "Qt6 not found for this toolchain; Locus3D target is unavailable")
-    endif()
+    find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets REQUIRED)
+    message(STATUS "Locus3D desktop: Qt ${Qt6_VERSION} from ${Qt6_DIR}")
+    add_subdirectory(overlay)
 endif()
 
 target_sources(Locus3DDemo

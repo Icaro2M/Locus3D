@@ -32,6 +32,28 @@ if(WIN32)
 endif()
 
 if(LOCUS3D_BUILD_TESTS)
+    find_package(Qt6 COMPONENTS Test REQUIRED)
+    add_executable(Locus3DQtVisibilityTests
+        main.cpp
+        tests/VisibilityTests.cpp
+        tests/VisibilitySceneTests.h tests/VisibilitySceneTests.cpp
+        EditorBridge.h EditorBridge.cpp
+        LocusViewport.h LocusViewport.cpp
+        MainWindow.h MainWindow.cpp
+        OutlinerWidget.h OutlinerWidget.cpp
+        TransformWidget.h TransformWidget.cpp
+        ManufacturingWidget.h ManufacturingWidget.cpp
+        ${GLAD_DIR}/src/glad.c
+    )
+    set_target_properties(Locus3DQtVisibilityTests PROPERTIES AUTOMOC ON)
+    target_include_directories(Locus3DQtVisibilityTests PRIVATE ${LOCUS3D_SOURCE_DIR} ${GLAD_DIR}/include)
+    target_link_libraries(Locus3DQtVisibilityTests PRIVATE
+        Qt6::Core Qt6::Gui Qt6::Widgets Qt6::OpenGLWidgets Qt6::Test
+        Locus3D::Application Locus3D::Graphics Locus3D::Editor Locus3D::Geometry
+    )
+    add_custom_command(TARGET Locus3DQtVisibilityTests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${LOCUS3D_ASSETS_DIR}" "$<TARGET_FILE_DIR:Locus3DQtVisibilityTests>/assets")
     add_executable(Locus3DQtBridgeTests
         tests/EditorBridgeTests.cpp
         EditorBridge.h EditorBridge.cpp

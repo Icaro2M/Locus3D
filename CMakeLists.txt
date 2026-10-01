@@ -24,7 +24,7 @@ set(LOCUS3D_EXTERN_DIR ${LOCUS3D_ROOT_DIR}/extern)
 # Build options
 
 option(LOCUS3D_BUILD_TESTS "Build Locus3D tests" ON)
-option(LOCUS3D_BUILD_QT "Build the Qt desktop application when Qt6 is available" ON)
+option(LOCUS3D_BUILD_QT "Build the Qt desktop application (requires Qt6)" ON)
 
 # External dependencies
 

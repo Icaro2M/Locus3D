@@ -1,6 +1,53 @@
 ﻿{
     "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
     "configurePresets": [
+        {
+            "name": "qt-mingw-base",
+            "hidden": true,
+            "generator": "MinGW Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "installDir": "${sourceDir}/out/install/${presetName}",
+            "cacheVariables": {
+                "CMAKE_C_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/gcc.exe",
+                "CMAKE_CXX_COMPILER": "C:/Qt/Tools/mingw1310_64/bin/g++.exe",
+                "CMAKE_MAKE_PROGRAM": "C:/Qt/Tools/mingw1310_64/bin/mingw32-make.exe",
+                "CMAKE_PREFIX_PATH": "C:/Qt/6.11.2/mingw_64",
+                "Qt6_DIR": "C:/Qt/6.11.2/mingw_64/lib/cmake/Qt6",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "LOCUS3D_BUILD_QT": "ON",
+                "LOCUS3D_BUILD_TESTS": "ON"
+            },
+            "environment": {
+                "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;$penv{PATH}",
+                "QT_QPA_PLATFORM_PLUGIN_PATH": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "qt-mingw-debug",
+            "displayName": "Locus3D - Qt 6.11.2 MinGW 64-bit Debug",
+            "inherits": "qt-mingw-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "qt-mingw-release",
+            "displayName": "Locus3D - Qt 6.11.2 MinGW 64-bit Release",
+            "inherits": "qt-mingw-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
         {
             "name": "windows-base",
             "hidden": true,
@@ -9,7 +56,8 @@
             "installDir": "${sourceDir}/out/install/${presetName}",
             "cacheVariables": {
                 "CMAKE_C_COMPILER": "cl.exe",
-                "CMAKE_CXX_COMPILER": "cl.exe"
+                "CMAKE_CXX_COMPILER": "cl.exe",
+                "LOCUS3D_BUILD_QT": "OFF"
             },
             "condition": {
                 "type": "equals",
@@ -19,27 +67,21 @@
         },
         {
             "name": "x64-debug",
-            "displayName": "x64 Debug",
-            "inherits": "windows-base",
-            "architecture": {
-                "value": "x64",
-                "strategy": "external"
-            },
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
+            "displayName": "x64 Debug (alias for Qt/MinGW Debug)",
+            "inherits": "qt-mingw-debug",
+            "binaryDir": "${sourceDir}/out/build/qt-mingw-debug",
+            "installDir": "${sourceDir}/out/install/qt-mingw-debug"
         },
         {
             "name": "x64-release",
-            "displayName": "x64 Release",
-            "inherits": "x64-debug",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
+            "displayName": "x64 Release (alias for Qt/MinGW Release)",
+            "inherits": "qt-mingw-release",
+            "binaryDir": "${sourceDir}/out/build/qt-mingw-release",
+            "installDir": "${sourceDir}/out/install/qt-mingw-release"
         },
         {
             "name": "x86-debug",
-            "displayName": "x86 Debug",
+            "displayName": "Legacy x86 MSVC Debug (no Qt desktop)",
             "inherits": "windows-base",
             "architecture": {
                 "value": "x86",
@@ -51,10 +93,57 @@
         },
         {
             "name": "x86-release",
-            "displayName": "x86 Release",
+            "displayName": "Legacy x86 MSVC Release (no Qt desktop)",
             "inherits": "x86-debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "qt-mingw-debug",
+            "configurePreset": "qt-mingw-debug",
+            "targets": ["Locus3D"],
+            "jobs": 4
+        },
+        {
+            "name": "qt-mingw-release",
+            "configurePreset": "qt-mingw-release",
+            "targets": ["Locus3D"],
+            "jobs": 4
+        },
+        {
+            "name": "qt-mingw-bridge-debug",
+            "configurePreset": "qt-mingw-debug",
+            "targets": ["Locus3DQtBridgeTests"],
+            "jobs": 4
+        },
+        {
+            "name": "x64-debug",
+            "inherits": "qt-mingw-debug",
+            "configurePreset": "x64-debug"
+        },
+        {
+            "name": "x64-release",
+            "inherits": "qt-mingw-release",
+            "configurePreset": "x64-release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "qt-mingw-bridge-debug",
+            "configurePreset": "qt-mingw-debug",
+            "filter": {
+                "include": {
+                    "name": "^overlay\\.integration\\.bridge$"
+                }
+            },
+            "output": {
+                "outputOnFailure": true
+            },
+            "execution": {
+                "noTestsAction": "error"
             }
         }
     ]

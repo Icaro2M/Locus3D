@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Locus3D - Qt/MinGW Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/out/build/qt-mingw-debug/source/overlay/Locus3D.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/Qt/Tools/mingw1310_64/bin/gdb.exe",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;${env:PATH}"
+                },
+                {
+                    "name": "QT_QPA_PLATFORM_PLUGIN_PATH",
+                    "value": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+                }
+            ],
+            "setupCommands": [
+                {
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Locus3D: build Qt/MinGW Debug"
+        }
+    ]
+}

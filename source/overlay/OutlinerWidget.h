@@ -17,6 +17,6 @@ private:
     editor::SceneNodeId id_of(QTreeWidgetItem* item) const;
     EditorBridge& bridge_;
     QTreeWidget* tree_ = nullptr;
-    QString signature_;
+    QString structureSignature_;
 };
 }

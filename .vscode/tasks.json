@@ -1,0 +1,72 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Locus3D: configure Qt/MinGW Debug",
+            "type": "process",
+            "command": "cmake",
+            "args": ["--preset", "qt-mingw-debug"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": []
+        },
+        {
+            "label": "Locus3D: build Qt/MinGW Debug",
+            "type": "process",
+            "command": "cmake",
+            "args": ["--build", "--preset", "qt-mingw-debug"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "Locus3D: configure Qt/MinGW Debug",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Locus3D: run Qt/MinGW Debug",
+            "type": "process",
+            "command": "${workspaceFolder}/out/build/qt-mingw-debug/source/overlay/Locus3D.exe",
+            "args": [],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;${env:PATH}",
+                    "QT_QPA_PLATFORM_PLUGIN_PATH": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+                }
+            },
+            "dependsOn": "Locus3D: build Qt/MinGW Debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "Locus3D: smoke Qt/MinGW Debug",
+            "type": "process",
+            "command": "${workspaceFolder}/out/build/qt-mingw-debug/source/overlay/Locus3D.exe",
+            "args": ["--smoke-ui"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "PATH": "C:/Qt/Tools/mingw1310_64/bin;C:/Qt/6.11.2/mingw_64/bin;${env:PATH}",
+                    "QT_QPA_PLATFORM_PLUGIN_PATH": "C:/Qt/6.11.2/mingw_64/plugins/platforms"
+                }
+            },
+            "dependsOn": "Locus3D: build Qt/MinGW Debug",
+            "problemMatcher": []
+        },
+        {
+            "label": "Locus3D: build bridge tests",
+            "type": "process",
+            "command": "cmake",
+            "args": ["--build", "--preset", "qt-mingw-bridge-debug"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "Locus3D: configure Qt/MinGW Debug",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "Locus3D: test bridge Qt/MinGW Debug",
+            "type": "process",
+            "command": "ctest",
+            "args": ["--preset", "qt-mingw-bridge-debug"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "dependsOn": "Locus3D: build bridge tests",
+            "group": "test",
+            "problemMatcher": []
+        }
+    ]
+}

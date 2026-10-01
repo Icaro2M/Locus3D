@@ -1,5 +1,7 @@
 #include "overlay/OutlinerWidget.h"
 #include "overlay/EditorBridge.h"
+#include <QBrush>
+#include <QColor>
 #include <QHeaderView>
 #include <QLabel>
 #include <QSignalBlocker>
@@ -42,11 +44,10 @@ void OutlinerWidget::refresh()
     const auto nodes = bridge_.nodes();
     QString next;
     for (const auto& node : nodes)
-        next += QString::number(node.id.value) + ':' + QString::number(node.parent.value) + ':' +
-            node.name + ':' + (node.visible ? '1' : '0') + (node.locked ? '1' : '0') + ';';
+        next += QString::number(node.id.value) + ':' + QString::number(node.parent.value) + ';';
     QSignalBlocker block(tree_);
-    if (next != signature_) {
-        signature_ = next;
+    if (next != structureSignature_) {
+        structureSignature_ = next;
         tree_->clear();
         std::unordered_map<editor::SceneNodeIdValue, QTreeWidgetItem*> items;
         for (const auto& node : nodes) {
@@ -67,10 +68,26 @@ void OutlinerWidget::refresh()
         }
         tree_->expandAll();
     }
+    // itemChanged synchronously executes a command and re-enters refresh().
+    // Keep the item/index alive until Qt's delegate finishes that edit event;
+    // metadata changes must not reset the model or delete the edited item.
+    std::unordered_map<editor::SceneNodeIdValue, const NodeView*> views;
+    for (const auto& node : nodes) views.emplace(node.id.value, &node);
     const auto selected = bridge_.selected_node();
     QTreeWidgetItem* current = nullptr;
     for (auto iterator = QTreeWidgetItemIterator(tree_); *iterator; ++iterator) {
-        if (id_of(*iterator) == selected) { current = *iterator; break; }
+        auto* item = *iterator;
+        const auto id = id_of(item);
+        const auto found = views.find(id.value);
+        if (found != views.end()) {
+            const auto& node = *found->second;
+            if (item->text(0) != node.name) item->setText(0, node.name);
+            const auto checkState = node.visible ? Qt::Checked : Qt::Unchecked;
+            if (item->checkState(1) != checkState) item->setCheckState(1, checkState);
+            const QBrush foreground = node.locked || !node.selectable ? QBrush(QColor("#8390a0")) : QBrush{};
+            if (item->foreground(0) != foreground) item->setForeground(0, foreground);
+        }
+        if (id == selected) current = item;
     }
     if (tree_->currentItem() != current) tree_->setCurrentItem(current);
 }
